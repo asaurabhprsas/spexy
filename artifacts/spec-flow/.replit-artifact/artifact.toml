@@ -1,0 +1,28 @@
+kind = "web"
+previewPath = "/"
+title = "Spec-Flow"
+description = "A local-first specification workflow for developers and coding agents. Define approved project context, organize dependency-aware tasks, track agent claims, and keep human review in control."
+version = "1.0.0"
+id = "artifacts/spec-flow"
+router = "path"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 22657
+
+[services.development]
+run = "pnpm --filter @workspace/spec-flow run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/spec-flow", "run", "build" ]
+serve = "static"
+publicDir = "artifacts/spec-flow/dist/public"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "22657"
+BASE_PATH = "/"

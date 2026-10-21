@@ -3,13 +3,19 @@ info:
   # Do not change the title, if the title changes, the import paths will be broken
   title: Api
   version: 0.1.0
-  description: API specification
+  description: Spec-Flow workspace, document, task, and review API
 servers:
   - url: /api
     description: Base API path
 tags:
   - name: health
     description: Health operations
+  - name: workspace
+    description: Workspace overview and documents
+  - name: features
+    description: Feature specifications and tasks
+  - name: comments
+    description: Review comments
 paths:
   /healthz:
     get:
@@ -24,13 +30,663 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+  /dashboard:
+    get:
+      operationId: getDashboard
+      tags: [workspace]
+      summary: Get workspace overview and recent activity
+      responses:
+        "200":
+          description: Dashboard overview
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DashboardSummary"
+  /documents:
+    get:
+      operationId: listDocuments
+      tags: [workspace]
+      summary: List steering and feature documents
+      responses:
+        "200":
+          description: Documents
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/DocumentSummary"
+  /documents/{documentId}:
+    get:
+      operationId: getDocument
+      tags: [workspace]
+      summary: Get a document
+      parameters:
+        - $ref: "#/components/parameters/DocumentId"
+      responses:
+        "200":
+          description: Document
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Document"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    put:
+      operationId: updateDocument
+      tags: [workspace]
+      summary: Update a document draft
+      parameters:
+        - $ref: "#/components/parameters/DocumentId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DocumentUpdate"
+      responses:
+        "200":
+          description: Updated document
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Document"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+  /documents/{documentId}/approve:
+    post:
+      operationId: approveDocument
+      tags: [workspace]
+      summary: Approve a document as a human reviewer
+      parameters:
+        - $ref: "#/components/parameters/DocumentId"
+      responses:
+        "200":
+          description: Approved document
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Document"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+  /features:
+    get:
+      operationId: listFeatures
+      tags: [features]
+      summary: List feature specifications
+      responses:
+        "200":
+          description: Feature specifications
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Feature"
+    post:
+      operationId: createFeature
+      tags: [features]
+      summary: Create a feature specification
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/FeatureInput"
+      responses:
+        "201":
+          description: Created feature
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Feature"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "409":
+          $ref: "#/components/responses/Conflict"
+  /features/{featureId}/tasks:
+    get:
+      operationId: listTasks
+      tags: [features]
+      summary: List tasks with derived availability
+      parameters:
+        - $ref: "#/components/parameters/FeatureId"
+      responses:
+        "200":
+          description: Tasks
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Task"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    post:
+      operationId: createTask
+      tags: [features]
+      summary: Add a task to a feature
+      parameters:
+        - $ref: "#/components/parameters/FeatureId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TaskInput"
+      responses:
+        "201":
+          description: Created task
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Task"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+  /features/{featureId}/tasks/{taskId}/claim:
+    post:
+      operationId: claimTask
+      tags: [features]
+      summary: Claim an available task for an agent
+      parameters:
+        - $ref: "#/components/parameters/FeatureId"
+        - $ref: "#/components/parameters/TaskId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TaskClaimInput"
+      responses:
+        "200":
+          description: Claimed task
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Task"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+  /features/{featureId}/tasks/{taskId}/submit:
+    post:
+      operationId: submitTask
+      tags: [features]
+      summary: Submit an in-progress task for human review
+      parameters:
+        - $ref: "#/components/parameters/FeatureId"
+        - $ref: "#/components/parameters/TaskId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TaskSubmitInput"
+      responses:
+        "200":
+          description: Submitted task
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Task"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+  /features/{featureId}/tasks/{taskId}/review:
+    post:
+      operationId: reviewTask
+      tags: [features]
+      summary: Approve or reject a task submission
+      parameters:
+        - $ref: "#/components/parameters/FeatureId"
+        - $ref: "#/components/parameters/TaskId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TaskReviewInput"
+      responses:
+        "200":
+          description: Reviewed task
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Task"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+  /comments:
+    get:
+      operationId: listComments
+      tags: [comments]
+      summary: List active review comments
+      responses:
+        "200":
+          description: Active comments
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Comment"
+    post:
+      operationId: createComment
+      tags: [comments]
+      summary: Add a document-anchored review comment
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CommentInput"
+      responses:
+        "201":
+          description: Created comment
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Comment"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /comments/{commentId}/resolve:
+    post:
+      operationId: resolveComment
+      tags: [comments]
+      summary: Resolve an active human review comment
+      parameters:
+        - $ref: "#/components/parameters/CommentId"
+      responses:
+        "200":
+          description: Resolved comment
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Comment"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
 components:
+  parameters:
+    DocumentId:
+      name: documentId
+      in: path
+      required: true
+      schema:
+        type: string
+    FeatureId:
+      name: featureId
+      in: path
+      required: true
+      schema:
+        type: string
+    TaskId:
+      name: taskId
+      in: path
+      required: true
+      schema:
+        type: string
+    CommentId:
+      name: commentId
+      in: path
+      required: true
+      schema:
+        type: string
+  responses:
+    BadRequest:
+      description: Request validation failed
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    Conflict:
+      description: State transition or revision conflict
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
   schemas:
     HealthStatus:
       type: object
       properties:
         status:
           type: string
+      required: [status]
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+        code:
+          type: string
+      required: [error, code]
+    DashboardSummary:
+      type: object
+      properties:
+        projectName:
+          type: string
+        steeringApproved:
+          type: boolean
+        steeringApprovedCount:
+          type: integer
+        steeringTotal:
+          type: integer
+        featureCount:
+          type: integer
+        taskCounts:
+          $ref: "#/components/schemas/TaskCounts"
+        reviewQueueCount:
+          type: integer
+        openCommentsCount:
+          type: integer
+        recentActivity:
+          type: array
+          items:
+            $ref: "#/components/schemas/Activity"
       required:
+        - projectName
+        - steeringApproved
+        - steeringApprovedCount
+        - steeringTotal
+        - featureCount
+        - taskCounts
+        - reviewQueueCount
+        - openCommentsCount
+        - recentActivity
+    TaskCounts:
+      type: object
+      properties:
+        todo:
+          type: integer
+        inProgress:
+          type: integer
+        toReview:
+          type: integer
+        done:
+          type: integer
+        blocked:
+          type: integer
+      required: [todo, inProgress, toReview, done, blocked]
+    Activity:
+      type: object
+      properties:
+        id:
+          type: string
+        summary:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+      required: [id, summary, createdAt]
+    DocumentSummary:
+      type: object
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        path:
+          type: string
+        kind:
+          type: string
+          enum: [steering, requirements, design]
+        featureId:
+          type: ["string", "null"]
+        status:
+          type: string
+          enum: [draft, in-review, changes-requested, approved]
+        updatedAt:
+          type: string
+          format: date-time
+        revision:
+          type: integer
+      required: [id, title, path, kind, featureId, status, updatedAt, revision]
+    Document:
+      allOf:
+        - $ref: "#/components/schemas/DocumentSummary"
+        - type: object
+          properties:
+            content:
+              type: string
+            approvedBy:
+              type: ["string", "null"]
+          required: [content, approvedBy]
+    DocumentUpdate:
+      type: object
+      properties:
+        content:
+          type: string
+        expectedRevision:
+          type: integer
+      required: [content, expectedRevision]
+    Feature:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+        status:
+          type: string
+          enum: [draft, in-progress, completed]
+        taskCount:
+          type: integer
+        completedTaskCount:
+          type: integer
+        createdAt:
+          type: string
+          format: date-time
+      required: [id, name, description, status, taskCount, completedTaskCount, createdAt]
+    FeatureInput:
+      type: object
+      properties:
+        id:
+          type: string
+          minLength: 2
+          maxLength: 64
+          pattern: "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+        name:
+          type: string
+          minLength: 2
+          maxLength: 120
+        description:
+          type: string
+          maxLength: 2000
+      required: [id, name, description]
+    Task:
+      type: object
+      properties:
+        id:
+          type: string
+        featureId:
+          type: string
+        groupId:
+          type: string
+        parentId:
+          type: ["string", "null"]
+        title:
+          type: string
+        description:
+          type: string
+        status:
+          type: string
+          enum: [todo, in-progress, to-review, done]
+        availability:
+          type: string
+          enum: [available, blocked, claimed, in-review, done]
+        priority:
+          type: string
+          enum: [low, medium, high]
+        dependsOn:
+          type: array
+          items:
+            type: string
+        blockers:
+          type: array
+          items:
+            type: string
+        files:
+          type: array
+          items:
+            type: string
+        requirementsRef:
+          type: array
+          items:
+            type: string
+        worktree:
+          type: ["string", "null"]
+        submissionNote:
+          type: ["string", "null"]
+        revision:
+          type: integer
+      required:
+        - id
+        - featureId
+        - groupId
+        - parentId
+        - title
+        - description
         - status
-
+        - availability
+        - priority
+        - dependsOn
+        - blockers
+        - files
+        - requirementsRef
+        - worktree
+        - submissionNote
+        - revision
+    TaskInput:
+      type: object
+      properties:
+        id:
+          type: string
+          minLength: 1
+          maxLength: 32
+        groupId:
+          type: string
+          minLength: 1
+          maxLength: 64
+        parentId:
+          type: ["string", "null"]
+        title:
+          type: string
+          minLength: 2
+          maxLength: 180
+        description:
+          type: string
+          maxLength: 4000
+        priority:
+          type: string
+          enum: [low, medium, high]
+        dependsOn:
+          type: array
+          items:
+            type: string
+        files:
+          type: array
+          items:
+            type: string
+        requirementsRef:
+          type: array
+          items:
+            type: string
+      required: [id, groupId, parentId, title, description, priority, dependsOn, files, requirementsRef]
+    TaskClaimInput:
+      type: object
+      properties:
+        worktree:
+          type: string
+          minLength: 1
+          maxLength: 200
+        actor:
+          type: string
+          minLength: 1
+          maxLength: 120
+      required: [worktree, actor]
+    TaskSubmitInput:
+      type: object
+      properties:
+        note:
+          type: string
+          minLength: 1
+          maxLength: 2000
+      required: [note]
+    TaskReviewInput:
+      type: object
+      properties:
+        decision:
+          type: string
+          enum: [approve, reject]
+        note:
+          type: string
+          maxLength: 2000
+      required: [decision]
+    Comment:
+      type: object
+      properties:
+        id:
+          type: string
+        documentId:
+          type: string
+        selectedText:
+          type: string
+        startLine:
+          type: integer
+        endLine:
+          type: integer
+        instruction:
+          type: string
+        status:
+          type: string
+          enum: [open, addressed, resolved, orphaned]
+        resolutionNote:
+          type: ["string", "null"]
+        createdAt:
+          type: string
+          format: date-time
+      required: [id, documentId, selectedText, startLine, endLine, instruction, status, resolutionNote, createdAt]
+    CommentInput:
+      type: object
+      properties:
+        documentId:
+          type: string
+        selectedText:
+          type: string
+          minLength: 1
+        startLine:
+          type: integer
+          minimum: 1
+        endLine:
+          type: integer
+          minimum: 1
+        instruction:
+          type: string
+          minLength: 1
+          maxLength: 2000
+      required: [documentId, selectedText, startLine, endLine, instruction]

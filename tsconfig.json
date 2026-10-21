@@ -11,6 +11,9 @@
     },
     {
       "path": "./lib/api-zod"
+    },
+    {
+      "path": "./lib/spec-flow-core"
     }
   ]
 }
