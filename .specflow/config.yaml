@@ -1,0 +1,14 @@
+version: "1.0"
+project:
+  name: My Project
+  primary_branch: main
+gates:
+  enforce_steering_approval: true
+  require_human_task_completion: true
+checkpoints:
+  enabled: true
+  max_snapshots_per_file: 20
+server:
+  host: 127.0.0.1
+  port: 4200
+  open_browser: true

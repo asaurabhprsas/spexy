@@ -1,21 +1,15 @@
 {
-  "name": "workspace",
-  "version": "0.0.0",
+  "name": "spec-flow",
+  "version": "0.1.0",
   "license": "MIT",
   "scripts": {
-    "preinstall": "sh -c 'rm -f package-lock.json yarn.lock; case \"$npm_config_user_agent\" in pnpm/*) ;; *) echo \"Use pnpm instead\" >&2; exit 1 ;; esac'",
-    "build": "pnpm run typecheck && turbo run build",
-    "typecheck:libs": "tsc --build",
-    "typecheck": "pnpm run typecheck:libs && turbo run typecheck --filter=\"./artifacts/**\" --filter=\"./scripts\"",
-    "test": "turbo run test",
+    "build": "turbo run build",
+    "test": "bun test packages/core",
     "lint": "oxlint .",
     "format": "oxfmt .",
     "format:check": "oxfmt --check ."
   },
   "private": true,
-  "dependencies": {
-    "@replit/connectors-sdk": "^0.4.3"
-  },
   "devDependencies": {
     "oxfmt": "^0.74.0",
     "oxlint": "^1.89.0",

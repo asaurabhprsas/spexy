@@ -1,0 +1,952 @@
+import fs from "node:fs";
+import path from "node:path";
+import {
+  addComment,
+  createSpec,
+  findProjectRoot,
+  flattenTasks,
+  getBlockingDependencies,
+  getSpecflowDir,
+  getSteeringStatus,
+  getTaskAvailability,
+  initSpecFlowWorkspace,
+  listComments,
+  listSnapshots,
+  listSpecs,
+  parseDocumentFrontmatter,
+  readConfig,
+  readPendingCommentsDoc,
+  readTasksYaml,
+  resolveComment,
+  restoreSnapshot,
+  TaskAction,
+  TaskItem,
+  TaskStatus,
+  transitionTask,
+  updateSteeringDocument,
+  updateTaskInDoc,
+  validateTaskGraph,
+  WorkflowActor,
+  WorkflowRuleError,
+  writeTasksYaml,
+} from "./core";
+import { startWatcher, withFileWriteLock, WatcherHandle } from "./watcher";
+
+export interface ServerOptions {
+  port?: number;
+  host?: string;
+  openBrowser?: boolean;
+  projectRoot?: string;
+}
+
+export interface ServerInstance {
+  server: any;
+  port: number;
+  host: string;
+  url: string;
+  broadcast: (event: { type: string; payload: any }) => void;
+  close: () => Promise<void>;
+}
+
+// MIME types map
+const MIME_TYPES: Record<string, string> = {
+  ".html": "text/html; charset=utf-8",
+  ".js": "application/javascript; charset=utf-8",
+  ".mjs": "application/javascript; charset=utf-8",
+  ".css": "text/css; charset=utf-8",
+  ".svg": "image/svg+xml",
+  ".json": "application/json; charset=utf-8",
+  ".png": "image/png",
+  ".jpg": "image/jpeg",
+  ".jpeg": "image/jpeg",
+  ".gif": "image/gif",
+  ".webp": "image/webp",
+  ".ico": "image/x-icon",
+  ".woff": "font/woff",
+  ".woff2": "font/woff2",
+  ".ttf": "font/ttf",
+  ".txt": "text/plain; charset=utf-8",
+};
+
+function json(data: any, status: number = 200, headers: Record<string, string> = {}): Response {
+  return new Response(JSON.stringify(data), {
+    status,
+    headers: {
+      "Content-Type": "application/json; charset=utf-8",
+      "Access-Control-Allow-Origin": "*",
+      "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
+      "Access-Control-Allow-Headers": "Content-Type, Authorization",
+      ...headers,
+    },
+  });
+}
+
+function errorJson(err: unknown, defaultStatus: number = 500): Response {
+  if (err instanceof WorkflowRuleError) {
+    return json({ code: err.code, error: err.message }, 400);
+  }
+  const message = err instanceof Error ? err.message : String(err);
+  return json({ error: message }, defaultStatus);
+}
+
+async function parseBody(req: Request): Promise<any> {
+  const text = await req.text();
+  if (!text.trim()) return {};
+  try {
+    return JSON.parse(text);
+  } catch {
+    return {};
+  }
+}
+
+export function createServer(options: ServerOptions = {}): {
+  fetch: (req: Request, server?: any) => Promise<Response | undefined> | Response | undefined;
+  websocket: any;
+  broadcast: (event: { type: string; payload: any }) => void;
+  clients: Set<any>;
+} {
+  const projectRoot = options.projectRoot || findProjectRoot();
+  initSpecFlowWorkspace(projectRoot);
+
+  const staticDir = path.resolve(import.meta.dirname, "../../static");
+  const clients = new Set<any>();
+
+  const broadcast = (event: { type: string; payload: any }) => {
+    const raw = JSON.stringify(event);
+    for (const ws of clients) {
+      try {
+        ws.send(raw);
+      } catch {
+        clients.delete(ws);
+      }
+    }
+  };
+
+  const handleWsMessage = async (ws: any, rawData: any) => {
+    try {
+      const text = typeof rawData === "string" ? rawData : rawData.toString();
+      const message = JSON.parse(text);
+
+      if (message.type === "PING") {
+        ws.send(JSON.stringify({ type: "PONG", timestamp: Date.now() }));
+        return;
+      }
+
+      if (message.type === "TASK_TRANSITION") {
+        const { specId, taskId, action, actor = "human", note, worktree, branch } = message.payload || {};
+        const doc = readTasksYaml(projectRoot, specId);
+        const tasks = flattenTasks(doc);
+        const target = tasks.find((t) => t.id === taskId);
+        if (!target) {
+          ws.send(JSON.stringify({ type: "ERROR", action: "TASK_TRANSITION", error: `Task ${taskId} not found` }));
+          return;
+        }
+
+        const nextStatus = transitionTask(target.status, action as TaskAction, actor as WorkflowActor);
+        const updatedTask: TaskItem = { ...target, status: nextStatus };
+
+        if (action === "claim") {
+          updatedTask.worktree = worktree || target.worktree;
+          updatedTask.branch = branch || target.branch;
+          updatedTask.locked_at = new Date().toISOString();
+        } else if (action === "submit" && note) {
+          updatedTask.notes = { ...target.notes, testing: note };
+        } else if (action === "reject" && note) {
+          updatedTask.notes = { ...target.notes, security: note };
+        }
+
+        const updatedDoc = updateTaskInDoc(doc, updatedTask);
+        const tasksPath = path.join(getSpecflowDir(projectRoot), "specs", specId, "tasks.yaml");
+
+        await withFileWriteLock(tasksPath, () => {
+          writeTasksYaml(projectRoot, specId, updatedDoc);
+        });
+
+        broadcast({
+          type: "TASK_UPDATED",
+          payload: { specId, tasks: flattenTasks(updatedDoc) },
+        });
+
+        ws.send(JSON.stringify({
+          type: "ACK",
+          action: "TASK_TRANSITION",
+          success: true,
+          payload: { specId, task: updatedTask },
+        }));
+        return;
+      }
+
+      if (message.type === "COMMENT_CREATE") {
+        const payload = message.payload || {};
+        const commentsPath = path.join(getSpecflowDir(projectRoot), ".cache", "pending-comments.yaml");
+        let newComment: any;
+
+        await withFileWriteLock(commentsPath, () => {
+          newComment = addComment(projectRoot, {
+            id: payload.id,
+            target_file: payload.target_file,
+            anchor: payload.anchor,
+            instruction: payload.instruction,
+            author: payload.author || "human",
+          });
+        });
+
+        broadcast({
+          type: "COMMENTS_UPDATED",
+          payload: { comments: readPendingCommentsDoc(projectRoot).comments },
+        });
+
+        ws.send(JSON.stringify({
+          type: "ACK",
+          action: "COMMENT_CREATE",
+          success: true,
+          payload: { comment: newComment },
+        }));
+        return;
+      }
+
+      if (message.type === "COMMENT_RESOLVE") {
+        const { commentId, note = "Resolved", purge = true } = message.payload || {};
+        const commentsPath = path.join(getSpecflowDir(projectRoot), ".cache", "pending-comments.yaml");
+        let resolved: any;
+
+        await withFileWriteLock(commentsPath, () => {
+          resolved = resolveComment(projectRoot, commentId, note, { purge });
+        });
+
+        broadcast({
+          type: "COMMENTS_UPDATED",
+          payload: { comments: readPendingCommentsDoc(projectRoot).comments },
+        });
+
+        ws.send(JSON.stringify({
+          type: "ACK",
+          action: "COMMENT_RESOLVE",
+          success: true,
+          payload: { comment: resolved },
+        }));
+        return;
+      }
+    } catch (err: any) {
+      ws.send(JSON.stringify({ type: "ERROR", error: err.message }));
+    }
+  };
+
+  const handleFetch = async (req: Request, server?: any): Promise<Response | undefined> => {
+    const url = new URL(req.url);
+    const pathname = url.pathname;
+    const method = req.method;
+
+    // CORS preflight
+    if (method === "OPTIONS") {
+      return new Response(null, {
+        status: 204,
+        headers: {
+          "Access-Control-Allow-Origin": "*",
+          "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
+          "Access-Control-Allow-Headers": "Content-Type, Authorization",
+        },
+      });
+    }
+
+    // WebSocket upgrade
+    if (pathname === "/ws") {
+      if (server && typeof server.upgrade === "function") {
+        const upgraded = server.upgrade(req, { data: { id: Math.random().toString(36).substring(2) } });
+        if (upgraded) return undefined;
+      }
+      return new Response("WebSocket upgrade required", { status: 426 });
+    }
+
+    // API Routes
+    if (pathname.startsWith("/api/")) {
+      try {
+        // GET /api/status
+        if (pathname === "/api/status" && method === "GET") {
+          const steering = getSteeringStatus(projectRoot);
+          const specs = listSpecs(projectRoot);
+          const config = readConfig(projectRoot);
+          return json({ steering, specs, config });
+        }
+
+        // GET /api/healthz (Dashboard compatibility)
+        if (pathname === "/api/healthz" && method === "GET") {
+          return json({ status: "ok", timestamp: new Date().toISOString() });
+        }
+
+        // GET /api/dashboard (Dashboard compatibility)
+        if (pathname === "/api/dashboard" && method === "GET") {
+          const steering = getSteeringStatus(projectRoot);
+          const specs = listSpecs(projectRoot);
+          const comments = listComments(projectRoot, { pendingOnly: true });
+          const config = readConfig(projectRoot);
+
+          let todo = 0, inProgress = 0, toReview = 0, done = 0, blocked = 0;
+          for (const s of specs) {
+            try {
+              const doc = readTasksYaml(projectRoot, s.id);
+              const allTasks = flattenTasks(doc);
+              const statuses: Record<string, TaskStatus> = {};
+              for (const t of allTasks) statuses[t.id] = t.status;
+              const avail = getTaskAvailability(allTasks, statuses);
+              for (const t of allTasks) {
+                if (t.status === "done") done++;
+                else if (t.status === "in-progress") inProgress++;
+                else if (t.status === "to-review") toReview++;
+                else if (avail.get(t.id) === "blocked") blocked++;
+                else todo++;
+              }
+            } catch {
+              // fallback
+            }
+          }
+
+          return json({
+            projectName: config.project.name || "Spec-Flow Workspace",
+            steeringApproved: steering.approved,
+            steeringTotal: steering.total,
+            steeringApprovedCount: steering.approvedCount,
+            featureCount: specs.length,
+            reviewQueueCount: toReview,
+            openCommentsCount: comments.length,
+            taskCounts: { todo, inProgress, toReview, done, blocked },
+            recentActivity: [
+              {
+                id: "init-act",
+                summary: `Workspace active for ${config.project.name}`,
+                createdAt: new Date().toISOString(),
+              },
+            ],
+          });
+        }
+
+        // GET /api/steering
+        if (pathname === "/api/steering" && method === "GET") {
+          const steering = getSteeringStatus(projectRoot);
+          return json(steering.documents);
+        }
+
+        // GET /api/steering/:id
+        const steeringIdMatch = pathname.match(/^\/api\/steering\/([^/]+)$/);
+        if (steeringIdMatch && method === "GET") {
+          const id = decodeURIComponent(steeringIdMatch[1]);
+          const steering = getSteeringStatus(projectRoot);
+          const doc = steering.documents.find((d) => d.id === id || d.filename === id);
+          if (!doc) {
+            return json({ error: `Steering document "${id}" not found` }, 404);
+          }
+          const { frontmatter, body } = parseDocumentFrontmatter(doc.content);
+          return json({
+            ...doc,
+            frontmatter,
+            body,
+          });
+        }
+
+        // PUT /api/steering/:id
+        if (steeringIdMatch && method === "PUT") {
+          const id = decodeURIComponent(steeringIdMatch[1]);
+          const steering = getSteeringStatus(projectRoot);
+          const doc = steering.documents.find((d) => d.id === id || d.filename === id);
+          if (!doc) {
+            return json({ error: `Steering document "${id}" not found` }, 404);
+          }
+
+          const reqBody = await parseBody(req);
+          const actor = reqBody.actor || "human";
+          const newContentOrBody = reqBody.body ?? reqBody.content ?? doc.content;
+          const newFrontmatter = reqBody.frontmatter;
+
+          const fullPath = path.join(getSpecflowDir(projectRoot), "steering", doc.filename);
+          await withFileWriteLock(fullPath, () => {
+            updateSteeringDocument(projectRoot, doc.filename, newContentOrBody, newFrontmatter, actor);
+          });
+
+          broadcast({
+            type: "DOC_UPDATED",
+            payload: { file: path.relative(projectRoot, fullPath) },
+          });
+
+          const updatedSteering = getSteeringStatus(projectRoot);
+          const updatedDoc = updatedSteering.documents.find((d) => d.id === doc.id);
+          return json({ success: true, document: updatedDoc });
+        }
+
+        // POST /api/steering/:id/approve
+        const steeringApproveMatch = pathname.match(/^\/api\/steering\/([^/]+)\/approve$/);
+        if (steeringApproveMatch && method === "POST") {
+          const id = decodeURIComponent(steeringApproveMatch[1]);
+          const steering = getSteeringStatus(projectRoot);
+          const doc = steering.documents.find((d) => d.id === id || d.filename === id);
+          if (!doc) {
+            return json({ error: `Steering document "${id}" not found` }, 404);
+          }
+
+          const fullPath = path.join(getSpecflowDir(projectRoot), "steering", doc.filename);
+          const { body } = parseDocumentFrontmatter(doc.content);
+
+          await withFileWriteLock(fullPath, () => {
+            updateSteeringDocument(
+              projectRoot,
+              doc.filename,
+              body,
+              { status: "approved", approved_by: "human" },
+              "human",
+            );
+          });
+
+          broadcast({
+            type: "DOC_UPDATED",
+            payload: { file: path.relative(projectRoot, fullPath) },
+          });
+
+          return json({ success: true, id: doc.id, status: "approved", approved_by: "human" });
+        }
+
+        // GET /api/specs & GET /api/features
+        if ((pathname === "/api/specs" || pathname === "/api/features") && method === "GET") {
+          const specs = listSpecs(projectRoot);
+          return json(specs);
+        }
+
+        // POST /api/specs & POST /api/features
+        if ((pathname === "/api/specs" || pathname === "/api/features") && method === "POST") {
+          const reqBody = await parseBody(req);
+          const specId = reqBody.id;
+          if (!specId) {
+            return json({ error: "Missing required 'id'" }, 400);
+          }
+          const title = reqBody.title || reqBody.name || specId.replace(/-/g, " ");
+
+          const specDir = path.join(getSpecflowDir(projectRoot), "specs", specId);
+          await withFileWriteLock(specDir, () => {
+            createSpec(projectRoot, specId, { force: reqBody.force, title });
+          });
+
+          broadcast({
+            type: "DOC_UPDATED",
+            payload: { file: path.relative(projectRoot, path.join(specDir, "tasks.yaml")) },
+          });
+
+          return json({ success: true, id: specId, title }, 201);
+        }
+
+        // GET /api/specs/:id/tasks & GET /api/features/:id/tasks
+        const specTasksMatch = pathname.match(/^\/api\/(?:specs|features)\/([^/]+)\/tasks$/);
+        if (specTasksMatch && method === "GET") {
+          const specId = decodeURIComponent(specTasksMatch[1]);
+          const doc = readTasksYaml(projectRoot, specId);
+          const tasks = flattenTasks(doc);
+          validateTaskGraph(tasks);
+
+          const statuses: Record<string, TaskStatus> = {};
+          for (const t of tasks) statuses[t.id] = t.status;
+
+          const availabilityMap = getTaskAvailability(tasks, statuses);
+          const availability: Record<string, string> = Object.fromEntries(availabilityMap.entries());
+
+          const blockers: Record<string, string[]> = {};
+          for (const t of tasks) {
+            blockers[t.id] = getBlockingDependencies(t.id, tasks, statuses);
+          }
+
+          const enrichedTasks = tasks.map((t) => ({
+            ...t,
+            availability: availabilityMap.get(t.id) ?? t.status,
+            blockers: blockers[t.id] ?? [],
+          }));
+
+          return json({
+            tasks: enrichedTasks,
+            availability,
+            blockers,
+            dependency_graph: doc.dependency_graph,
+            notes: doc.notes,
+          });
+        }
+
+        // POST /api/specs/:id/tasks (Create task in spec)
+        if (specTasksMatch && method === "POST") {
+          const specId = decodeURIComponent(specTasksMatch[1]);
+          const reqBody = await parseBody(req);
+          const doc = readTasksYaml(projectRoot, specId);
+
+          const newTask: TaskItem = {
+            id: reqBody.id || `task-${Date.now()}`,
+            parent_id: reqBody.parentId || reqBody.parent_id || null,
+            title: reqBody.title || "Untitled Task",
+            description: reqBody.description || "",
+            status: "todo",
+            priority: reqBody.priority || "medium",
+            depends_on: reqBody.dependsOn || reqBody.depends_on || [],
+            worktree: null,
+            branch: null,
+            locked_at: null,
+            files: reqBody.files || [],
+            leverage: reqBody.leverage || "",
+            requirements_ref: reqBody.requirementsRef || reqBody.requirements_ref || [],
+            notes: { security: null, testing: null },
+          };
+
+          const updatedDoc = updateTaskInDoc(doc, newTask);
+          const tasksPath = path.join(getSpecflowDir(projectRoot), "specs", specId, "tasks.yaml");
+
+          await withFileWriteLock(tasksPath, () => {
+            writeTasksYaml(projectRoot, specId, updatedDoc);
+          });
+
+          broadcast({
+            type: "TASK_UPDATED",
+            payload: { specId, tasks: flattenTasks(updatedDoc) },
+          });
+
+          return json(newTask, 201);
+        }
+
+        // POST /api/specs/:id/tasks/:taskId/transition
+        const taskTransitionMatch = pathname.match(/^\/api\/(?:specs|features)\/([^/]+)\/tasks\/([^/]+)\/transition$/);
+        if (taskTransitionMatch && method === "POST") {
+          const specId = decodeURIComponent(taskTransitionMatch[1]);
+          const taskId = decodeURIComponent(taskTransitionMatch[2]);
+          const reqBody = await parseBody(req);
+
+          const action = reqBody.action as TaskAction;
+          if (!action) {
+            return json({ error: "Missing required 'action'" }, 400);
+          }
+
+          let actor = reqBody.actor as WorkflowActor;
+          if (!actor) {
+            actor = action === "approve" || action === "reject" ? "human" : "agent";
+          }
+
+          const doc = readTasksYaml(projectRoot, specId);
+          const tasks = flattenTasks(doc);
+          const target = tasks.find((t) => t.id === taskId);
+          if (!target) {
+            return json({ error: `Task "${taskId}" not found in spec "${specId}"` }, 404);
+          }
+
+          const nextStatus = transitionTask(target.status, action, actor);
+          const updatedTask: TaskItem = { ...target, status: nextStatus };
+
+          if (action === "claim") {
+            updatedTask.worktree = reqBody.worktree || target.worktree;
+            updatedTask.branch = reqBody.branch || target.branch;
+            updatedTask.locked_at = new Date().toISOString();
+          } else if (action === "submit") {
+            if (reqBody.note) {
+              updatedTask.notes = { ...target.notes, testing: reqBody.note };
+            }
+          } else if (action === "reject") {
+            if (reqBody.note) {
+              updatedTask.notes = { ...target.notes, security: reqBody.note };
+            }
+          }
+
+          const updatedDoc = updateTaskInDoc(doc, updatedTask);
+          const tasksPath = path.join(getSpecflowDir(projectRoot), "specs", specId, "tasks.yaml");
+
+          await withFileWriteLock(tasksPath, () => {
+            writeTasksYaml(projectRoot, specId, updatedDoc);
+          });
+
+          broadcast({
+            type: "TASK_UPDATED",
+            payload: { specId, tasks: flattenTasks(updatedDoc) },
+          });
+
+          return json({ success: true, task: updatedTask });
+        }
+
+        // Compatibility endpoints for UI: claim, submit, review
+        const taskActionMatch = pathname.match(
+          /^\/api\/(?:specs|features)\/([^/]+)\/tasks\/([^/]+)\/(claim|submit|review)$/,
+        );
+        if (taskActionMatch && method === "POST") {
+          const specId = decodeURIComponent(taskActionMatch[1]);
+          const taskId = decodeURIComponent(taskActionMatch[2]);
+          const subAction = taskActionMatch[3];
+          const reqBody = await parseBody(req);
+
+          let action: TaskAction = "claim";
+          let actor: WorkflowActor = "agent";
+
+          if (subAction === "claim") {
+            action = "claim";
+            actor = "agent";
+          } else if (subAction === "submit") {
+            action = "submit";
+            actor = "agent";
+          } else if (subAction === "review") {
+            action = reqBody.decision === "approve" ? "approve" : "reject";
+            actor = "human";
+          }
+
+          const doc = readTasksYaml(projectRoot, specId);
+          const tasks = flattenTasks(doc);
+          const target = tasks.find((t) => t.id === taskId);
+          if (!target) {
+            return json({ error: `Task "${taskId}" not found` }, 404);
+          }
+
+          const nextStatus = transitionTask(target.status, action, actor);
+          const updatedTask: TaskItem = { ...target, status: nextStatus };
+
+          if (action === "claim") {
+            updatedTask.worktree = reqBody.worktree || target.worktree;
+          } else if (action === "submit" && reqBody.note) {
+            updatedTask.notes = { ...target.notes, testing: reqBody.note };
+          } else if (action === "reject" && reqBody.note) {
+            updatedTask.notes = { ...target.notes, security: reqBody.note };
+          }
+
+          const updatedDoc = updateTaskInDoc(doc, updatedTask);
+          const tasksPath = path.join(getSpecflowDir(projectRoot), "specs", specId, "tasks.yaml");
+
+          await withFileWriteLock(tasksPath, () => {
+            writeTasksYaml(projectRoot, specId, updatedDoc);
+          });
+
+          broadcast({
+            type: "TASK_UPDATED",
+            payload: { specId, tasks: flattenTasks(updatedDoc) },
+          });
+
+          return json({ success: true, task: updatedTask });
+        }
+
+        // GET /api/comments
+        if (pathname === "/api/comments" && method === "GET") {
+          const target_file = url.searchParams.get("target_file") || undefined;
+          const pendingOnly = url.searchParams.get("pendingOnly") === "true";
+          const comments = listComments(projectRoot, { target_file, pendingOnly });
+          return json(comments);
+        }
+
+        // POST /api/comments
+        if (pathname === "/api/comments" && method === "POST") {
+          const reqBody = await parseBody(req);
+          const target_file = reqBody.target_file || reqBody.documentId;
+          const instruction = reqBody.instruction;
+          const anchor = reqBody.anchor || {
+            start_line: Number(reqBody.startLine) || 1,
+            end_line: Number(reqBody.endLine) || 1,
+            anchor_text: reqBody.selectedText || "",
+            context_before: "",
+          };
+
+          if (!target_file || !instruction) {
+            return json({ error: "Missing required fields (target_file / instruction)" }, 400);
+          }
+
+          const commentsPath = path.join(getSpecflowDir(projectRoot), ".cache", "pending-comments.yaml");
+          let newComment: any;
+
+          await withFileWriteLock(commentsPath, () => {
+            newComment = addComment(projectRoot, {
+              id: reqBody.id,
+              target_file,
+              anchor,
+              instruction,
+              author: reqBody.author || "human",
+            });
+          });
+
+          broadcast({
+            type: "COMMENTS_UPDATED",
+            payload: { comments: readPendingCommentsDoc(projectRoot).comments },
+          });
+
+          return json(newComment, 201);
+        }
+
+        // POST /api/comments/:id/resolve
+        const commentResolveMatch = pathname.match(/^\/api\/comments\/([^/]+)\/resolve$/);
+        if (commentResolveMatch && method === "POST") {
+          const commentId = decodeURIComponent(commentResolveMatch[1]);
+          const reqBody = await parseBody(req).catch(() => ({}));
+          const note = reqBody.note || "Resolved";
+          const purge = reqBody.purge !== false;
+
+          const commentsPath = path.join(getSpecflowDir(projectRoot), ".cache", "pending-comments.yaml");
+          let resolved: any;
+
+          await withFileWriteLock(commentsPath, () => {
+            resolved = resolveComment(projectRoot, commentId, note, { purge });
+          });
+
+          broadcast({
+            type: "COMMENTS_UPDATED",
+            payload: { comments: readPendingCommentsDoc(projectRoot).comments },
+          });
+
+          return json({ success: true, comment: resolved });
+        }
+
+        // GET /api/checkpoints
+        if (pathname === "/api/checkpoints" && method === "GET") {
+          const file = url.searchParams.get("file") || undefined;
+          const snapshots = listSnapshots(projectRoot, file);
+          return json(snapshots);
+        }
+
+        // POST /api/checkpoints/:id/restore
+        const checkpointRestoreMatch = pathname.match(/^\/api\/checkpoints\/([^/]+)\/restore$/);
+        if (checkpointRestoreMatch && method === "POST") {
+          const snapshotId = decodeURIComponent(checkpointRestoreMatch[1]);
+          const result = restoreSnapshot(projectRoot, snapshotId);
+
+          broadcast({
+            type: "DOC_UPDATED",
+            payload: { file: result.restoredFile },
+          });
+
+          return json({ success: true, restoredFile: result.restoredFile, entry: result.entry });
+        }
+
+        // GET /api/documents (Dashboard document list compatibility)
+        if (pathname === "/api/documents" && method === "GET") {
+          const steering = getSteeringStatus(projectRoot);
+          const docs: any[] = [];
+
+          for (const d of steering.documents) {
+            docs.push({
+              id: d.id,
+              kind: "steering",
+              title: d.title,
+              path: d.relativePath,
+              status: d.status,
+              approvedBy: d.approved_by,
+              revision: 1,
+              updatedAt: d.updated_at,
+            });
+          }
+
+          const specs = listSpecs(projectRoot);
+          for (const s of specs) {
+            const specDir = path.join(getSpecflowDir(projectRoot), "specs", s.id);
+            if (s.hasRequirements) {
+              docs.push({
+                id: `${s.id}:requirements`,
+                kind: "requirements",
+                title: `${s.name} - Requirements`,
+                path: path.relative(projectRoot, path.join(specDir, "requirements.md")),
+                status: s.status,
+                approvedBy: null,
+                revision: 1,
+                updatedAt: new Date().toISOString(),
+              });
+            }
+            if (s.hasDesign) {
+              docs.push({
+                id: `${s.id}:design`,
+                kind: "design",
+                title: `${s.name} - Design`,
+                path: path.relative(projectRoot, path.join(specDir, "design.md")),
+                status: s.status,
+                approvedBy: null,
+                revision: 1,
+                updatedAt: new Date().toISOString(),
+              });
+            }
+          }
+
+          return json(docs);
+        }
+
+        // GET /api/documents/:id (Dashboard document get compatibility)
+        const documentIdMatch = pathname.match(/^\/api\/documents\/([^/]+)$/);
+        if (documentIdMatch && method === "GET") {
+          const docId = decodeURIComponent(documentIdMatch[1]);
+
+          // Steering doc?
+          const steering = getSteeringStatus(projectRoot);
+          const stDoc = steering.documents.find((d) => d.id === docId);
+          if (stDoc) {
+            return json({
+              id: stDoc.id,
+              kind: "steering",
+              title: stDoc.title,
+              path: stDoc.relativePath,
+              status: stDoc.status,
+              approvedBy: stDoc.approved_by,
+              revision: 1,
+              content: stDoc.content,
+              updatedAt: stDoc.updated_at,
+            });
+          }
+
+          // Spec doc?
+          if (docId.includes(":")) {
+            const [specId, kind] = docId.split(":");
+            const filename = kind === "requirements" ? "requirements.md" : "design.md";
+            const fullPath = path.join(getSpecflowDir(projectRoot), "specs", specId, filename);
+            if (fs.existsSync(fullPath)) {
+              const raw = fs.readFileSync(fullPath, "utf-8");
+              const { frontmatter } = parseDocumentFrontmatter(raw);
+              return json({
+                id: docId,
+                kind,
+                title: `${specId} ${kind}`,
+                path: path.relative(projectRoot, fullPath),
+                status: frontmatter.status,
+                approvedBy: frontmatter.approved_by,
+                revision: 1,
+                content: raw,
+                updatedAt: frontmatter.updated_at,
+              });
+            }
+          }
+
+          return json({ error: `Document "${docId}" not found` }, 404);
+        }
+
+        // Unknown API route
+        return json({ error: `Endpoint not found: ${method} ${pathname}` }, 404);
+      } catch (err: any) {
+        return errorJson(err);
+      }
+    }
+
+    // Static Asset Serving & SPA Fallback
+    if (method === "GET" || method === "HEAD") {
+      let relativeFilePath = pathname.slice(1);
+      if (!relativeFilePath) {
+        relativeFilePath = "index.html";
+      }
+
+      const filePath = path.resolve(staticDir, relativeFilePath);
+
+      // Security check: ensure within staticDir
+      if (filePath.startsWith(staticDir) && fs.existsSync(filePath) && fs.statSync(filePath).isFile()) {
+        const ext = path.extname(filePath).toLowerCase();
+        const contentType = MIME_TYPES[ext] || "application/octet-stream";
+
+        if (typeof Bun !== "undefined") {
+          return new Response(Bun.file(filePath), {
+            headers: { "Content-Type": contentType },
+          });
+        }
+
+        const data = fs.readFileSync(filePath);
+        return new Response(data, {
+          headers: { "Content-Type": contentType },
+        });
+      }
+
+      // SPA fallback: return index.html for non-API routes
+      const indexPath = path.join(staticDir, "index.html");
+      if (fs.existsSync(indexPath)) {
+        if (typeof Bun !== "undefined") {
+          return new Response(Bun.file(indexPath), {
+            headers: { "Content-Type": "text/html; charset=utf-8" },
+          });
+        }
+        const indexHtml = fs.readFileSync(indexPath);
+        return new Response(indexHtml, {
+          headers: { "Content-Type": "text/html; charset=utf-8" },
+        });
+      }
+
+      // Fallback HTML if static/index.html is missing
+      return new Response(
+        `<!DOCTYPE html><html><head><title>Spec-Flow</title></head><body><h1>Spec-Flow Server Running</h1><p>API is active at <code>/api/status</code></p></body></html>`,
+        { headers: { "Content-Type": "text/html; charset=utf-8" } },
+      );
+    }
+
+    return new Response("Method not allowed", { status: 405 });
+  };
+
+  const websocket = {
+    open(ws: any) {
+      clients.add(ws);
+    },
+    message(ws: any, message: any) {
+      handleWsMessage(ws, message);
+    },
+    close(ws: any) {
+      clients.delete(ws);
+    },
+  };
+
+  return {
+    fetch: handleFetch,
+    websocket,
+    broadcast,
+    clients,
+  };
+}
+
+export function startServer(
+  projectRootOrOptions?: string | ServerOptions,
+  maybeOptions?: ServerOptions,
+): ServerInstance {
+  let projectRoot: string;
+  let options: ServerOptions;
+
+  if (typeof projectRootOrOptions === "string") {
+    projectRoot = projectRootOrOptions;
+    options = maybeOptions || {};
+  } else {
+    options = projectRootOrOptions || {};
+    projectRoot = options.projectRoot || findProjectRoot();
+  }
+
+  const config = readConfig(projectRoot);
+
+  const port = options.port ?? config.server?.port ?? 4200;
+  const host = options.host ?? config.server?.host ?? "127.0.0.1";
+
+  const { fetch, websocket, broadcast, clients } = createServer({
+    ...options,
+    projectRoot,
+    port,
+    host,
+  });
+
+  // Start chokidar file watcher
+  const watcherHandle: WatcherHandle = startWatcher(projectRoot, broadcast);
+
+  let bunServer: any = null;
+
+  if (typeof Bun !== "undefined") {
+    bunServer = Bun.serve({
+      port,
+      hostname: host,
+      fetch,
+      websocket,
+    });
+  } else {
+    throw new Error("Spec-Flow server requires Bun runtime.");
+  }
+
+  const url = `http://${host}:${port}`;
+  console.log(`[Spec-Flow] Server listening at ${url}`);
+
+  return {
+    server: bunServer,
+    port,
+    host,
+    url,
+    broadcast,
+    close: async () => {
+      await watcherHandle.close();
+      for (const client of clients) {
+        try {
+          client.close();
+        } catch {
+          // ignore
+        }
+      }
+      clients.clear();
+      if (bunServer && typeof bunServer.stop === "function") {
+        bunServer.stop(true);
+      }
+    },
+  };
+}
+
+export { withFileWriteLock, isFileWriteLocked, startWatcher } from "./watcher";
+

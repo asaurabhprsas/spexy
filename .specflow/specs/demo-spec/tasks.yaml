@@ -1,0 +1,35 @@
+version: "1.0"
+feature: demo-spec
+status: in-progress
+dependency_graph:
+  parallel_tracks:
+    - track: Track 1
+      sequence:
+        - "1"
+  cross_dependencies: []
+notes:
+  security:
+    - Validate inputs before processing.
+  testing:
+    - Verify all acceptance criteria with unit tests.
+groups:
+  - id: phase-1
+    name: "Phase 1: Foundation"
+    tasks:
+      - id: "1"
+        parent_id: null
+        title: Initialize Demo Feature
+        description: Scaffold foundation and setup for Demo Feature.
+        status: done
+        priority: high
+        depends_on: []
+        worktree: specflow
+        branch: local-dev
+        locked_at: null
+        files: []
+        leverage: ""
+        requirements_ref:
+          - REQ-1
+        notes:
+          security: null
+          testing: null
