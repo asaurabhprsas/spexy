@@ -112,56 +112,54 @@ export function SteeringPage() {
           </div>
         </div>
       ) : (
-        <div className={isInspectorFullWidth ? 'block w-full' : 'grid gap-5 lg:grid-cols-[290px_minmax(0,1fr)]'}>
+        <div className="grid gap-5 lg:grid-cols-[290px_minmax(0,1fr)]">
           {/* Steering Documents Navigation Panel */}
-          {!isInspectorFullWidth && (
-            <div className="rounded-xl border border-border/80 bg-card/90 shadow-[0_2px_14px_hsl(32_22%_34%/.035)] h-fit overflow-hidden">
-              <div className="border-b border-border/70 p-4 bg-muted/20">
-                <div className="flex items-center justify-between">
-                  <span className="font-mono text-[9px] uppercase tracking-[.17em] text-muted-foreground font-semibold">
-                    Constitutional Corpus
-                  </span>
-                  <Badge variant="secondary" className="font-mono text-[10px] h-5">
-                    {steeringDocs.length} {steeringDocs.length === 1 ? 'doc' : 'docs'}
-                  </Badge>
-                </div>
-              </div>
-
-              <div className="divide-y divide-border/60 max-h-[calc(100vh-280px)] overflow-y-auto">
-                {steeringDocs.map((doc: DocumentSummary) => (
-                  <button
-                    key={doc.id}
-                    onClick={() => {
-                      if (currentId === doc.id) return;
-                      confirmDiscard(() => setSelectedId(doc.id));
-                    }}
-                    className={cx(
-                      'block w-full p-4 text-left transition hover:bg-secondary/40 cursor-pointer',
-                      currentId === doc.id && 'bg-accent/40 border-l-2 border-primary font-medium'
-                    )}
-                    data-testid={`select-steering-${doc.id}`}
-                  >
-                    <div className="mb-1 flex items-center justify-between gap-2">
-                      <span className="truncate text-xs font-semibold text-foreground">{doc.title}</span>
-                      <Badge
-                        variant="outline"
-                        className="font-mono text-[9px] uppercase tracking-wider text-muted-foreground"
-                      >
-                        {doc.status}
-                      </Badge>
-                    </div>
-                    <div className="truncate font-mono text-[9px] text-muted-foreground">{doc.path}</div>
-                    <div className="mt-2.5 flex items-center justify-between">
-                      <span className="font-mono text-[9px] uppercase tracking-wider text-primary font-semibold">
-                        steering
-                      </span>
-                      <span className="font-mono text-[9px] text-muted-foreground">r{doc.revision}</span>
-                    </div>
-                  </button>
-                ))}
+          <div className="rounded-xl border border-border/80 bg-card/90 shadow-[0_2px_14px_hsl(32_22%_34%/.035)] h-fit overflow-hidden">
+            <div className="border-b border-border/70 p-4 bg-muted/20">
+              <div className="flex items-center justify-between">
+                <span className="font-mono text-[9px] uppercase tracking-[.17em] text-muted-foreground font-semibold">
+                  Constitutional Corpus
+                </span>
+                <Badge variant="secondary" className="font-mono text-[10px] h-5">
+                  {steeringDocs.length} {steeringDocs.length === 1 ? 'doc' : 'docs'}
+                </Badge>
               </div>
             </div>
-          )}
+
+            <div className="divide-y divide-border/60 max-h-[calc(100vh-280px)] overflow-y-auto">
+              {steeringDocs.map((doc: DocumentSummary) => (
+                <button
+                  key={doc.id}
+                  onClick={() => {
+                    if (currentId === doc.id) return;
+                    confirmDiscard(() => setSelectedId(doc.id));
+                  }}
+                  className={cx(
+                    'block w-full p-4 text-left transition hover:bg-secondary/40 cursor-pointer',
+                    currentId === doc.id && 'bg-accent/40 border-l-2 border-primary font-medium'
+                  )}
+                  data-testid={`select-steering-${doc.id}`}
+                >
+                  <div className="mb-1 flex items-center justify-between gap-2">
+                    <span className="truncate text-xs font-semibold text-foreground">{doc.title}</span>
+                    <Badge
+                      variant="outline"
+                      className="font-mono text-[9px] uppercase tracking-wider text-muted-foreground"
+                    >
+                      {doc.status}
+                    </Badge>
+                  </div>
+                  <div className="truncate font-mono text-[9px] text-muted-foreground">{doc.path}</div>
+                  <div className="mt-2.5 flex items-center justify-between">
+                    <span className="font-mono text-[9px] uppercase tracking-wider text-primary font-semibold">
+                      steering
+                    </span>
+                    <span className="font-mono text-[9px] text-muted-foreground">r{doc.revision}</span>
+                  </div>
+                </button>
+              ))}
+            </div>
+          </div>
 
           {/* Document Inspector Body */}
           {currentId ? (

@@ -1,0 +1,3 @@
+- use superpowers for planning & execution.
+- sub-agents parallel execution, test driven development
+- only write important top level tests and dont add un-necessary tests for micro things.

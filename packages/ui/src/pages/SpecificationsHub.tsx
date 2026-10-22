@@ -425,19 +425,18 @@ export function SpecificationsHub() {
           </div>
         </div>
       ) : (
-        <div className={isInspectorFullWidth ? 'block w-full' : 'grid gap-6 lg:grid-cols-[320px_minmax(0,1fr)]'}>
+        <div className="grid gap-6 lg:grid-cols-[320px_minmax(0,1fr)]">
           {/* Specifications Sidebar List */}
-          {!isInspectorFullWidth && (
-            <div className="space-y-3">
-              <div className="relative">
-                <Search size={14} className="absolute left-3 top-2.5 text-muted-foreground" />
-                <Input
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder="Search specifications..."
-                  className="pl-9 h-9 text-xs"
-                />
-              </div>
+          <div className="space-y-3">
+            <div className="relative">
+              <Search size={14} className="absolute left-3 top-2.5 text-muted-foreground" />
+              <Input
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Search specifications..."
+                className="pl-9 h-9 text-xs"
+              />
+            </div>
 
               <div className="rounded-xl border border-border/80 bg-card/90 overflow-hidden shadow-xs divide-y divide-border/60 max-h-[calc(100vh-250px)] overflow-y-auto">
                 {filteredFeatures.map((f: Feature) => {
@@ -496,7 +495,6 @@ export function SpecificationsHub() {
                 })}
               </div>
             </div>
-          )}
 
           {/* Specification Detail & Documents Tabs */}
           {selectedSpec ? (
