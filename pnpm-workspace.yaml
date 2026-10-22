@@ -4,7 +4,7 @@ packages:
   - "lib/*"
 
 allowBuilds:
-  esbuild: set this to true or false
+  esbuild: true
 
 catalog:
   '@replit/vite-plugin-cartographer': ^0.5.21
