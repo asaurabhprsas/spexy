@@ -10,37 +10,28 @@ import {
 } from '@dnd-kit/core';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Textarea } from '@/components/ui/textarea';
-import { Input } from '@/components/ui/input';
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from '@/components/ui/alert-dialog';
 import {
   CircleDot,
   GripVertical,
   GitBranch,
+  FileCode,
   FileText,
   Check,
   CheckCheck,
   AlertCircle,
   ShieldCheck,
   RotateCcw,
+  User,
+  Sparkles,
 } from 'lucide-react';
-import { TaskDetailModal } from '@/components/task/TaskDetailModal';
+import { TaskDetailSheet } from '@/components/task/TaskDetailSheet';
 
 interface KanbanBoardProps {
   tasks: Task[];
-  onClaim: (task: Task, worktree: string, actor: string) => void;
-  onSubmitReview: (task: Task, note: string) => void;
-  onApproveDone: (task: Task, note: string) => void;
-  onRequestChanges: (task: Task, note: string) => void;
+  onClaim: (task: Task, worktree?: string, actor?: string) => void;
+  onSubmitReview: (task: Task, note?: string) => void;
+  onApproveDone: (task: Task, note?: string) => void;
+  onRequestChanges: (task: Task, note?: string) => void;
 }
 
 export function KanbanBoard({
@@ -53,25 +44,8 @@ export function KanbanBoard({
   // Dragging active item state for smooth DragOverlay
   const [activeTaskId, setActiveTaskId] = useState<string | null>(null);
 
-  // Selected task state for TaskDetailModal
+  // Selected task state for TaskDetailSheet (sidebar)
   const [detailTask, setDetailTask] = useState<Task | null>(null);
-
-  // Verification dialog state for dragging to done
-  const [pendingDoneTask, setPendingDoneTask] = useState<Task | null>(null);
-  const [verificationNote, setVerificationNote] = useState('');
-
-  // Claim dialog state
-  const [pendingClaimTask, setPendingClaimTask] = useState<Task | null>(null);
-  const [claimWorktree, setClaimWorktree] = useState('');
-  const [claimActor, setClaimActor] = useState('');
-
-  // Submit dialog state
-  const [pendingSubmitTask, setPendingSubmitTask] = useState<Task | null>(null);
-  const [submitNote, setSubmitNote] = useState('');
-
-  // Reject dialog state
-  const [pendingRejectTask, setPendingRejectTask] = useState<Task | null>(null);
-  const [rejectNote, setRejectNote] = useState('');
 
   const handleDragStart = (event: DragStartEvent) => {
     setActiveTaskId(String(event.active.id));
@@ -90,65 +64,25 @@ export function KanbanBoard({
 
     if (!task || destinationLane === task.status) return;
 
-    // Transition logic:
-    // 1. Moving to done requires human verification!
+    // Instant transitions without ANY intrusive window.prompt!
     if (destinationLane === 'done') {
-      setPendingDoneTask(task);
-      setVerificationNote('');
+      onApproveDone(task, 'Verified and approved by reviewer');
       return;
     }
 
-    // 2. Moving from todo to in-progress -> claim
-    if (task.status === 'todo' && destinationLane === 'in-progress' && task.availability === 'available') {
-      setPendingClaimTask(task);
-      setClaimWorktree(task.worktree || `worktree/${task.id}`);
-      setClaimActor('AI Agent');
+    if (task.status === 'todo' && destinationLane === 'in-progress') {
+      onClaim(task, task.worktree || '', 'human');
       return;
     }
 
-    // 3. Moving from in-progress to to-review -> submit
     if (task.status === 'in-progress' && destinationLane === 'to-review') {
-      setPendingSubmitTask(task);
-      setSubmitNote('');
+      onSubmitReview(task, 'Submitted for review');
       return;
     }
 
-    // 4. Moving from to-review back to in-progress -> request changes
-    if (task.status === 'to-review' && destinationLane === 'in-progress') {
-      setPendingRejectTask(task);
-      setRejectNote('');
+    if (task.status === 'to-review' && (destinationLane === 'in-progress' || destinationLane === 'todo')) {
+      onRequestChanges(task, 'Changes requested');
       return;
-    }
-  };
-
-  const confirmDone = () => {
-    if (pendingDoneTask) {
-      onApproveDone(pendingDoneTask, verificationNote.trim() || 'Verified by human reviewer.');
-      setPendingDoneTask(null);
-      setVerificationNote('');
-    }
-  };
-
-  const confirmClaim = () => {
-    if (pendingClaimTask && claimWorktree && claimActor) {
-      onClaim(pendingClaimTask, claimWorktree, claimActor);
-      setPendingClaimTask(null);
-    }
-  };
-
-  const confirmSubmit = () => {
-    if (pendingSubmitTask && submitNote.trim()) {
-      onSubmitReview(pendingSubmitTask, submitNote.trim());
-      setPendingSubmitTask(null);
-      setSubmitNote('');
-    }
-  };
-
-  const confirmReject = () => {
-    if (pendingRejectTask && rejectNote.trim()) {
-      onRequestChanges(pendingRejectTask, rejectNote.trim());
-      setPendingRejectTask(null);
-      setRejectNote('');
     }
   };
 
@@ -159,7 +93,9 @@ export function KanbanBoard({
     { id: 'done', label: 'Done' },
   ];
 
-  const blockedTasks = tasks.filter((t) => t.availability === 'blocked' || (t.blockers && t.blockers.length > 0));
+  const blockedTasks = tasks.filter(
+    (t) => t.availability === 'blocked' || (t.blockers && t.blockers.length > 0)
+  );
   const activeTask = activeTaskId ? tasks.find((t) => t.id === activeTaskId) : null;
 
   return (
@@ -181,57 +117,43 @@ export function KanbanBoard({
                 label={lane.label}
                 tasks={laneTasks}
                 onSelectTask={(t) => setDetailTask(t)}
-                onQuickClaim={(t) => {
-                  setPendingClaimTask(t);
-                  setClaimWorktree(t.worktree || `worktree/${t.id}`);
-                  setClaimActor('AI Agent');
-                }}
-                onQuickSubmit={(t) => {
-                  setPendingSubmitTask(t);
-                  setSubmitNote('');
-                }}
-                onQuickApprove={(t) => {
-                  setPendingDoneTask(t);
-                  setVerificationNote('');
-                }}
-                onQuickReject={(t) => {
-                  setPendingRejectTask(t);
-                  setRejectNote('');
-                }}
+                onQuickClaim={(t) => onClaim(t, t.worktree || '', 'human')}
+                onQuickSubmit={(t) => onSubmitReview(t, 'Submitted for review')}
+                onQuickApprove={(t) => onApproveDone(t, 'Verified and approved')}
+                onQuickReject={(t) => onRequestChanges(t, 'Changes requested')}
               />
             );
           })}
         </div>
 
         {/* Floating Portal DragOverlay with smooth drop animation */}
-        <DragOverlay dropAnimation={{ duration: 200, easing: 'cubic-bezier(0.18, 0.67, 0.6, 1.22)' }}>
+        <DragOverlay dropAnimation={{ duration: 180, easing: 'cubic-bezier(0.18, 0.67, 0.6, 1.22)' }}>
           {activeTask ? <KanbanCardOverlay task={activeTask} /> : null}
         </DragOverlay>
       </DndContext>
 
-      {/* Task Detail Modal */}
-      <TaskDetailModal
+      {/* Task Detail Sheet on the Right */}
+      <TaskDetailSheet
         task={detailTask}
         open={detailTask !== null}
         onOpenChange={(open) => !open && setDetailTask(null)}
         allTasks={tasks}
         onSelectTask={(t) => setDetailTask(t)}
-        onClaim={(t) => {
-          setPendingClaimTask(t);
-          setClaimWorktree(t.worktree || `worktree/${t.id}`);
-          setClaimActor('AI Agent');
+        onClaim={(t, wt, act) => {
+          onClaim(t, wt, act);
+          setDetailTask((prev) => (prev ? { ...prev, status: 'in-progress', worktree: wt ?? null, actor: act ?? null } : null));
         }}
-        onSubmitReview={(t) => {
-          setPendingSubmitTask(t);
-          setSubmitNote('');
+        onSubmitReview={(t, note) => {
+          onSubmitReview(t, note);
+          setDetailTask((prev) => (prev ? { ...prev, status: 'to-review', submissionNote: note ?? null } : null));
         }}
-        onApprove={(t) => {
-          setPendingDoneTask(t);
-          setVerificationNote('');
+        onApprove={(t, note) => {
+          onApproveDone(t, note);
+          setDetailTask((prev) => (prev ? { ...prev, status: 'done' } : null));
         }}
-        onRequestChanges={(t) => {
-          setPendingRejectTask(t);
-          setRejectNote('');
+        onRequestChanges={(t, note) => {
+          onRequestChanges(t, note);
+          setDetailTask((prev) => (prev ? { ...prev, status: 'todo' } : null));
         }}
       />
 
@@ -266,152 +188,6 @@ export function KanbanBoard({
           </div>
         </section>
       )}
-
-      {/* 1. Human Verification Alert Dialog for Moving to Done */}
-      <AlertDialog open={pendingDoneTask !== null} onOpenChange={(open) => !open && setPendingDoneTask(null)}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <div className="flex items-center gap-2 text-emerald-600 dark:text-emerald-400">
-              <ShieldCheck size={20} />
-              <AlertDialogTitle>Human Verification Required</AlertDialogTitle>
-            </div>
-            <AlertDialogDescription className="text-xs leading-relaxed text-muted-foreground pt-1">
-              Marking <strong className="text-foreground">{pendingDoneTask?.id}</strong> as{' '}
-              <strong className="text-emerald-600 dark:text-emerald-400">DONE</strong> enforces sign-off. Please confirm that
-              automated test suites passed and code changes meet the specification.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-
-          <div className="py-2 space-y-2">
-            <label className="text-[11px] font-mono uppercase text-muted-foreground block">
-              Verification Notes / Sign-off Record
-            </label>
-            <Textarea
-              value={verificationNote}
-              onChange={(e) => setVerificationNote(e.target.value)}
-              placeholder="e.g. Verified test coverage, linter passes, and manual review complete."
-              className="text-xs h-20"
-            />
-          </div>
-
-          <AlertDialogFooter>
-            <AlertDialogCancel onClick={() => setPendingDoneTask(null)}>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={confirmDone}
-              className="bg-emerald-600 hover:bg-emerald-700 text-white gap-1.5"
-            >
-              <CheckCheck size={14} />
-              Verify & Mark Done
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-
-      {/* 2. Claim Task Dialog */}
-      <AlertDialog open={pendingClaimTask !== null} onOpenChange={(open) => !open && setPendingClaimTask(null)}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Claim Task Lease</AlertDialogTitle>
-            <AlertDialogDescription className="text-xs text-muted-foreground">
-              Provide an isolated worktree branch and actor name to claim <strong className="text-foreground">{pendingClaimTask?.id}</strong>.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-
-          <div className="space-y-3 py-2">
-            <div>
-              <label className="text-[11px] font-mono uppercase text-muted-foreground block mb-1">
-                Worktree Path
-              </label>
-              <Input
-                value={claimWorktree}
-                onChange={(e) => setClaimWorktree(e.target.value)}
-                placeholder=".worktrees/feature-branch"
-                className="text-xs font-mono"
-              />
-            </div>
-            <div>
-              <label className="text-[11px] font-mono uppercase text-muted-foreground block mb-1">
-                Actor / Agent Name
-              </label>
-              <Input
-                value={claimActor}
-                onChange={(e) => setClaimActor(e.target.value)}
-                placeholder="Agent or Engineer ID"
-                className="text-xs"
-              />
-            </div>
-          </div>
-
-          <AlertDialogFooter>
-            <AlertDialogCancel onClick={() => setPendingClaimTask(null)}>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={confirmClaim} disabled={!claimWorktree || !claimActor}>
-              Claim Task
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-
-      {/* 3. Submit for Review Dialog */}
-      <AlertDialog open={pendingSubmitTask !== null} onOpenChange={(open) => !open && setPendingSubmitTask(null)}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Submit Task for Review</AlertDialogTitle>
-            <AlertDialogDescription className="text-xs text-muted-foreground">
-              Describe the code changes, testing completed, and verification evidence for <strong className="text-foreground">{pendingSubmitTask?.id}</strong>.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-
-          <div className="py-2">
-            <Textarea
-              required
-              value={submitNote}
-              onChange={(e) => setSubmitNote(e.target.value)}
-              placeholder="What changed and how was it verified?"
-              className="text-xs h-24"
-            />
-          </div>
-
-          <AlertDialogFooter>
-            <AlertDialogCancel onClick={() => setPendingSubmitTask(null)}>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={confirmSubmit} disabled={!submitNote.trim()}>
-              Submit for Review
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-
-      {/* 4. Request Changes Dialog */}
-      <AlertDialog open={pendingRejectTask !== null} onOpenChange={(open) => !open && setPendingRejectTask(null)}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Request Changes</AlertDialogTitle>
-            <AlertDialogDescription className="text-xs text-muted-foreground">
-              Provide feedback on what needs to be revised before this task can be approved.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-
-          <div className="py-2">
-            <Textarea
-              required
-              value={rejectNote}
-              onChange={(e) => setRejectNote(e.target.value)}
-              placeholder="Detailed reasons for changes requested..."
-              className="text-xs h-24"
-            />
-          </div>
-
-          <AlertDialogFooter>
-            <AlertDialogCancel onClick={() => setPendingRejectTask(null)}>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={confirmReject}
-              disabled={!rejectNote.trim()}
-              className="bg-rose-600 hover:bg-rose-700 text-white"
-            >
-              Request Changes
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
     </div>
   );
 }
@@ -518,18 +294,20 @@ function KanbanCard({
       disabled: !isDraggable,
     });
 
-  const getPriorityDot = (p: string) => {
+  const getPriorityBadgeClass = (p: string) => {
     switch (p) {
       case 'high':
-        return 'bg-rose-500';
+        return 'border-rose-500/30 text-rose-600 dark:text-rose-400 bg-rose-500/10';
       case 'medium':
-        return 'bg-amber-500';
+        return 'border-amber-500/30 text-amber-600 dark:text-amber-400 bg-amber-500/10';
       default:
-        return 'bg-slate-400';
+        return 'border-slate-500/30 text-slate-600 dark:text-slate-400 bg-slate-500/10';
     }
   };
 
-  // While dragging, render a dashed placeholder in place. DragOverlay handles the moving card!
+  const actorName = (task as any).actor || (task as any).claimedBy || null;
+
+  // While dragging, render placeholder
   if (isDragging) {
     return (
       <div
@@ -553,18 +331,26 @@ function KanbanCard({
     <article
       ref={setNodeRef}
       onClick={() => onSelect(task)}
-      className="rounded-lg border border-border/70 bg-background/80 p-3 shadow-xs transition hover:border-primary/40 cursor-pointer group"
+      className="rounded-lg border border-border/70 bg-background/90 p-3 shadow-xs transition hover:border-primary/50 cursor-pointer group"
     >
       <div className="flex items-start justify-between gap-2 mb-2">
         <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-1.5 mb-1">
-            <span className="font-mono text-[9px] text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
+          <div className="flex items-center gap-1.5 mb-1 flex-wrap">
+            <span className="font-mono text-[9px] font-semibold text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
               {task.id}
             </span>
-            <span
-              className={`size-1.5 rounded-full ${getPriorityDot(task.priority)}`}
-              title={`${task.priority} priority`}
-            />
+            <Badge
+              variant="outline"
+              className={`font-mono text-[8px] uppercase tracking-wider px-1.5 py-0 h-4 ${getPriorityBadgeClass(task.priority)}`}
+            >
+              {task.priority}
+            </Badge>
+            {actorName && (
+              <span className="inline-flex items-center gap-1 font-mono text-[9px] text-muted-foreground bg-muted/60 px-1.5 py-0 rounded">
+                <User size={10} className="text-primary" />
+                {actorName}
+              </span>
+            )}
           </div>
           <h4 className="text-xs font-semibold text-foreground leading-snug line-clamp-2 group-hover:text-primary transition-colors">
             {task.title}
@@ -579,7 +365,7 @@ function KanbanCard({
             onClick={(e) => e.stopPropagation()}
             type="button"
             aria-label="Drag task"
-            className="cursor-grab text-muted-foreground hover:text-foreground active:cursor-grabbing p-1 -mr-1"
+            className="cursor-grab text-muted-foreground hover:text-foreground active:cursor-grabbing p-1 -mr-1 shrink-0"
           >
             <GripVertical size={14} />
           </button>
@@ -587,35 +373,27 @@ function KanbanCard({
       </div>
 
       {task.description && (
-        <p className="text-[11px] text-muted-foreground line-clamp-2 mb-2.5 leading-relaxed">
+        <p className="text-[11px] text-muted-foreground line-clamp-2 mb-2 leading-relaxed">
           {task.description}
         </p>
       )}
 
-      {/* Worktree & Files Badges */}
-      {(task.worktree || (task.files && task.files.length > 0)) && (
-        <div className="flex flex-wrap gap-1.5 mb-2.5 font-mono text-[9px] text-muted-foreground">
-          {task.worktree && (
-            <span className="inline-flex items-center gap-1 bg-muted/60 px-1.5 py-0.5 rounded">
-              <GitBranch size={10} />
-              {task.worktree}
-            </span>
-          )}
+      {/* Files or dependencies badges if any */}
+      {(task.files?.length || task.dependsOn?.length) ? (
+        <div className="flex items-center gap-2 mb-2 font-mono text-[9px] text-muted-foreground">
           {task.files && task.files.length > 0 && (
-            <span className="inline-flex items-center gap-1 bg-muted/60 px-1.5 py-0.5 rounded">
-              <FileText size={10} />
-              {task.files.length}
+            <span className="inline-flex items-center gap-1">
+              <FileCode size={11} className="text-muted-foreground" />
+              {task.files.length} {task.files.length === 1 ? 'file' : 'files'}
+            </span>
+          )}
+          {task.dependsOn && task.dependsOn.length > 0 && (
+            <span className="inline-flex items-center gap-1">
+              <span>deps: {task.dependsOn.length}</span>
             </span>
           )}
         </div>
-      )}
-
-      {/* Submission Note Preview */}
-      {task.submissionNote && (
-        <div className="mb-2.5 rounded bg-muted/50 p-1.5 text-[10px] text-muted-foreground line-clamp-2">
-          <strong className="text-foreground">Note:</strong> {task.submissionNote}
-        </div>
-      )}
+      ) : null}
 
       {/* Quick Action Buttons */}
       <div
@@ -626,9 +404,10 @@ function KanbanCard({
           <Button
             size="sm"
             variant="outline"
-            className="h-6 px-2 text-[11px] w-full"
+            className="h-6 px-2 text-[11px] w-full gap-1 hover:bg-primary/10 hover:text-primary"
             onClick={() => onQuickClaim(task)}
           >
+            <Sparkles size={11} />
             Claim
           </Button>
         )}
@@ -637,7 +416,7 @@ function KanbanCard({
           <Button
             size="sm"
             variant="outline"
-            className="h-6 px-2 text-[11px] w-full"
+            className="h-6 px-2 text-[11px] w-full gap-1"
             onClick={() => onQuickSubmit(task)}
           >
             Submit for Review
@@ -678,16 +457,7 @@ function KanbanCard({
 }
 
 function KanbanCardOverlay({ task }: { task: Task }) {
-  const getPriorityDot = (p: string) => {
-    switch (p) {
-      case 'high':
-        return 'bg-rose-500';
-      case 'medium':
-        return 'bg-amber-500';
-      default:
-        return 'bg-slate-400';
-    }
-  };
+  const actorName = (task as any).actor || (task as any).claimedBy || null;
 
   return (
     <div className="w-[280px] rounded-lg border-2 border-primary/60 bg-background/95 p-3 shadow-2xl rotate-1 scale-[1.02] cursor-grabbing backdrop-blur-xs select-none pointer-events-none">
@@ -697,9 +467,15 @@ function KanbanCardOverlay({ task }: { task: Task }) {
             <span className="font-mono text-[9px] text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
               {task.id}
             </span>
-            <span
-              className={`size-1.5 rounded-full ${getPriorityDot(task.priority)}`}
-            />
+            <Badge variant="outline" className="font-mono text-[8px] uppercase tracking-wider px-1.5 py-0 h-4">
+              {task.priority}
+            </Badge>
+            {actorName && (
+              <span className="inline-flex items-center gap-1 font-mono text-[9px] text-muted-foreground bg-muted/60 px-1.5 py-0 rounded">
+                <User size={10} className="text-primary" />
+                {actorName}
+              </span>
+            )}
           </div>
           <h4 className="text-xs font-semibold text-foreground leading-snug line-clamp-2">
             {task.title}
@@ -711,26 +487,9 @@ function KanbanCardOverlay({ task }: { task: Task }) {
       </div>
 
       {task.description && (
-        <p className="text-[11px] text-muted-foreground line-clamp-2 mb-2.5 leading-relaxed">
+        <p className="text-[11px] text-muted-foreground line-clamp-2 mb-2 leading-relaxed">
           {task.description}
         </p>
-      )}
-
-      {(task.worktree || (task.files && task.files.length > 0)) && (
-        <div className="flex flex-wrap gap-1.5 font-mono text-[9px] text-muted-foreground">
-          {task.worktree && (
-            <span className="inline-flex items-center gap-1 bg-muted/60 px-1.5 py-0.5 rounded">
-              <GitBranch size={10} />
-              {task.worktree}
-            </span>
-          )}
-          {task.files && task.files.length > 0 && (
-            <span className="inline-flex items-center gap-1 bg-muted/60 px-1.5 py-0.5 rounded">
-              <FileText size={10} />
-              {task.files.length}
-            </span>
-          )}
-        </div>
       )}
     </div>
   );

@@ -52,6 +52,9 @@ import { HierarchicalTaskList } from '@/components/list/HierarchicalTaskList';
 import { TaskDagViewer } from '@/components/graph/TaskDagViewer';
 import { KanbanBoard } from '@/components/kanban/KanbanBoard';
 import NotFound from '@/pages/not-found';
+import { SteeringPage } from '@/pages/SteeringPage';
+import { SpecificationsHub } from '@/pages/SpecificationsHub';
+import { TasksPage } from '@/pages/TasksPage';
 import {
   useGetDashboard,
   getGetDashboardQueryKey,
@@ -228,21 +231,28 @@ function Shell({ children }: { children: ReactNode }) {
           />
           <NavItem
             href="/steering"
-            current={location === '/steering' || (location === '/documents' && filter === 'steering')}
+            current={location === '/steering'}
             icon={<Compass size={16} />}
             label="Steering"
             collapsed={!isExpandedView}
           />
           <NavItem
             href="/specs"
-            current={location === '/specs' || location.startsWith('/features') || location.startsWith('/tasks')}
+            current={location === '/specs' || (location.startsWith('/features') && !location.startsWith('/features/'))}
             icon={<Layers size={16} />}
             label="Specifications"
             collapsed={!isExpandedView}
           />
           <NavItem
+            href="/tasks"
+            current={location.startsWith('/tasks') || location.startsWith('/features/')}
+            icon={<LayoutGrid size={16} />}
+            label="Tasks"
+            collapsed={!isExpandedView}
+          />
+          <NavItem
             href="/documents"
-            current={location === '/documents' && filter !== 'steering'}
+            current={location === '/documents'}
             icon={<BookOpen size={16} />}
             label="Documents"
             collapsed={!isExpandedView}
@@ -595,7 +605,7 @@ function DashboardSpecCard({
 
         <Button
           size="sm"
-          onClick={() => setLocation(`/features/${f.id}`)}
+          onClick={() => setLocation(`/tasks?spec=${encodeURIComponent(f.id)}`)}
           className="gap-1.5"
           data-testid={`button-open-tasks-${f.id}`}
         >
@@ -778,11 +788,11 @@ function Dashboard() {
               <h2 className="mb-0 mt-1 text-[15px] font-semibold">Task flow</h2>
             </div>
             <button
-              onClick={() => setLocation('/features')}
-              className="text-xs font-semibold text-primary"
+              onClick={() => setLocation('/tasks')}
+              className="text-xs font-semibold text-primary cursor-pointer"
               data-testid="link-all-features"
             >
-              View features <ArrowRight size={13} className="ml-1 inline" />
+              View tasks <ArrowRight size={13} className="ml-1 inline" />
             </button>
           </div>
           <div className="grid grid-cols-2 divide-x divide-y divide-border/70 sm:grid-cols-5 sm:divide-y-0">
@@ -853,7 +863,7 @@ function Dashboard() {
           </div>
           <Button
             size="sm"
-            onClick={() => setLocation('/features')}
+            onClick={() => setLocation('/specs')}
             variant="outline"
             className="gap-1.5"
           >
@@ -871,7 +881,7 @@ function Dashboard() {
             <p className="text-xs text-muted-foreground mt-1 mb-4">
               Add your first feature specification to generate requirements, design, and executable tasks.
             </p>
-            <Button size="sm" onClick={() => setLocation('/features')}>
+            <Button size="sm" onClick={() => setLocation('/specs')}>
               Create specification
             </Button>
           </Surface>
@@ -891,8 +901,8 @@ function Dashboard() {
 
       <div className="mt-6 grid gap-4 sm:grid-cols-2">
         <button
-          onClick={() => setLocation('/features')}
-          className="group flex items-center gap-4 rounded-xl border border-border bg-card/75 p-4 text-left transition hover:border-primary/40"
+          onClick={() => setLocation('/specs')}
+          className="group flex items-center gap-4 rounded-xl border border-border bg-card/75 p-4 text-left transition hover:border-primary/40 cursor-pointer"
           data-testid="button-open-features"
         >
           <span className="grid size-10 place-items-center rounded-lg bg-secondary text-foreground">
@@ -1031,18 +1041,18 @@ function DocumentsPage() {
   const filter = useWorkflowUiStore((state) => state.documentFilter);
   const setFilter = useWorkflowUiStore((state) => state.setDocumentFilter);
 
-  // Sync URL search parameters or location path with active document filter
+  // Sync URL search parameters with active document filter
   useEffect(() => {
     const searchParams = new URLSearchParams(window.location.search);
     const filterParam = searchParams.get('filter');
-    if (location === '/steering' || filterParam === 'steering') {
+    if (filterParam === 'steering') {
       setFilter('steering');
     } else if (filterParam === 'specifications') {
       setFilter('specifications');
     } else if (filterParam && ['all', 'steering', 'specifications', 'requirements', 'design'].includes(filterParam)) {
       setFilter(filterParam as any);
     }
-  }, [location, setFilter]);
+  }, [setFilter]);
 
   const filtered = (docs.data ?? []).filter((d: DocumentSummary) => {
     if (filter === 'all') return true;
@@ -1196,451 +1206,19 @@ function DocumentsPage() {
   );
 }
 
-function FeaturesPage() {
-  const qc = useQueryClient();
-  const q = useListFeatures({ query: { queryKey: getListFeaturesQueryKey() } });
-  const create = useCreateFeature();
-  const [open, setOpen] = useState(false);
-
-  const submit = (e: FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    const f = new FormData(e.currentTarget);
-    const name = String(f.get('name'));
-    const id = String(f.get('id'));
-    create.mutate(
-      { data: { id, name, description: String(f.get('description') ?? '') } },
-      {
-        onSuccess: () => {
-          void qc.invalidateQueries({ queryKey: getListFeaturesQueryKey() });
-          void qc.invalidateQueries({ queryKey: getGetDashboardQueryKey() });
-          setOpen(false);
-        },
-      }
-    );
-  };
-
-  return (
-    <div>
-      <Heading
-        eyebrow="Workspace / specifications"
-        title="Features & Tasks"
-        detail="A feature is a bounded unit of intent. Choose a feature below to view its Kanban board, hierarchical task breakdown, and dependency DAG."
-        action={
-          <Button onClick={() => setOpen((v) => !v)} data-testid="button-new-feature">
-            <Plus size={15} />
-            New feature
-          </Button>
-        }
-      />
-
-      {open && (
-        <Surface className="mb-5 p-5 animate-in fade-in duration-200">
-          <div className="mb-4">
-            <div className="font-mono text-[9px] uppercase tracking-[.16em] text-primary">New specification</div>
-            <h2 className="mb-0 mt-1 font-serif text-xl">Define a feature</h2>
-          </div>
-          <form onSubmit={submit} className="grid gap-3 sm:grid-cols-2">
-            <div>
-              <Label>Feature ID · lowercase-hyphenated</Label>
-              <Input
-                name="id"
-                required
-                pattern="[a-z0-9]+(?:-[a-z0-9]+)*"
-                minLength={2}
-                maxLength={64}
-                placeholder="agent-session-history"
-                data-testid="input-feature-id"
-              />
-            </div>
-            <div>
-              <Label>Name</Label>
-              <Input
-                name="name"
-                required
-                minLength={2}
-                maxLength={120}
-                placeholder="Agent session history"
-                data-testid="input-feature-name"
-              />
-            </div>
-            <div className="sm:col-span-2">
-              <Label>Description</Label>
-              <Textarea
-                name="description"
-                maxLength={2000}
-                placeholder="The user problem, intended behavior, and constraints."
-                data-testid="input-feature-description"
-              />
-            </div>
-            <div className="sm:col-span-2 flex items-center gap-2">
-              <Button type="submit" disabled={create.isPending} data-testid="button-create-feature">
-                {create.isPending ? 'Creating…' : 'Create feature'}
-              </Button>
-              <Button type="button" variant="ghost" onClick={() => setOpen(false)}>
-                Cancel
-              </Button>
-            </div>
-          </form>
-        </Surface>
-      )}
-
-      <MutationError error={create.error} />
-
-      {q.isLoading ? (
-        <LoadingRows />
-      ) : q.isError ? (
-        <ErrorState message="Feature specifications are unavailable." retry={() => void q.refetch()} />
-      ) : q.data?.length ? (
-        <div className="space-y-3">
-          {q.data.map((f: Feature) => (
-            <FeatureRow key={f.id} feature={f} />
-          ))}
-        </div>
-      ) : (
-        <EmptyState
-          title="No feature specs yet"
-          description="Start with a clear unit of user value, then split it into work an agent can claim."
-          action={
-            <Button onClick={() => setOpen(true)}>
-              <Plus size={14} />
-              Create your first feature
-            </Button>
-          }
-        />
-      )}
-    </div>
-  );
-}
-
-function FeatureRow({ feature: f }: { feature: Feature }) {
-  return (
-    <Link href={`/features/${f.id}`} className="group block no-underline">
-      <Surface className="p-5 transition hover:-translate-y-0.5 hover:border-primary/40">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div className="flex min-w-0 items-start gap-4">
-            <span className="mt-0.5 grid size-10 shrink-0 place-items-center rounded-lg bg-secondary text-muted-foreground">
-              <Layers3 size={17} />
-            </span>
-            <div className="min-w-0">
-              <div className="mb-1 flex flex-wrap items-center gap-2">
-                <h2 className="mb-0 truncate text-[15px] font-semibold">{f.name}</h2>
-                <StatusPill value={f.status} />
-              </div>
-              <div className="font-mono text-[9px] text-muted-foreground">{f.id}</div>
-              <p className="mb-0 mt-2 max-w-2xl text-xs leading-relaxed text-muted-foreground">{f.description}</p>
-            </div>
-          </div>
-          <ArrowRight
-            size={17}
-            className="text-muted-foreground transition group-hover:translate-x-1 group-hover:text-primary"
-          />
-        </div>
-        <div className="ml-14 mt-4 flex flex-wrap items-center gap-4 border-t border-border/60 pt-3 font-mono text-[9px] text-muted-foreground">
-          <span>{f.taskCount} tasks</span>
-          <span>{f.completedTaskCount} complete</span>
-          <span className="ml-auto">Created {new Date(f.createdAt).toLocaleDateString()}</span>
-        </div>
-      </Surface>
-    </Link>
-  );
-}
-
-function EmptyState({
-  title,
-  description,
-  action,
-}: {
-  title: string;
-  description: string;
-  action?: ReactNode;
-}) {
-  return (
-    <Surface className="grid min-h-[280px] place-items-center p-8 text-center">
-      <div className="max-w-sm">
-        <span className="mx-auto mb-4 grid size-12 place-items-center rounded-full bg-accent text-primary">
-          <Sparkles size={19} />
-        </span>
-        <h2 className="font-serif text-xl font-semibold">{title}</h2>
-        <p className="mb-5 text-sm leading-relaxed text-muted-foreground">{description}</p>
-        {action}
-      </div>
-    </Surface>
-  );
-}
-
-function FeatureTasksPage() {
+function FeatureTasksRedirect() {
   const { featureId = '' } = useParams<{ featureId: string }>();
   const [, setLocation] = useLocation();
-  const qc = useQueryClient();
-
-  const features = useListFeatures({ query: { queryKey: getListFeaturesQueryKey() } });
-  const tasksQuery = useListTasks(featureId, { query: { queryKey: getListTasksQueryKey(featureId) } });
-
-  const create = useCreateTask();
-  const claim = useClaimTask();
-  const submit = useSubmitTask();
-  const review = useReviewTask();
-
-  const open = useWorkflowUiStore((state) => state.taskComposerOpen);
-  const setOpen = useWorkflowUiStore((state) => state.setTaskComposerOpen);
-
-  const [activeTab, setActiveTab] = useState<'kanban' | 'list' | 'dag'>('kanban');
 
   useEffect(() => {
-    setOpen(false);
-  }, [featureId, setOpen]);
+    if (featureId) {
+      setLocation(`/tasks?spec=${encodeURIComponent(featureId)}`);
+    } else {
+      setLocation('/tasks');
+    }
+  }, [featureId, setLocation]);
 
-  const feature = features.data?.find((f: Feature) => f.id === featureId);
-
-  const refresh = () => {
-    void qc.invalidateQueries({ queryKey: getListTasksQueryKey(featureId) });
-    void qc.invalidateQueries({ queryKey: getListFeaturesQueryKey() });
-    void qc.invalidateQueries({ queryKey: getGetDashboardQueryKey() });
-  };
-
-  const createTask = (e: FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    const fd = new FormData(e.currentTarget);
-    const files = String(fd.get('files') ?? '')
-      .split('\n')
-      .map((x) => x.trim())
-      .filter(Boolean);
-    const refs = String(fd.get('refs') ?? '')
-      .split('\n')
-      .map((x) => x.trim())
-      .filter(Boolean);
-    const dependsOn = String(fd.get('dependsOn') ?? '')
-      .split('\n')
-      .map((x) => x.trim())
-      .filter(Boolean);
-    const parentId = String(fd.get('parentId') ?? '').trim() || null;
-
-    create.mutate(
-      {
-        featureId,
-        data: {
-          id: String(fd.get('id')),
-          groupId: String(fd.get('groupId')),
-          parentId,
-          title: String(fd.get('title')),
-          description: String(fd.get('description') ?? ''),
-          priority: String(fd.get('priority')) as 'low' | 'medium' | 'high',
-          dependsOn,
-          files,
-          requirementsRef: refs,
-        },
-      },
-      {
-        onSuccess: () => {
-          refresh();
-          setOpen(false);
-        },
-      }
-    );
-  };
-
-  const handleClaim = (task: Task, worktree?: string, actor?: string) => {
-    const wt = worktree || window.prompt('Worktree path for this agent:', task.worktree || `worktree/${task.id}`);
-    if (!wt) return;
-    const act = actor || window.prompt('Agent or reviewer name:', 'AI Agent');
-    if (!act) return;
-    claim.mutate({ featureId, taskId: task.id, data: { worktree: wt, actor: act } }, { onSuccess: refresh });
-  };
-
-  const handleSubmit = (task: Task, note?: string) => {
-    const n = note || window.prompt('What changed? Include verification notes:');
-    if (!n) return;
-    submit.mutate({ featureId, taskId: task.id, data: { note: n } }, { onSuccess: refresh });
-  };
-
-  const handleApprove = (task: Task, note?: string) => {
-    const n = note !== undefined ? note : window.prompt('Review verification note (optional):', 'Verified complete') ?? '';
-    review.mutate({ featureId, taskId: task.id, data: { decision: 'approve', note: n } }, { onSuccess: refresh });
-  };
-
-  const handleReject = (task: Task, note?: string) => {
-    const n = note || window.prompt('What needs to change?');
-    if (!n) return;
-    review.mutate({ featureId, taskId: task.id, data: { decision: 'reject', note: n } }, { onSuccess: refresh });
-  };
-
-  const rawTasks = tasksQuery.data;
-  const taskList: Task[] = Array.isArray(rawTasks)
-    ? rawTasks
-    : Array.isArray((rawTasks as any)?.tasks)
-    ? (rawTasks as any).tasks
-    : [];
-
-  return (
-    <div className="space-y-6">
-      <button
-        onClick={() => setLocation('/features')}
-        className="inline-flex items-center gap-2 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors"
-        data-testid="link-back-features"
-      >
-        <ArrowLeft size={14} />
-        All features
-      </button>
-
-      <Heading
-        eyebrow={`Feature / ${featureId}`}
-        title={feature?.name ?? featureId}
-        detail={feature?.description}
-        action={
-          <Button onClick={() => setOpen(!open)} data-testid="button-new-task">
-            <Plus size={15} />
-            Add task
-          </Button>
-        }
-      />
-
-      {/* Task Creation Composer */}
-      {open && (
-        <Surface className="mb-5 p-5 animate-in fade-in duration-200">
-          <h2 className="mb-4 font-serif text-xl font-semibold">Create task</h2>
-          <form onSubmit={createTask} className="grid gap-3 sm:grid-cols-2">
-            <div>
-              <Label>Task ID</Label>
-              <Input name="id" required maxLength={32} placeholder="build-session-index" data-testid="input-task-id" />
-            </div>
-            <div>
-              <Label>Group ID / Phase</Label>
-              <Input name="groupId" required maxLength={64} placeholder="session-history" data-testid="input-task-group" />
-            </div>
-            <div className="sm:col-span-2">
-              <Label>Title</Label>
-              <Input
-                name="title"
-                required
-                minLength={2}
-                maxLength={180}
-                placeholder="Persist session metadata locally"
-                data-testid="input-task-title"
-              />
-            </div>
-            <div className="sm:col-span-2">
-              <Label>Description</Label>
-              <Textarea
-                name="description"
-                maxLength={4000}
-                placeholder="Scope, behavior, and acceptance notes"
-                data-testid="input-task-description"
-              />
-            </div>
-            <div>
-              <Label>Priority</Label>
-              <select
-                name="priority"
-                className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
-                defaultValue="medium"
-                data-testid="select-task-priority"
-              >
-                <option value="low">Low</option>
-                <option value="medium">Medium</option>
-                <option value="high">High</option>
-              </select>
-            </div>
-            <div>
-              <Label>Parent task ID · optional</Label>
-              <Input name="parentId" placeholder="parent-task-id" data-testid="input-task-parent" />
-            </div>
-            <div className="sm:col-span-2">
-              <Label>Depends on · one task ID per line</Label>
-              <Textarea name="dependsOn" placeholder="task-id" data-testid="input-task-dependencies" />
-            </div>
-            <div>
-              <Label>Files · one per line</Label>
-              <Textarea name="files" placeholder="src/session/store.ts" data-testid="input-task-files" />
-            </div>
-            <div>
-              <Label>Requirements references · one per line</Label>
-              <Textarea name="refs" placeholder="REQ-01" data-testid="input-task-refs" />
-            </div>
-            <div className="sm:col-span-2 flex gap-2 pt-2">
-              <Button type="submit" disabled={create.isPending} data-testid="button-create-task">
-                Create task
-              </Button>
-              <Button type="button" variant="ghost" onClick={() => setOpen(false)}>
-                Cancel
-              </Button>
-            </div>
-          </form>
-        </Surface>
-      )}
-
-      <MutationError error={create.error ?? claim.error ?? submit.error ?? review.error} />
-
-      {tasksQuery.isLoading ? (
-        <LoadingRows />
-      ) : tasksQuery.isError ? (
-        <ErrorState message="Task list is unavailable." retry={() => void tasksQuery.refetch()} />
-      ) : taskList.length === 0 ? (
-        <EmptyState
-          title="No tasks in this feature"
-          description="Make the first task small, specific, and verifiable. Agents can claim it when dependencies are clear."
-          action={
-            <Button onClick={() => setOpen(true)}>
-              <Plus size={14} />
-              Create first task
-            </Button>
-          }
-        />
-      ) : (
-        /* Multi-view Switcher Tabs: Kanban, Hierarchical List, DAG Graph */
-        <Tabs
-          value={activeTab}
-          onValueChange={(v) => setActiveTab(v as 'kanban' | 'list' | 'dag')}
-          className="space-y-4"
-        >
-          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border/70 pb-3">
-            <TabsList className="bg-muted/80 p-1">
-              <TabsTrigger value="kanban" className="gap-1.5 text-xs">
-                <LayoutGrid size={14} />
-                Kanban Board
-              </TabsTrigger>
-              <TabsTrigger value="list" className="gap-1.5 text-xs">
-                <ListOrdered size={14} />
-                Hierarchical List
-              </TabsTrigger>
-              <TabsTrigger value="dag" className="gap-1.5 text-xs">
-                <Network size={14} />
-                DAG Visualizer
-              </TabsTrigger>
-            </TabsList>
-
-            <div className="text-xs font-mono text-muted-foreground">
-              Total Tasks: {taskList.length} • Completed:{' '}
-              {taskList.filter((t: Task) => t.status === 'done').length}
-            </div>
-          </div>
-
-          <TabsContent value="kanban" className="m-0 focus-visible:outline-none">
-            <KanbanBoard
-              tasks={taskList}
-              onClaim={(t, wt, act) => handleClaim(t, wt, act)}
-              onSubmitReview={(t, note) => handleSubmit(t, note)}
-              onApproveDone={(t, note) => handleApprove(t, note)}
-              onRequestChanges={(t, note) => handleReject(t, note)}
-            />
-          </TabsContent>
-
-          <TabsContent value="list" className="m-0 focus-visible:outline-none">
-            <HierarchicalTaskList
-              tasks={taskList}
-              onClaim={(t) => handleClaim(t)}
-              onSubmitReview={(t) => handleSubmit(t)}
-              onApprove={(t) => handleApprove(t)}
-              onRequestChanges={(t) => handleReject(t)}
-            />
-          </TabsContent>
-
-          <TabsContent value="dag" className="m-0 focus-visible:outline-none">
-            <TaskDagViewer tasks={taskList} />
-          </TabsContent>
-        </Tabs>
-      )}
-    </div>
-  );
+  return <LoadingRows />;
 }
 
 function RoutedErrorBoundary({ children }: { children: ReactNode }) {
@@ -1655,11 +1233,12 @@ function Router() {
         <Switch>
           <Route path="/" component={Dashboard} />
           <Route path="/dashboard" component={Dashboard} />
+          <Route path="/steering" component={SteeringPage} />
+          <Route path="/specs" component={SpecificationsHub} />
+          <Route path="/features" component={SpecificationsHub} />
+          <Route path="/features/:featureId" component={FeatureTasksRedirect} />
+          <Route path="/tasks" component={TasksPage} />
           <Route path="/documents" component={DocumentsPage} />
-          <Route path="/steering" component={DocumentsPage} />
-          <Route path="/specs" component={FeaturesPage} />
-          <Route path="/features" component={FeaturesPage} />
-          <Route path="/features/:featureId" component={FeatureTasksPage} />
           <Route component={NotFound} />
         </Switch>
       </Shell>

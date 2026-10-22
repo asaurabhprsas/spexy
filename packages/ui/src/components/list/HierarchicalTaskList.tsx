@@ -22,7 +22,7 @@ import {
   Check,
   RotateCcw,
 } from 'lucide-react';
-import { TaskDetailModal } from '@/components/task/TaskDetailModal';
+import { TaskDetailSheet } from '@/components/task/TaskDetailSheet';
 
 export type ExtendedTask = Task & {
   notes?: {
@@ -33,10 +33,10 @@ export type ExtendedTask = Task & {
 
 interface HierarchicalTaskListProps {
   tasks: ExtendedTask[];
-  onClaim?: (task: Task) => void;
-  onSubmitReview?: (task: Task) => void;
-  onApprove?: (task: Task) => void;
-  onRequestChanges?: (task: Task) => void;
+  onClaim?: (task: Task, worktree?: string, actor?: string) => void;
+  onSubmitReview?: (task: Task, note?: string) => void;
+  onApprove?: (task: Task, note?: string) => void;
+  onRequestChanges?: (task: Task, note?: string) => void;
 }
 
 export function HierarchicalTaskList({
@@ -128,17 +128,29 @@ export function HierarchicalTaskList({
         })}
       </Accordion>
 
-      {/* Task Detail Modal */}
-      <TaskDetailModal
+      {/* Task Detail Sheet */}
+      <TaskDetailSheet
         task={detailTask}
         open={detailTask !== null}
         onOpenChange={(open) => !open && setDetailTask(null)}
         allTasks={tasks}
         onSelectTask={(t) => setDetailTask(t)}
-        onClaim={onClaim}
-        onSubmitReview={onSubmitReview}
-        onApprove={onApprove}
-        onRequestChanges={onRequestChanges}
+        onClaim={(t, wt, act) => {
+          onClaim?.(t, wt, act);
+          setDetailTask((prev) => (prev ? { ...prev, status: 'in-progress', worktree: wt ?? null, actor: act ?? null } : null));
+        }}
+        onSubmitReview={(t, note) => {
+          onSubmitReview?.(t, note);
+          setDetailTask((prev) => (prev ? { ...prev, status: 'to-review', submissionNote: note ?? null } : null));
+        }}
+        onApprove={(t, note) => {
+          onApprove?.(t, note);
+          setDetailTask((prev) => (prev ? { ...prev, status: 'done' } : null));
+        }}
+        onRequestChanges={(t, note) => {
+          onRequestChanges?.(t, note);
+          setDetailTask((prev) => (prev ? { ...prev, status: 'todo' } : null));
+        }}
       />
     </div>
   );
@@ -150,10 +162,10 @@ interface TaskTreeNodeProps {
   allTasks: ExtendedTask[];
   level?: number;
   onSelectTask?: (task: Task) => void;
-  onClaim?: (task: Task) => void;
-  onSubmitReview?: (task: Task) => void;
-  onApprove?: (task: Task) => void;
-  onRequestChanges?: (task: Task) => void;
+  onClaim?: (task: Task, worktree?: string, actor?: string) => void;
+  onSubmitReview?: (task: Task, note?: string) => void;
+  onApprove?: (task: Task, note?: string) => void;
+  onRequestChanges?: (task: Task, note?: string) => void;
 }
 
 function TaskTreeNode({
@@ -215,7 +227,7 @@ function TaskTreeNode({
                 e.stopPropagation();
                 setIsExpanded(!isExpanded);
               }}
-              className="mt-0.5 text-muted-foreground hover:text-foreground transition-transform"
+              className="mt-0.5 text-muted-foreground hover:text-foreground transition-transform cursor-pointer"
               aria-label="Toggle task details"
             >
               {isExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
@@ -277,13 +289,13 @@ function TaskTreeNode({
             onClick={(e) => e.stopPropagation()}
           >
             {task.status === 'todo' && task.availability === 'available' && onClaim && (
-              <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => onClaim(task)}>
+              <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => onClaim(task, task.worktree || '', 'human')}>
                 Claim
               </Button>
             )}
 
             {task.status === 'in-progress' && onSubmitReview && (
-              <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => onSubmitReview(task)}>
+              <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => onSubmitReview(task, 'Submitted for review')}>
                 Submit Review
               </Button>
             )}
@@ -294,7 +306,7 @@ function TaskTreeNode({
                   <Button
                     size="sm"
                     className="h-7 text-xs bg-emerald-600 hover:bg-emerald-700 text-white gap-1"
-                    onClick={() => onApprove(task)}
+                    onClick={() => onApprove(task, 'Approved by reviewer')}
                   >
                     <Check size={12} />
                     Approve
@@ -305,7 +317,7 @@ function TaskTreeNode({
                     size="sm"
                     variant="outline"
                     className="h-7 text-xs text-rose-600 hover:text-rose-700 gap-1"
-                    onClick={() => onRequestChanges(task)}
+                    onClick={() => onRequestChanges(task, 'Changes requested')}
                   >
                     <RotateCcw size={12} />
                     Request Changes
@@ -376,15 +388,15 @@ function TaskTreeNode({
             )}
 
             {/* Dependencies & Requirements */}
-            {(task.dependsOn?.length > 0 || task.requirementsRef?.length > 0) && (
+            {((task.dependsOn && task.dependsOn.length > 0) || (task.requirementsRef && task.requirementsRef.length > 0)) && (
               <div className="flex flex-wrap gap-3 pt-1 text-[10px] font-mono text-muted-foreground">
-                {task.dependsOn?.length > 0 && (
+                {task.dependsOn && task.dependsOn.length > 0 && (
                   <div className="flex items-center gap-1">
                     <LinkIcon size={10} />
                     <span>Depends on: {task.dependsOn.join(', ')}</span>
                   </div>
                 )}
-                {task.requirementsRef?.length > 0 && (
+                {task.requirementsRef && task.requirementsRef.length > 0 && (
                   <div className="flex items-center gap-1">
                     <span>Requirements: {task.requirementsRef.join(', ')}</span>
                   </div>
