@@ -6,7 +6,7 @@ import {
   flattenTasks,
   readConfig,
   readPendingCommentsDoc,
-  SPECFLOW_DIR,
+  SPEXY_DIR,
   TasksDocumentSchema,
   validateTaskGraph,
 } from "./core";
@@ -67,12 +67,12 @@ export function startWatcher(
   broadcast: BroadcastFn,
   onLog?: WatcherLogFn,
 ): WatcherHandle {
-  const specflowDir = path.join(projectRoot, SPECFLOW_DIR);
-  if (!fs.existsSync(specflowDir)) {
-    fs.mkdirSync(specflowDir, { recursive: true });
+  const spexyDir = path.join(projectRoot, SPEXY_DIR);
+  if (!fs.existsSync(spexyDir)) {
+    fs.mkdirSync(spexyDir, { recursive: true });
   }
 
-  const watcher = chokidar.watch(specflowDir, {
+  const watcher = chokidar.watch(spexyDir, {
     ignored: [
       /(^|[\/\\])\.git([\/\\]|$)/,
       /(^|[\/\\])node_modules([\/\\]|$)/,
@@ -84,7 +84,7 @@ export function startWatcher(
   });
 
   const getSpecIdFromPath = (filePath: string): string | null => {
-    const relToSpecflow = path.relative(specflowDir, filePath);
+    const relToSpecflow = path.relative(spexyDir, filePath);
     const parts = relToSpecflow.split(/[/\\]/);
     if (parts[0] === "specs" && parts.length >= 3 && parts[1]) {
       return parts[1];

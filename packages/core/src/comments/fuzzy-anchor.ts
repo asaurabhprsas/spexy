@@ -162,7 +162,7 @@ export function resolveComment(
   comment.resolved_at = new Date().toISOString();
   comment.resolved_by = "human";
 
-  // Append resolved comment into .specflow/.cache/history/comments-history.yaml
+  // Append resolved comment into .spexy/.cache/history/comments-history.yaml
   const historyDoc = readCommentHistoryDoc(projectRoot);
   historyDoc.comments.push({ ...comment });
   writeCommentHistoryDoc(projectRoot, historyDoc);
@@ -184,7 +184,7 @@ export function listCommentHistory(
   if (!target_file) {
     return historyDoc.comments;
   }
-  const norm = (s: string) => s.replace(/^\.?\/?\.specflow\//, "").replace(/^\.?\//, "").replace(/:/g, "/");
+  const norm = (s: string) => s.replace(/^\.?\/?\.spexy\//, "").replace(/^\.?\//, "").replace(/:/g, "/");
   const targetNorm = norm(target_file);
   return historyDoc.comments.filter((c) => {
     if (!target_file) return true;

@@ -5,7 +5,7 @@
     "moduleResolution": "bundler",
     "target": "es2022",
     "paths": {
-      "@spec-flow/core": ["../core/src/index.ts"]
+      "@spexy/core": ["../core/src/index.ts"]
     }
   },
   "include": ["src/**/*"]

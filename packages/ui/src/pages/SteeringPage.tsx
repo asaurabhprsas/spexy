@@ -50,7 +50,7 @@ export function SteeringPage() {
       (d: DocumentSummary) =>
         d.kind === 'steering' ||
         d.path.includes('/steering/') ||
-        d.path.startsWith('.specflow/steering/')
+        d.path.startsWith('.spexy/steering/')
     );
   }, [docs.data]);
 
@@ -107,7 +107,7 @@ export function SteeringPage() {
             <h2 className="font-serif text-xl font-semibold">No steering documents defined</h2>
             <p className="mt-2 text-sm text-muted-foreground leading-relaxed">
               Steering documents anchor your project’s constitution and architecture boundaries. Add markdown documents inside{' '}
-              <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs text-primary">.specflow/steering/</code> to establish guidelines.
+              <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs text-primary">.spexy/steering/</code> to establish guidelines.
             </p>
           </div>
         </div>

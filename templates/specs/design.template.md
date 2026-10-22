@@ -8,7 +8,7 @@ approved_by: null
 
 ## 1. Overview & Steering Alignment
 - **Architectural Fit**:
-  - How this design integrates with `.specflow/steering/tech.md` and `structure.md`.
+  - How this design integrates with `.spexy/steering/tech.md` and `structure.md`.
 - **Core Design Patterns**:
   - Selected patterns (e.g., DAG traversal, reactive state, modular adapters).
 

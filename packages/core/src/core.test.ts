@@ -16,7 +16,7 @@ import {
   serializeDocumentWithFrontmatter,
 } from "./schemas/frontmatter";
 import {
-  initSpecFlowWorkspace,
+  initSpexyWorkspace,
   getSteeringStatus,
   createSpec,
   readTasksYaml,
@@ -44,11 +44,11 @@ import { TaskItem } from "./schemas/tasks";
 import { archiveDocument } from "./documents/archive";
 import { getPreferences, updatePreferences } from "./config";
 
-describe("@spec-flow/core Test Suite", () => {
+describe("@spexy/core Test Suite", () => {
   let tmpDir: string;
 
   beforeEach(() => {
-    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "specflow-test-"));
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "spexy-test-"));
   });
 
   afterEach(() => {
@@ -210,12 +210,12 @@ Document body here.`;
     });
   });
 
-  describe("Workspace File Operations (.specflow/ & docs/)", () => {
+  describe("Workspace File Operations (.spexy/ & docs/)", () => {
     it("initializes directory structure with steering docs and docs/ folder", () => {
-      initSpecFlowWorkspace(tmpDir);
+      initSpexyWorkspace(tmpDir);
 
-      expect(fs.existsSync(path.join(tmpDir, ".specflow", "config.yaml"))).toBe(true);
-      expect(fs.existsSync(path.join(tmpDir, ".specflow", "steering", "product.md"))).toBe(true);
+      expect(fs.existsSync(path.join(tmpDir, ".spexy", "config.yaml"))).toBe(true);
+      expect(fs.existsSync(path.join(tmpDir, ".spexy", "steering", "product.md"))).toBe(true);
       expect(fs.existsSync(path.join(tmpDir, "docs", "ARCHITECTURE.md"))).toBe(true);
       expect(fs.existsSync(path.join(tmpDir, "docs", "PROGRESS.md"))).toBe(true);
 
@@ -225,7 +225,7 @@ Document body here.`;
     });
 
     it("enforces steering gate before creating a spec unless forced", () => {
-      initSpecFlowWorkspace(tmpDir);
+      initSpexyWorkspace(tmpDir);
 
       // Should be blocked because steering is draft
       expect(() => createSpec(tmpDir, "auth-system")).toThrow(/steering/i);
@@ -241,7 +241,7 @@ Document body here.`;
 
   describe("Checkpoint Ring-Buffer", () => {
     it("creates snapshots and prunes oldest when exceeding limit", () => {
-      initSpecFlowWorkspace(tmpDir);
+      initSpexyWorkspace(tmpDir);
       const testFile = path.join(tmpDir, "test-doc.md");
       fs.writeFileSync(testFile, "initial content", "utf-8");
 
@@ -261,7 +261,7 @@ Document body here.`;
 
   describe("Context-Anchored Comments & Fuzzy Re-alignment", () => {
     it("adds, lists, and resolves comments with history archiving", () => {
-      initSpecFlowWorkspace(tmpDir);
+      initSpexyWorkspace(tmpDir);
       const comment = addComment(tmpDir, {
         target_file: "specs/demo/requirements.md",
         author: "human",
@@ -302,7 +302,7 @@ Document body here.`;
     });
 
     it("deletes and updates pending comments", () => {
-      initSpecFlowWorkspace(tmpDir);
+      initSpexyWorkspace(tmpDir);
       const comment = addComment(tmpDir, {
         target_file: "specs/demo/design.md",
         author: "human",
@@ -346,11 +346,11 @@ Document body here.`;
 
   describe("Spec Auxiliary Files Discovery (listSpecFiles)", () => {
     it("discovers requirements, design, tasks, logs, and recursive references/images", () => {
-      initSpecFlowWorkspace(tmpDir);
+      initSpexyWorkspace(tmpDir);
       createSpec(tmpDir, "auth-feature", { force: true, title: "Authentication" });
 
       // Add files in references/ and images/
-      const specDir = path.join(tmpDir, ".specflow", "specs", "auth-feature");
+      const specDir = path.join(tmpDir, ".spexy", "specs", "auth-feature");
       fs.writeFileSync(path.join(specDir, "references", "architecture.txt"), "System diagram notes", "utf-8");
       fs.mkdirSync(path.join(specDir, "references", "nested"), { recursive: true });
       fs.writeFileSync(path.join(specDir, "references", "nested", "api-contract.json"), "{}", "utf-8");
@@ -398,9 +398,9 @@ Document body here.`;
 
   describe("Turnkey Templates & Actionable Agent Prompts", () => {
     it("scaffolds turnkey templates and actionable agent prompts on workspace init", () => {
-      initSpecFlowWorkspace(tmpDir);
+      initSpexyWorkspace(tmpDir);
 
-      const sfDir = path.join(tmpDir, ".specflow");
+      const sfDir = path.join(tmpDir, ".spexy");
       // Verify templates exist in projectRoot/templates
       expect(fs.existsSync(path.join(tmpDir, "templates", "steering", "product.template.md"))).toBe(true);
       expect(fs.existsSync(path.join(tmpDir, "templates", "steering", "tech.template.md"))).toBe(true);
@@ -409,7 +409,7 @@ Document body here.`;
       expect(fs.existsSync(path.join(tmpDir, "templates", "specs", "design.template.md"))).toBe(true);
       expect(fs.existsSync(path.join(tmpDir, "templates", "specs", "tasks.template.yaml"))).toBe(true);
 
-      // Verify legacy .specflow/templates does not exist
+      // Verify legacy .spexy/templates does not exist
       expect(fs.existsSync(path.join(sfDir, "templates"))).toBe(false);
 
       // Verify prompts exist
@@ -426,13 +426,13 @@ Document body here.`;
       expect(fs.existsSync(path.join(sfDir, "specs", "test-spec", "images"))).toBe(true);
     });
 
-    it("cleans up legacy .specflow/templates directory on init", () => {
-      const legacyDir = path.join(tmpDir, ".specflow", "templates");
+    it("cleans up legacy .spexy/templates directory on init", () => {
+      const legacyDir = path.join(tmpDir, ".spexy", "templates");
       fs.mkdirSync(legacyDir, { recursive: true });
       fs.writeFileSync(path.join(legacyDir, "legacy.txt"), "legacy");
       expect(fs.existsSync(legacyDir)).toBe(true);
 
-      initSpecFlowWorkspace(tmpDir);
+      initSpexyWorkspace(tmpDir);
       expect(fs.existsSync(legacyDir)).toBe(false);
       expect(fs.existsSync(path.join(tmpDir, "templates", "steering", "product.template.md"))).toBe(true);
     });
@@ -468,16 +468,16 @@ Document body here.`;
   });
 
   describe("Document Archiving Engine (archiveDocument)", () => {
-    it("archives a steering document to .specflow/archived/steering/ and deletes source", () => {
-      initSpecFlowWorkspace(tmpDir);
-      const constitutionPath = path.join(tmpDir, ".specflow", "steering", "constitution.md");
+    it("archives a steering document to .spexy/archived/steering/ and deletes source", () => {
+      initSpexyWorkspace(tmpDir);
+      const constitutionPath = path.join(tmpDir, ".spexy", "steering", "constitution.md");
       fs.writeFileSync(constitutionPath, "# Team Constitution\nCore values and principles.", "utf-8");
 
       expect(fs.existsSync(constitutionPath)).toBe(true);
 
       const result = archiveDocument(tmpDir, "constitution");
-      expect(result.originalPath).toBe(".specflow/steering/constitution.md");
-      expect(result.archivedPath).toBe(".specflow/archived/steering/constitution.md");
+      expect(result.originalPath).toBe(".spexy/steering/constitution.md");
+      expect(result.archivedPath).toBe(".spexy/archived/steering/constitution.md");
 
       expect(fs.existsSync(constitutionPath)).toBe(false);
       const archivedAbs = path.join(tmpDir, result.archivedPath);
@@ -486,14 +486,14 @@ Document body here.`;
     });
 
     it("archives a spec document and removes source file", () => {
-      initSpecFlowWorkspace(tmpDir);
+      initSpexyWorkspace(tmpDir);
       createSpec(tmpDir, "demo-spec", { force: true });
-      const reqPath = path.join(tmpDir, ".specflow", "specs", "demo-spec", "requirements.md");
+      const reqPath = path.join(tmpDir, ".spexy", "specs", "demo-spec", "requirements.md");
       expect(fs.existsSync(reqPath)).toBe(true);
 
       const result = archiveDocument(tmpDir, "demo-spec:requirements");
-      expect(result.originalPath).toBe(".specflow/specs/demo-spec/requirements.md");
-      expect(result.archivedPath).toBe(".specflow/archived/specs/demo-spec/requirements.md");
+      expect(result.originalPath).toBe(".spexy/specs/demo-spec/requirements.md");
+      expect(result.archivedPath).toBe(".spexy/archived/specs/demo-spec/requirements.md");
 
       expect(fs.existsSync(reqPath)).toBe(false);
       const archivedAbs = path.join(tmpDir, result.archivedPath);
@@ -502,71 +502,71 @@ Document body here.`;
     });
 
     it("handles collisions by generating _1, _2 suffix", () => {
-      initSpecFlowWorkspace(tmpDir);
-      const constitutionPath = path.join(tmpDir, ".specflow", "steering", "constitution.md");
+      initSpexyWorkspace(tmpDir);
+      const constitutionPath = path.join(tmpDir, ".spexy", "steering", "constitution.md");
       fs.writeFileSync(constitutionPath, "Version 1", "utf-8");
 
       // First archive
-      const res1 = archiveDocument(tmpDir, ".specflow/steering/constitution.md");
-      expect(res1.archivedPath).toBe(".specflow/archived/steering/constitution.md");
+      const res1 = archiveDocument(tmpDir, ".spexy/steering/constitution.md");
+      expect(res1.archivedPath).toBe(".spexy/archived/steering/constitution.md");
       expect(fs.readFileSync(path.join(tmpDir, res1.archivedPath), "utf-8")).toBe("Version 1");
 
       // Recreate source file and archive again
       fs.writeFileSync(constitutionPath, "Version 2", "utf-8");
-      const res2 = archiveDocument(tmpDir, ".specflow/steering/constitution.md");
-      expect(res2.archivedPath).toBe(".specflow/archived/steering/constitution_1.md");
+      const res2 = archiveDocument(tmpDir, ".spexy/steering/constitution.md");
+      expect(res2.archivedPath).toBe(".spexy/archived/steering/constitution_1.md");
       expect(fs.readFileSync(path.join(tmpDir, res2.archivedPath), "utf-8")).toBe("Version 2");
 
       // Recreate source file and archive a third time
       fs.writeFileSync(constitutionPath, "Version 3", "utf-8");
-      const res3 = archiveDocument(tmpDir, ".specflow/steering/constitution.md");
-      expect(res3.archivedPath).toBe(".specflow/archived/steering/constitution_2.md");
+      const res3 = archiveDocument(tmpDir, ".spexy/steering/constitution.md");
+      expect(res3.archivedPath).toBe(".spexy/archived/steering/constitution_2.md");
       expect(fs.readFileSync(path.join(tmpDir, res3.archivedPath), "utf-8")).toBe("Version 3");
     });
 
-    it("archives arbitrary markdown files outside .specflow/", () => {
-      initSpecFlowWorkspace(tmpDir);
+    it("archives arbitrary markdown files outside .spexy/", () => {
+      initSpexyWorkspace(tmpDir);
       const customPath = path.join(tmpDir, "docs", "custom-guide.md");
       fs.mkdirSync(path.dirname(customPath), { recursive: true });
       fs.writeFileSync(customPath, "# Custom Guide\nArbitrary doc", "utf-8");
 
       const result = archiveDocument(tmpDir, "docs/custom-guide.md");
       expect(result.originalPath).toBe("docs/custom-guide.md");
-      expect(result.archivedPath).toBe(".specflow/archived/docs/custom-guide.md");
+      expect(result.archivedPath).toBe(".spexy/archived/docs/custom-guide.md");
 
       expect(fs.existsSync(customPath)).toBe(false);
       expect(fs.existsSync(path.join(tmpDir, result.archivedPath))).toBe(true);
     });
 
     it("throws an error if document is not found", () => {
-      initSpecFlowWorkspace(tmpDir);
+      initSpexyWorkspace(tmpDir);
       expect(() => archiveDocument(tmpDir, "non-existent-doc")).toThrow(/not found/i);
     });
   });
 
   describe("Preferences Persistence (getPreferences, updatePreferences)", () => {
-    it("returns empty object if .specflow/config.json does not exist", () => {
-      initSpecFlowWorkspace(tmpDir);
+    it("returns empty object if .spexy/config.json does not exist", () => {
+      initSpexyWorkspace(tmpDir);
       const prefs = getPreferences(tmpDir);
       expect(prefs).toEqual({});
     });
 
-    it("creates .specflow/config.json and persists preferences on updatePreferences", () => {
-      initSpecFlowWorkspace(tmpDir);
+    it("creates .spexy/config.json and persists preferences on updatePreferences", () => {
+      initSpexyWorkspace(tmpDir);
       const updated = updatePreferences(tmpDir, { theme: "dark", editorFontSize: 14 });
 
       expect(updated).toEqual({ theme: "dark", editorFontSize: 14 });
       const prefs = getPreferences(tmpDir);
       expect(prefs).toEqual({ theme: "dark", editorFontSize: 14 });
 
-      const configJsonPath = path.join(tmpDir, ".specflow", "config.json");
+      const configJsonPath = path.join(tmpDir, ".spexy", "config.json");
       expect(fs.existsSync(configJsonPath)).toBe(true);
       const raw = JSON.parse(fs.readFileSync(configJsonPath, "utf-8"));
       expect(raw.preferences).toEqual({ theme: "dark", editorFontSize: 14 });
     });
 
     it("merges new preferences with existing preferences", () => {
-      initSpecFlowWorkspace(tmpDir);
+      initSpexyWorkspace(tmpDir);
       updatePreferences(tmpDir, { theme: "dark", lineNumbers: true });
       const merged = updatePreferences(tmpDir, { theme: "light", autoSave: true });
 
@@ -586,19 +586,19 @@ Document body here.`;
   });
 
   describe("Workspace Health & Diagnostics Engine (runHealthCheck, formatHealthReport)", () => {
-    it("reports failure when .specflow directory does not exist", () => {
-      const emptyDir = fs.mkdtempSync(path.join(os.tmpdir(), "specflow-empty-"));
+    it("reports failure when .spexy directory does not exist", () => {
+      const emptyDir = fs.mkdtempSync(path.join(os.tmpdir(), "spexy-empty-"));
       const report = runHealthCheck(emptyDir);
       expect(report.valid).toBe(false);
       expect(report.summary.failed).toBeGreaterThanOrEqual(1);
       const text = formatHealthReport(report);
       expect(text).toContain("✖");
-      expect(text).toContain("spec-flow init");
+      expect(text).toContain("spexy init");
       fs.rmSync(emptyDir, { recursive: true, force: true });
     });
 
     it("reports clean pass for a newly initialized workspace with valid steering and spec", () => {
-      initSpecFlowWorkspace(tmpDir);
+      initSpexyWorkspace(tmpDir);
       createSpec(tmpDir, "sample-spec", { force: true, title: "Sample Feature" });
 
       const report = runHealthCheck(tmpDir);
@@ -612,14 +612,14 @@ Document body here.`;
     });
 
     it("detects missing steering documents and corrupted tasks.yaml", () => {
-      initSpecFlowWorkspace(tmpDir);
+      initSpexyWorkspace(tmpDir);
       createSpec(tmpDir, "broken-spec", { force: true, title: "Broken Feature" });
 
       // Remove a steering document
-      fs.unlinkSync(path.join(tmpDir, ".specflow", "steering", "tech.md"));
+      fs.unlinkSync(path.join(tmpDir, ".spexy", "steering", "tech.md"));
 
       // Corrupt tasks.yaml
-      const tasksYamlPath = path.join(tmpDir, ".specflow", "specs", "broken-spec", "tasks.yaml");
+      const tasksYamlPath = path.join(tmpDir, ".spexy", "specs", "broken-spec", "tasks.yaml");
       fs.writeFileSync(tasksYamlPath, "invalid: [broken yaml content", "utf-8");
 
       const report = runHealthCheck(tmpDir);

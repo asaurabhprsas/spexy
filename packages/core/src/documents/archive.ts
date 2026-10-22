@@ -27,7 +27,7 @@ export function archiveDocument(projectRoot: string, docPathOrId: string): Archi
     }
   }
 
-  const sfDir = path.join(projectRoot, ".specflow");
+  const sfDir = path.join(projectRoot, ".spexy");
   let subRelPath: string;
 
   if (sourceAbsPath.startsWith(sfDir)) {

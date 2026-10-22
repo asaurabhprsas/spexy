@@ -8,5 +8,5 @@ approved_by: "human"
 
 ## Stack
 - Monorepo with TypeScript, Bun, and Turborepo.
-- Local-first architecture: state persisted in .specflow/ YAML and Markdown.
+- Local-first architecture: state persisted in .spexy/ YAML and Markdown.
 - Embedded Fastify WebSocket server for real-time dashboard updates.

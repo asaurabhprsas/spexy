@@ -1,6 +1,6 @@
 # Spec-Driven Development (SDD) Workflow Guide
 
-This guide establishes the end-to-end operational protocol for autonomous AI agents and human architects collaborating within Spec-Flow.
+This guide establishes the end-to-end operational protocol for autonomous AI agents and human architects collaborating within Spexy.
 
 ---
 
@@ -16,9 +16,9 @@ flowchart LR
 ```
 
 ### Stage 1: Steering Constitution
-1. Scaffolds `product.md`, `tech.md`, and `structure.md` in `.specflow/steering/`.
+1. Scaffolds `product.md`, `tech.md`, and `structure.md` in `.spexy/steering/`.
 2. Defines product goals, technical stack, coding standards, directory organization, and non-negotiable boundaries.
-3. **Gate Requirement**: A human architect must inspect and approve all steering documents (`spec-flow steering approve <id>`). Agents cannot scaffold specs until this gate passes.
+3. **Gate Requirement**: A human architect must inspect and approve all steering documents (`spexy steering approve <id>`). Agents cannot scaffold specs until this gate passes.
 
 ### Stage 2: Requirements (`requirements.md`)
 1. Translates user stories into numbered functional requirements (`REQ-1`, `REQ-2`).
@@ -40,8 +40,8 @@ flowchart LR
 2. Creates isolated feature branch or worktree (`git checkout -b <branch>`).
 3. Implements domain logic using Test-Driven Development (TDD).
 4. Commits changes using conventional commit pattern (`feat(<spec>): <task title> (refs #<task-id>)`).
-5. **Pre-flight Check**: Agent executes `spec-flow doctor` (or `spec-flow check`) to verify schema and graph integrity.
-6. Submits task for review (`spec-flow task submit <spec> <task-id> --note "..."`).
+5. **Pre-flight Check**: Agent executes `spexy doctor` (or `spexy check`) to verify schema and graph integrity.
+6. Submits task for review (`spexy task submit <spec> <task-id> --note "..."`).
 
 ### Stage 6: Human Verification & HITL Approval
 1. Human reviews implementation in dashboard or terminal.
@@ -69,12 +69,12 @@ To maintain clean git history and link commits with tasks:
 
 ---
 
-## 3. Pre-Flight Verification (`spec-flow doctor`)
+## 3. Pre-Flight Verification (`spexy doctor`)
 
 Before submitting a task or merging code, autonomous AI agents MUST run:
 
 ```bash
-spec-flow doctor
+spexy doctor
 ```
 
 If any errors are reported (schema violations, cyclic dependencies, missing documents), the agent must resolve them before requesting human review.

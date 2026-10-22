@@ -49,7 +49,7 @@ groups:
         status: done
         priority: high
         depends_on: []
-        worktree: specflow
+        worktree: spexy
         branch: local-dev
         locked_at: null
         files:
@@ -68,7 +68,7 @@ groups:
         status: done
         priority: high
         depends_on: []
-        worktree: specflow
+        worktree: spexy
         branch: local-dev
         locked_at: null
         files:
@@ -87,7 +87,7 @@ groups:
         priority: medium
         depends_on:
           - "1.1"
-        worktree: specflow
+        worktree: spexy
         branch: local-dev
         locked_at: null
         files:
@@ -106,7 +106,7 @@ groups:
         priority: high
         depends_on:
           - "1"
-        worktree: specflow
+        worktree: spexy
         branch: local-dev
         locked_at: null
         files:
@@ -126,7 +126,7 @@ groups:
         priority: high
         depends_on:
           - "1"
-        worktree: specflow
+        worktree: spexy
         branch: local-dev
         locked_at: null
         files:
@@ -145,7 +145,7 @@ groups:
         priority: high
         depends_on:
           - "2.1"
-        worktree: specflow
+        worktree: spexy
         branch: local-dev
         locked_at: null
         files:
@@ -164,7 +164,7 @@ groups:
         priority: medium
         depends_on:
           - "2.1"
-        worktree: specflow
+        worktree: spexy
         branch: local-dev
         locked_at: 2026-10-22T07:03:32.579Z
         files:
@@ -186,7 +186,7 @@ groups:
         priority: high
         depends_on:
           - "2.1"
-        worktree: specflow
+        worktree: spexy
         branch: local-dev
         locked_at: 2026-10-22T07:03:17.527Z
         files:
@@ -206,7 +206,7 @@ groups:
         priority: high
         depends_on:
           - "2.1"
-        worktree: specflow
+        worktree: spexy
         branch: local-dev
         locked_at: null
         files:
@@ -225,7 +225,7 @@ groups:
         priority: high
         depends_on:
           - "3.1"
-        worktree: specflow
+        worktree: spexy
         branch: local-dev
         locked_at: null
         files:
@@ -244,7 +244,7 @@ groups:
         priority: medium
         depends_on:
           - "3.2"
-        worktree: specflow
+        worktree: spexy
         branch: local-dev
         locked_at: null
         files:
@@ -263,7 +263,7 @@ groups:
         priority: low
         depends_on:
           - "2.2"
-        worktree: specflow
+        worktree: spexy
         branch: local-dev
         locked_at: null
         files:
@@ -282,7 +282,7 @@ groups:
         priority: medium
         depends_on:
           - "2.2"
-        worktree: specflow
+        worktree: spexy
         branch: local-dev
         locked_at: null
         files:
@@ -301,7 +301,7 @@ groups:
         priority: low
         depends_on:
           - "4.1"
-        worktree: specflow
+        worktree: spexy
         branch: local-dev
         locked_at: null
         files:

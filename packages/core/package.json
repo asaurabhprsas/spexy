@@ -1,5 +1,5 @@
 {
-  "name": "@spec-flow/core",
+  "name": "@spexy/core",
   "version": "0.1.0",
   "private": true,
   "main": "./src/index.ts",

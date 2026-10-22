@@ -22,11 +22,11 @@ approved_by: null
   - Serialization: YAML, JSON, frontmatter.
 - **Application Architecture**:
   - Layered architecture: Core domain logic vs CLI presentation vs server adapters.
-  - State management: File system as single source of truth (.specflow/).
+  - State management: File system as single source of truth (.spexy/).
   - Event model: Reactive WebSocket broadcasting and file watchers.
 - **Storage & Data Formats**:
   - Primary storage: Local-first Markdown files and YAML documents.
-  - Cache: Ring-buffer snapshot backups in `.specflow/.cache/checkpoints/`.
+  - Cache: Ring-buffer snapshot backups in `.spexy/.cache/checkpoints/`.
 - **Integrations & Protocols**:
   - Local WebSocket server (`ws://` and `http://`).
   - Git integration: branch isolation, worktrees, and commit hooks.

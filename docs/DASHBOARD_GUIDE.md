@@ -1,6 +1,6 @@
-# Spec-Flow Dashboard Guide
+# Spexy Dashboard Guide
 
-The Spec-Flow dashboard is an interactive web interface running locally at `http://127.0.0.1:4200` designed for human architects and engineering leads to monitor, review, and guide autonomous agent workflows.
+The Spexy dashboard is an interactive web interface running locally at `http://127.0.0.1:4200` designed for human architects and engineering leads to monitor, review, and guide autonomous agent workflows.
 
 ---
 
@@ -21,7 +21,7 @@ The Spec-Flow dashboard is an interactive web interface running locally at `http
   - `References`: Attached reference documentation and markdown files.
   - `Images`: Live gallery and image viewer for diagrams, mockups, and UI assets.
   - `All Files`: Comprehensive file browser for the spec.
-- **Document Archiving**: Archive any unwanted or superseded document directly to `.specflow/archived/` with automatic collision handling.
+- **Document Archiving**: Archive any unwanted or superseded document directly to `.spexy/archived/` with automatic collision handling.
 
 ### Tasks Hub (`/tasks`)
 Switch between three visual modes for managing tasks and subtasks:
@@ -75,4 +75,4 @@ Switch between three visual modes for managing tasks and subtasks:
   - Fira Code
   - Geist Sans
   - System Font Stack
-- **Persistence**: Preferences are automatically saved in browser `localStorage` and synchronized with `.specflow/config.json`.
+- **Persistence**: Preferences are automatically saved in browser `localStorage` and synchronized with `.spexy/config.json`.

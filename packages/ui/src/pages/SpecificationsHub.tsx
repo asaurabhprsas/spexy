@@ -319,7 +319,7 @@ export function SpecificationsHub() {
             </span>
             <h2 className="mb-0 mt-1 font-serif text-xl font-bold">Define Feature Specification</h2>
             <p className="text-xs text-muted-foreground mt-1">
-              Creates a dedicated specification directory under <code className="font-mono">.specflow/specs/[id]/</code> with requirements, design, and tasks scaffolds.
+              Creates a dedicated specification directory under <code className="font-mono">.spexy/specs/[id]/</code> with requirements, design, and tasks scaffolds.
             </p>
           </div>
 
@@ -592,7 +592,7 @@ export function SpecificationsHub() {
                     <div className="rounded-xl border border-dashed border-border/80 bg-card/50 p-8 text-center text-xs text-muted-foreground">
                       <FileCheck2 size={24} className="mx-auto mb-2 text-primary opacity-60" />
                       <p className="font-semibold text-foreground">No requirements.md found for this specification.</p>
-                      <p className="mt-1">Add requirements.md under .specflow/specs/{selectedSpec.id}/</p>
+                      <p className="mt-1">Add requirements.md under .spexy/specs/{selectedSpec.id}/</p>
                     </div>
                   )}
                 </TabsContent>
@@ -608,7 +608,7 @@ export function SpecificationsHub() {
                     <div className="rounded-xl border border-dashed border-border/80 bg-card/50 p-8 text-center text-xs text-muted-foreground">
                       <FileText size={24} className="mx-auto mb-2 text-primary opacity-60" />
                       <p className="font-semibold text-foreground">No design.md found for this specification.</p>
-                      <p className="mt-1">Add design.md under .specflow/specs/{selectedSpec.id}/</p>
+                      <p className="mt-1">Add design.md under .spexy/specs/{selectedSpec.id}/</p>
                     </div>
                   )}
                 </TabsContent>
@@ -696,7 +696,7 @@ export function SpecificationsHub() {
                       <FileCode size={24} className="mx-auto mb-2 text-primary opacity-60" />
                       <p className="font-semibold text-foreground">No reference documents discovered.</p>
                       <p className="mt-1">
-                        Add architecture or research files inside <code className="font-mono">.specflow/specs/{selectedSpec.id}/references/</code>.
+                        Add architecture or research files inside <code className="font-mono">.spexy/specs/{selectedSpec.id}/references/</code>.
                       </p>
                     </div>
                   ) : (
@@ -759,7 +759,7 @@ export function SpecificationsHub() {
                       <ImageIcon size={24} className="mx-auto mb-2 text-primary opacity-60" />
                       <p className="font-semibold text-foreground">No image assets discovered.</p>
                       <p className="mt-1">
-                        Add screenshots or architecture diagrams inside <code className="font-mono">.specflow/specs/{selectedSpec.id}/images/</code>.
+                        Add screenshots or architecture diagrams inside <code className="font-mono">.spexy/specs/{selectedSpec.id}/images/</code>.
                       </p>
                     </div>
                   ) : (
@@ -810,7 +810,7 @@ export function SpecificationsHub() {
                   <div className="rounded-xl border border-border/70 bg-card overflow-hidden">
                     <div className="p-4 border-b border-border/70 bg-muted/20 flex items-center justify-between">
                       <span className="font-mono text-xs font-semibold text-foreground">
-                        Directory Contents: .specflow/specs/{selectedSpec.id}/
+                        Directory Contents: .spexy/specs/{selectedSpec.id}/
                       </span>
                       <Badge variant="secondary" className="font-mono text-[10px]">
                         {specFiles.length} {specFiles.length === 1 ? 'file' : 'files'}

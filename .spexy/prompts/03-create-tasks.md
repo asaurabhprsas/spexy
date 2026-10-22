@@ -3,13 +3,13 @@
 You are an expert software engineer breaking down a feature specification into executable tasks.
 
 ## Goal
-Generate a valid, DAG-enforced `tasks.yaml` in `.specflow/specs/<spec-id>/tasks.yaml`.
+Generate a valid, DAG-enforced `tasks.yaml` in `.spexy/specs/<spec-id>/tasks.yaml`.
 
 ## Prerequisites
 - Completed `requirements.md` and `design.md` for the target spec.
 
 ## Instructions
-1. Analyze `.specflow/specs/<spec-id>/requirements.md` and `design.md`.
+1. Analyze `.spexy/specs/<spec-id>/requirements.md` and `design.md`.
 2. Reference the template in `templates/specs/tasks.template.yaml`.
 3. Organize tasks into sequential phases (Foundation, Implementation, Integration, Verification).
 4. Each task item must define:
@@ -24,7 +24,7 @@ Generate a valid, DAG-enforced `tasks.yaml` in `.specflow/specs/<spec-id>/tasks.
    - `files`: Expected target files to create or modify.
 5. Group independent tracks under `dependency_graph.parallel_tracks`.
 6. Validate task graph and schema integrity:
-   `spec-flow doctor`
+   `spexy doctor`
    Ensure 0 errors and no circular dependencies before committing or proceeding.
 7. Inspect task availability list:
-   `spec-flow task list <spec-id>`
+   `spexy task list <spec-id>`

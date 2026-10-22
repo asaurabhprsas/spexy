@@ -12,7 +12,7 @@ import {
   getSpecflowDir,
   getSteeringStatus,
   getTaskAvailability,
-  initSpecFlowWorkspace,
+  initSpexyWorkspace,
   listCommentHistory,
   listComments,
   listSnapshots,
@@ -172,7 +172,7 @@ export function createServer(options: ServerOptions = {}): {
   activityLogs: ActivityLogEntry[];
 } {
   const projectRoot = options.projectRoot || findProjectRoot();
-  initSpecFlowWorkspace(projectRoot);
+  initSpexyWorkspace(projectRoot);
 
   const staticDir = path.resolve(import.meta.dirname, "../../static");
   const clients = new Set<any>();
@@ -427,7 +427,7 @@ export function createServer(options: ServerOptions = {}): {
           }
 
           return json({
-            projectName: config.project.name || "Spec-Flow Workspace",
+            projectName: config.project.name || "Spexy Workspace",
             steeringApproved: steering.approved,
             steeringTotal: steering.total,
             steeringApprovedCount: steering.approvedCount,
@@ -989,7 +989,7 @@ export function createServer(options: ServerOptions = {}): {
           const specDir = path.resolve(specsDir, specId);
           const targetFile = path.resolve(specDir, filename);
 
-          // Path security check: must resolve within .specflow/specs/{specId}
+          // Path security check: must resolve within .spexy/specs/{specId}
           if (!targetFile.startsWith(specDir) || !fs.existsSync(targetFile) || !fs.statSync(targetFile).isFile()) {
             return json({ error: `File not found or access denied: ${filename}` }, 404);
           }
@@ -1564,7 +1564,7 @@ export function createServer(options: ServerOptions = {}): {
 
       // Fallback HTML if static/index.html is missing
       return new Response(
-        `<!DOCTYPE html><html><head><title>Spec-Flow</title><style>body{font-family:sans-serif;padding:2rem;text-align:center;}</style></head><body><h1>Spec-Flow Server Active</h1><p>API is listening at <code>/api/status</code>.</p><p style="color:#666;">Web UI static assets have not been built yet.<br>Run <code>pnpm local:publish</code> or <code>pnpm build</code> to compile the web dashboard.</p></body></html>`,
+        `<!DOCTYPE html><html><head><title>Spexy</title><style>body{font-family:sans-serif;padding:2rem;text-align:center;}</style></head><body><h1>Spexy Server Active</h1><p>API is listening at <code>/api/status</code>.</p><p style="color:#666;">Web UI static assets have not been built yet.<br>Run <code>pnpm local:publish</code> or <code>pnpm build</code> to compile the web dashboard.</p></body></html>`,
         { headers: { "Content-Type": "text/html; charset=utf-8" } },
       );
     }
@@ -1634,11 +1634,11 @@ export function startServer(
       websocket,
     });
   } else {
-    throw new Error("Spec-Flow server requires Bun runtime.");
+    throw new Error("Spexy server requires Bun runtime.");
   }
 
   const url = `http://${host}:${port}`;
-  console.log(`[Spec-Flow] Server listening at ${url}`);
+  console.log(`[Spexy] Server listening at ${url}`);
 
   return {
     server: bunServer,

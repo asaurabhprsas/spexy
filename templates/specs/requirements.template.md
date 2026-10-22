@@ -12,7 +12,7 @@ approved_by: null
 - **User Goals**:
   - What users accomplish through this feature.
 - **Alignment with Steering**:
-  - Direct contribution to objectives in `.specflow/steering/product.md`.
+  - Direct contribution to objectives in `.spexy/steering/product.md`.
 
 ## 2. Requirements & Acceptance Criteria
 

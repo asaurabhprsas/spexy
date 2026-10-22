@@ -21,7 +21,7 @@ const task = (
   requirementsRef: [],
 });
 
-describe("Spec-Flow workflow rules", () => {
+describe("Spexy workflow rules", () => {
   it("rejects dependency cycles before a task graph is accepted", () => {
     expect(() =>
       validateTaskGraph([

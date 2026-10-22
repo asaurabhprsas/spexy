@@ -67,7 +67,7 @@ export function SettingsPage() {
       if (res.ok) {
         toast({
           title: 'Preferences Saved',
-          description: 'Your user preferences were persisted to .specflow/config.json',
+          description: 'Your user preferences were persisted to .spexy/config.json',
         });
       } else {
         toast({
@@ -347,7 +347,7 @@ export function SettingsPage() {
                         className="rounded-lg bg-muted/40 p-2 text-xs font-medium text-foreground truncate border border-border/40"
                         style={{ fontFamily: font.fontSans }}
                       >
-                        Spec-Flow Specification v2.4
+                        Spexy Specification v2.4
                       </div>
                     </button>
                   );
@@ -459,26 +459,26 @@ export function SettingsPage() {
             <CardHeader className="pb-3">
               <CardTitle className="text-base font-serif">Workspace Storage & Config</CardTitle>
               <CardDescription className="text-xs">
-                Spec-Flow operates with zero database dependencies. All configuration lives locally.
+                Spexy operates with zero database dependencies. All configuration lives locally.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="rounded-xl border border-border/70 bg-muted/20 p-4 space-y-2 font-mono text-xs">
                 <div className="flex items-center justify-between text-muted-foreground pb-2 border-b border-border/50">
                   <span>Configuration File</span>
-                  <span className="text-foreground">.specflow/config.json</span>
+                  <span className="text-foreground">.spexy/config.json</span>
                 </div>
                 <div className="flex items-center justify-between text-muted-foreground pb-2 border-b border-border/50">
                   <span>Specifications Directory</span>
-                  <span className="text-foreground">.specflow/specs/</span>
+                  <span className="text-foreground">.spexy/specs/</span>
                 </div>
                 <div className="flex items-center justify-between text-muted-foreground pb-2 border-b border-border/50">
                   <span>Steering Governance</span>
-                  <span className="text-foreground">.specflow/steering/</span>
+                  <span className="text-foreground">.spexy/steering/</span>
                 </div>
                 <div className="flex items-center justify-between text-muted-foreground">
                   <span>Archived Documents</span>
-                  <span className="text-foreground">.specflow/archived/</span>
+                  <span className="text-foreground">.spexy/archived/</span>
                 </div>
               </div>
 

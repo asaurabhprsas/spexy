@@ -150,7 +150,7 @@ function Shell({ children }: { children: ReactNode }) {
   // Collapsible sidebar state with hover-to-expand
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(() => {
     try {
-      return localStorage.getItem('specflow_sidebar_collapsed') === 'true';
+      return localStorage.getItem('spexy_sidebar_collapsed') === 'true';
     } catch {
       return false;
     }
@@ -161,7 +161,7 @@ function Shell({ children }: { children: ReactNode }) {
     setIsSidebarCollapsed((prev) => {
       const next = !prev;
       try {
-        localStorage.setItem('specflow_sidebar_collapsed', String(next));
+        localStorage.setItem('spexy_sidebar_collapsed', String(next));
       } catch {}
       return next;
     });
@@ -191,7 +191,7 @@ function Shell({ children }: { children: ReactNode }) {
             </span>
             {isExpandedView && (
               <span className="truncate animate-in fade-in duration-200">
-                <span className="block font-serif text-[16px] font-bold tracking-tight">spec-flow</span>
+                <span className="block font-serif text-[16px] font-bold tracking-tight">spexy</span>
                 <span className="mt-0.5 block font-mono text-[8px] uppercase tracking-[.19em] text-white/45">
                   human × agent
                 </span>

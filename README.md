@@ -1,4 +1,4 @@
-# Spec-Flow
+# Spexy
 
 > **Local-First, Human-in-the-Loop Spec-Driven Development (SDD) Orchestration Platform for Autonomous AI Agents and Software Architects.**
 
@@ -10,15 +10,15 @@
 
 ---
 
-## 💡 What is Spec-Flow?
+## 💡 What is Spexy?
 
 Autonomous AI coding agents (Claude Code, Cursor, Codex, OpenHands) write code fast, but left unconstrained, they often drift from architecture guidelines, hallucinate dependencies, and produce merge conflicts.
 
-**Spec-Flow** solves this by establishing a verifiable, machine-executable contract between human software architects and AI agents:
+**Spexy** solves this by establishing a verifiable, machine-executable contract between human software architects and AI agents:
 1. **Constitution First**: Guarantees technical, product, and structural boundaries before a single line of feature code is written.
 2. **DAG-Driven Workflow**: Decomposes features into atomic, directed acyclic graphs of tasks with dynamic prerequisite checking.
 3. **Two-Tier HITL Safety**: Agents claim and submit tasks, but **only humans can approve tasks as done**.
-4. **Zero-Database**: 100% stored in version-controlled markdown and YAML files inside `.specflow/`.
+4. **Zero-Database**: 100% stored in version-controlled markdown and YAML files inside `.spexy/`.
 5. **Token-Optimized**: CLI compact modes that strip fluff and cut LLM context consumption by up to 80%.
 
 ---
@@ -28,28 +28,28 @@ Autonomous AI coding agents (Claude Code, Cursor, Codex, OpenHands) write code f
 ### 1. Global Installation & Initialization
 ```bash
 # Clone the repository
-git clone https://github.com/asaurabhprsas/spec-flow.git && cd spec-flow
+git clone https://github.com/asaurabhprsas/spexy.git && cd spexy
 
 # Build and link the CLI locally
 bun install
 bun run publish:local
 
 # Initialize a workspace
-spec-flow init
+spexy init
 ```
 
 ### 2. Workspace Health Diagnostic
 Run the built-in doctor command to audit specifications, schemas, and DAG graph dependencies:
 ```bash
-spec-flow doctor
+spexy doctor
 # Or token-compact mode for AI agents:
-spec-flow doctor --compact
+spexy doctor --compact
 ```
 
 ### 3. Launch the Interactive Dashboard
 Launch the real-time web dashboard running locally at `http://127.0.0.1:4200`:
 ```bash
-spec-flow --dashboard
+spexy --dashboard
 ```
 
 ---
@@ -58,10 +58,10 @@ spec-flow --dashboard
 
 ### 🗃️ Zero-Database, Local-First Architecture
 All specifications, task graphs, review comments, and rollback checkpoints live directly in your repository:
-- `.specflow/steering/`: Foundational constitution (`product.md`, `tech.md`, `structure.md`).
-- `.specflow/specs/{feature}/`: Feature requirements, technical designs, `tasks.yaml` DAG, and reference assets.
-- `.specflow/archived/`: Safe document archiving engine for superseded or discarded specs.
-- `.specflow/.cache/`: Git-ignored ring-buffer snapshots (`checkpoints/`) and ephemeral task leases.
+- `.spexy/steering/`: Foundational constitution (`product.md`, `tech.md`, `structure.md`).
+- `.spexy/specs/{feature}/`: Feature requirements, technical designs, `tasks.yaml` DAG, and reference assets.
+- `.spexy/archived/`: Safe document archiving engine for superseded or discarded specs.
+- `.spexy/.cache/`: Git-ignored ring-buffer snapshots (`checkpoints/`) and ephemeral task leases.
 
 ### 🛡️ Steering Gate & Two-Tier HITL State Machine
 - **Steering Approval Gate**: Autonomous agents are blocked from creating feature specs until a human architect explicitly approves all steering documents.
@@ -80,11 +80,11 @@ The dashboard (`/tasks`) offers three synchronized views:
 3. **DAG Dependency Visualizer**: Interactive topological SVG graph with rank columns, smooth cubic-bezier connectors, and bidirectional dependency chain highlighting.
 
 ### ✂️ Token Killer CLI Modes
-When AI agents query task lists, steering docs, or review comments, passing raw prose wastes thousands of expensive context tokens. Spec-Flow includes token-optimized CLI modes:
+When AI agents query task lists, steering docs, or review comments, passing raw prose wastes thousands of expensive context tokens. Spexy includes token-optimized CLI modes:
 ```bash
-spec-flow task list demo-spec --compact
-spec-flow status --compact
-spec-flow comment list demo-spec --compact
+spexy task list demo-spec --compact
+spexy status --compact
+spexy comment list demo-spec --compact
 ```
 
 ### 📝 Context-Anchored Line Comments
@@ -102,13 +102,13 @@ spec-flow comment list demo-spec --compact
 ## 📁 Monorepo Layout
 
 ```text
-spec-flow/
+spexy/
 ├── packages/
 │   ├── core/              # Domain logic, Zod schemas, DAG engine, and filesystem I/O
-│   ├── cli/               # Single-binary CLI (`spec-flow`) and Fastify WebSocket server
+│   ├── cli/               # Single-binary CLI (`spexy`) and Fastify WebSocket server
 │   └── ui/                # React 19 SPA dashboard (Shadcn UI, Tailwind, Lucide, @dnd-kit)
 ├── skills/
-│   └── spec-flow/         # Agent skill pack (SKILL.md) for Claude Code, Cursor, and Antigravity
+│   └── spexy/         # Agent skill pack (SKILL.md) for Claude Code, Cursor, and Antigravity
 ├── templates/             # Turnkey bullet-point templates (steering & specs)
 ├── docs/                  # Persistent project documentation
 │   ├── ARCHITECTURE.md    # System architecture and domain model
@@ -126,7 +126,7 @@ spec-flow/
 Autonomous agents executing tasks in this repository follow standard conventional patterns:
 1. **Branch Naming**: `feature/<spec-id>/<task-id>` (e.g., `feature/demo-spec/2.1`)
 2. **Commit Pattern**: `feat(<spec-id>): <task-title> (refs #<task-id>)`
-3. **Pre-Flight Verification**: Run `spec-flow doctor` before committing or submitting tasks.
+3. **Pre-Flight Verification**: Run `spexy doctor` before committing or submitting tasks.
 
 For detailed guidelines, see [**`AGENTS.md`**](AGENTS.md) and [**`docs/WORKFLOW_GUIDE.md`**](docs/WORKFLOW_GUIDE.md).
 

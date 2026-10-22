@@ -1,8 +1,8 @@
-# Spec-Flow Milestones & Progress Tracker
+# Spexy Milestones & Progress Tracker
 
 ## Milestone Status Overview
 
-- [x] **Phase 1: Domain Core & Local Filesystem Engine (`@spec-flow/core`)**
+- [x] **Phase 1: Domain Core & Local Filesystem Engine (`@spexy/core`)**
   - [x] Zod schemas for `config.yaml`, `tasks.yaml`, `pending-comments.yaml`, and frontmatter.
   - [x] DAG cycle detection ($A \to B \to A$) and dependency resolution.
   - [x] Two-tier HITL state machine with strict agent role guards.
@@ -10,15 +10,15 @@
   - [x] Bounded checkpoint ring-buffer engine (`.cache/checkpoints/` max 20).
   - [x] Fuzzy 3-line context anchor hasher for comment resynchronization.
   - [x] Git worktree common directory resolver & lease locks.
-  - [x] Document archiving engine with collision handling (`.specflow/archived/`).
+  - [x] Document archiving engine with collision handling (`.spexy/archived/`).
   - [x] Turnkey templates and actionable agent prompts.
 
-- [x] **Phase 2: CLI Binary & Token Optimization Engine (`@spec-flow/cli`)**
+- [x] **Phase 2: CLI Binary & Token Optimization Engine (`@spexy/cli`)**
   - [x] Commander CLI binary with all commands (`init`, `status`, `spec`, `task`, `comment`, `checkpoint`, `doc archive`, `doctor`, `check`, `serve`).
   - [x] Token Killer compact mode (`--compact`) cutting up to 80% tokens on status, tasks, docs, and comments.
-  - [x] Health diagnostic tool (`spec-flow doctor` / `check`) validating steering, specs, schemas, and graph topology.
-  - [x] `skills/spec-flow/SKILL.md` agent skill contract and reference manual.
-  - [x] Globally installed local binary at `~/.local/bin/spec-flow`.
+  - [x] Health diagnostic tool (`spexy doctor` / `check`) validating steering, specs, schemas, and graph topology.
+  - [x] `skills/spexy/SKILL.md` agent skill contract and reference manual.
+  - [x] Globally installed local binary at `~/.local/bin/spexy`.
 
 - [x] **Phase 3: Fastify/Bun Real-Time Server & Bi-Directional Watcher**
   - [x] Bun HTTP & WebSocket `/ws` server engine (`packages/cli/src/server/index.ts`).
@@ -26,7 +26,7 @@
   - [x] Real-time event broadcasting (`DOC_UPDATED`, `TASK_UPDATED`, `SPEC_FILES_UPDATED`, `DOC_ARCHIVED`, `LOG_EVENT`).
   - [x] Multi-spec task aggregation endpoints (`/api/tasks`, `/api/specs/all/tasks`).
   - [x] Human manual status overrides and backwards transitions (`set_status`).
-  - [x] User preferences API with persistence in `.specflow/config.json`.
+  - [x] User preferences API with persistence in `.spexy/config.json`.
 
 - [x] **Phase 4: Web UI Dashboard Views & Static Bundling (`packages/ui`)**
   - [x] ClickUp-style hierarchical task list with collapsible subtasks and progress indicators.

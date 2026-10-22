@@ -14,13 +14,13 @@ import {
 } from "../schemas/tasks";
 import { validateTaskGraph, WorkflowRuleError } from "../dag/workflow";
 
-export const SPECFLOW_DIR = ".specflow";
+export const SPEXY_DIR = ".spexy";
 export const DOCS_DIR = "docs";
 
 export function findProjectRoot(startDir: string = process.cwd()): string {
   let curr = path.resolve(startDir);
   while (true) {
-    if (fs.existsSync(path.join(curr, SPECFLOW_DIR))) {
+    if (fs.existsSync(path.join(curr, SPEXY_DIR)) || fs.existsSync(path.join(curr, ".specflow"))) {
       return curr;
     }
     if (fs.existsSync(path.join(curr, ".git"))) {
@@ -33,9 +33,15 @@ export function findProjectRoot(startDir: string = process.cwd()): string {
   return path.resolve(startDir);
 }
 
-export function getSpecflowDir(projectRoot: string): string {
-  return path.join(projectRoot, SPECFLOW_DIR);
+export function getSpexyDir(projectRoot: string): string {
+  const spexyDir = path.join(projectRoot, SPEXY_DIR);
+  if (fs.existsSync(spexyDir)) return spexyDir;
+  const legacyDir = path.join(projectRoot, ".specflow");
+  if (fs.existsSync(legacyDir)) return legacyDir;
+  return spexyDir;
 }
+
+export const getSpecflowDir = getSpexyDir;
 
 export function readConfig(projectRoot: string): Config {
   const configPath = path.join(getSpecflowDir(projectRoot), "config.yaml");
@@ -232,7 +238,7 @@ export function createSpec(
     if (!steering.approved) {
       throw new WorkflowRuleError(
         "STEERING_GATE_LOCKED",
-        `Cannot create spec "${specId}": steering documents are not yet approved by a human. Run "spec-flow status" to review steering documents.`,
+        `Cannot create spec "${specId}": steering documents are not yet approved by a human. Run "spexy status" to review steering documents.`,
       );
     }
   }
@@ -618,7 +624,7 @@ export function updateTaskInDoc(
   return { ...tasksDoc, groups: newGroups };
 }
 
-export function initSpecFlowWorkspace(projectRoot: string): void {
+export function initSpexyWorkspace(projectRoot: string): void {
   const sfDir = getSpecflowDir(projectRoot);
   const docsDir = path.join(projectRoot, DOCS_DIR);
   const templatesDir = path.join(projectRoot, "templates");
@@ -632,7 +638,7 @@ export function initSpecFlowWorkspace(projectRoot: string): void {
   fs.mkdirSync(path.join(sfDir, ".cache", "history"), { recursive: true });
   fs.mkdirSync(docsDir, { recursive: true });
 
-  // Clean up legacy .specflow/templates if it exists
+  // Clean up legacy .spexy/templates if it exists
   const legacyTemplatesDir = path.join(sfDir, "templates");
   if (fs.existsSync(legacyTemplatesDir)) {
     fs.rmSync(legacyTemplatesDir, { recursive: true, force: true });
@@ -640,32 +646,32 @@ export function initSpecFlowWorkspace(projectRoot: string): void {
 
   const now = new Date().toISOString();
 
-  // 1. .specflow/config.yaml
+  // 1. .spexy/config.yaml
   const configPath = path.join(sfDir, "config.yaml");
   if (!fs.existsSync(configPath)) {
     fs.writeFileSync(configPath, YAML.stringify(DEFAULT_CONFIG), "utf-8");
   }
 
-  // 2. .specflow/.cache/.gitignore
+  // 2. .spexy/.cache/.gitignore
   const cacheGitignore = path.join(sfDir, ".cache", ".gitignore");
   if (!fs.existsSync(cacheGitignore)) {
     fs.writeFileSync(cacheGitignore, "*\n!.gitignore\n", "utf-8");
   }
 
-  // 3. .specflow/.cache/pending-comments.yaml
+  // 3. .spexy/.cache/pending-comments.yaml
   const commentsFile = path.join(sfDir, ".cache", "pending-comments.yaml");
   if (!fs.existsSync(commentsFile)) {
     fs.writeFileSync(commentsFile, YAML.stringify({ comments: [] }), "utf-8");
   }
 
-  // 4. .specflow/README.md
+  // 4. .spexy/README.md
   const sfReadme = path.join(sfDir, "README.md");
   if (!fs.existsSync(sfReadme)) {
     fs.writeFileSync(
       sfReadme,
-      `# Spec-Flow Workspace
+      `# Spexy Workspace
 
-This directory is managed by **Spec-Flow**, the local-first Spec-Driven Development tool.
+This directory is managed by **Spexy**, the local-first Spec-Driven Development tool.
 
 ## Structure
 - \`steering/\`: Foundational documents (product, tech, structure). Must be approved by a human before spec execution.
@@ -677,7 +683,7 @@ This directory is managed by **Spec-Flow**, the local-first Spec-Driven Developm
     );
   }
 
-  // 5. .specflow/roadmap.md
+  // 5. .spexy/roadmap.md
   const sfRoadmap = path.join(sfDir, "roadmap.md");
   if (!fs.existsSync(sfRoadmap)) {
     fs.writeFileSync(
@@ -787,11 +793,11 @@ approved_by: null
   - Serialization: YAML, JSON, frontmatter.
 - **Application Architecture**:
   - Layered architecture: Core domain logic vs CLI presentation vs server adapters.
-  - State management: File system as single source of truth (.specflow/).
+  - State management: File system as single source of truth (.spexy/).
   - Event model: Reactive WebSocket broadcasting and file watchers.
 - **Storage & Data Formats**:
   - Primary storage: Local-first Markdown files and YAML documents.
-  - Cache: Ring-buffer snapshot backups in \`.specflow/.cache/checkpoints/\`.
+  - Cache: Ring-buffer snapshot backups in \`.spexy/.cache/checkpoints/\`.
 - **Integrations & Protocols**:
   - Local WebSocket server (\`ws://\` and \`http://\`).
   - Git integration: branch isolation, worktrees, and commit hooks.
@@ -842,7 +848,7 @@ approved_by: null
   - \`packages/core/\`: Domain logic, DAG workflow engine, Zod schemas, file operations.
   - \`packages/cli/\`: Command-line interface, server daemon, dashboard runner.
   - \`packages/ui/\`: Frontend single-page application dashboard.
-- **\`.specflow/\`**:
+- **\`.spexy/\`**:
   - \`steering/\`: Foundational product, tech, and structure steering documents.
   - \`specs/\`: Feature specifications with requirements, design, and tasks.yaml.
   - \`prompts/\`: Standardized AI agent prompt guides.
@@ -858,7 +864,7 @@ approved_by: null
 - **Files & Directories**:
   - Source files: \`kebab-case.ts\` (e.g., \`ring-buffer.ts\`, \`fuzzy-anchor.ts\`).
   - Test files: \`*.test.ts\` co-located with source or in test suites.
-  - Documentation: \`kebab-case.md\` or \`.specflow/\` standard conventions.
+  - Documentation: \`kebab-case.md\` or \`.spexy/\` standard conventions.
 - **Source Code Symbols**:
   - Classes, interfaces, types: \`PascalCase\` (e.g., \`TasksDocumentSchema\`, \`TaskItem\`).
   - Functions, methods, variables: \`camelCase\` (e.g., \`computeTaskAvailability\`).
@@ -868,7 +874,7 @@ approved_by: null
 - **Import Ordering**:
   - 1. Node.js built-ins (\`node:fs\`, \`node:path\`, \`node:crypto\`).
   - 2. External third-party packages (\`yaml\`, \`zod\`, \`commander\`).
-  - 3. Internal monorepo package imports (\`@spec-flow/core\`).
+  - 3. Internal monorepo package imports (\`@spexy/core\`).
   - 4. Relative file imports (\`./server\`, \`../fs/workspace\`).
 - **Barrel Exports**:
   - Clean public APIs exported via root \`index.ts\` in each package.
@@ -909,7 +915,7 @@ approved_by: null
 - **User Goals**:
   - What users accomplish through this feature.
 - **Alignment with Steering**:
-  - Direct contribution to objectives in \`.specflow/steering/product.md\`.
+  - Direct contribution to objectives in \`.spexy/steering/product.md\`.
 
 ## 2. Requirements & Acceptance Criteria
 
@@ -952,7 +958,7 @@ approved_by: null
 
 ## 1. Overview & Steering Alignment
 - **Architectural Fit**:
-  - How this design integrates with \`.specflow/steering/tech.md\` and \`structure.md\`.
+  - How this design integrates with \`.spexy/steering/tech.md\` and \`structure.md\`.
 - **Core Design Patterns**:
   - Selected patterns (e.g., DAG traversal, reactive state, modular adapters).
 
@@ -1061,14 +1067,14 @@ groups:
     }
   }
 
-  // 7. Actionable Prompts in .specflow/prompts/
+  // 7. Actionable Prompts in .spexy/prompts/
   const prompts: { filename: string; content: string }[] = [
     {
       filename: "README.md",
-      content: `# Spec-Flow Actionable Agent Prompts
+      content: `# Spexy Actionable Agent Prompts
 
-This directory contains standardized, actionable prompt guides for AI agents collaborating on Spec-Flow projects.
-Each prompt guides the agent through an SDD stage using Spec-Flow templates and CLI commands.
+This directory contains standardized, actionable prompt guides for AI agents collaborating on Spexy projects.
+Each prompt guides the agent through an SDD stage using Spexy templates and CLI commands.
 
 ## Workflow Prompts Index
 - \`01-create-steering.md\`: Drafting foundational steering docs (product, tech, structure).
@@ -1081,26 +1087,26 @@ Each prompt guides the agent through an SDD stage using Spec-Flow templates and 
 1. **Steering-First**: Steering documents must be approved by a human before specs execute.
 2. **DAG Integrity**: Every task prerequisite must be declared; circular dependencies are rejected.
 3. **HITL Two-Tier Gate**: Agents submit tasks to \`to-review\`; only human reviewers approve to \`done\`.
-4. **History Preservation**: Resolved comments are automatically archived in \`.specflow/.cache/history/\`.
-5. **Health Diagnostics**: Always run \`spec-flow doctor\` (or \`spec-flow check\`) to verify schema and graph integrity before committing or submitting.
+4. **History Preservation**: Resolved comments are automatically archived in \`.spexy/.cache/history/\`.
+5. **Health Diagnostics**: Always run \`spexy doctor\` (or \`spexy check\`) to verify schema and graph integrity before committing or submitting.
 `,
     },
     {
       filename: "01-create-steering.md",
       content: `# Agent Prompt: 01 - Create Steering Documents
 
-You are an expert software architect assisting with project bootstrapping using Spec-Flow.
+You are an expert software architect assisting with project bootstrapping using Spexy.
 
 ## Goal
-Draft or update foundational steering documents (\`product.md\`, \`tech.md\`, \`structure.md\`) in \`.specflow/steering/\`.
+Draft or update foundational steering documents (\`product.md\`, \`tech.md\`, \`structure.md\`) in \`.spexy/steering/\`.
 
 ## Prerequisites
-- Spec-Flow workspace initialized (\`spec-flow init\`).
+- Spexy workspace initialized (\`spexy init\`).
 - Read-only review of existing repository context.
 
 ## Instructions
 1. Inspect current steering status:
-   \`spec-flow status\`
+   \`spexy status\`
 2. Refer to the turnkey templates in \`templates/steering/\`:
    - \`product.template.md\`: Product vision, target users, features, principles, metrics.
    - \`tech.template.md\`: Technology stack, patterns, security, and quality constraints.
@@ -1114,41 +1120,41 @@ Draft or update foundational steering documents (\`product.md\`, \`tech.md\`, \`
    ---
    \`\`\`
 4. Write documents into:
-   - \`.specflow/steering/product.md\`
-   - \`.specflow/steering/tech.md\`
-   - \`.specflow/steering/structure.md\`
+   - \`.spexy/steering/product.md\`
+   - \`.spexy/steering/tech.md\`
+   - \`.spexy/steering/structure.md\`
 5. Verify document integrity and frontmatter:
-   \`spec-flow doctor\`
+   \`spexy doctor\`
 6. Inform the human architect to review and approve the steering documents:
    - Autonomous agents cannot mark steering documents as \`approved\`.
    - The steering gate must be approved by a human before spec execution begins.
-   - Run \`spec-flow status\` to verify approval status.
+   - Run \`spexy status\` to verify approval status.
 `,
     },
     {
       filename: "02-create-spec.md",
       content: `# Agent Prompt: 02 - Create Feature Specification
 
-You are an expert engineer creating a new feature specification in Spec-Flow.
+You are an expert engineer creating a new feature specification in Spexy.
 
 ## Goal
 Scaffold and author \`requirements.md\` and \`design.md\` for a new feature.
 
 ## Prerequisites
-- Steering documents approved by a human reviewer (\`spec-flow status\`).
+- Steering documents approved by a human reviewer (\`spexy status\`).
 
 ## Instructions
 1. Verify steering approval status:
-   \`spec-flow status\`
+   \`spexy status\`
    (If unapproved, request human approval before proceeding or pass \`--force\` if explicitly permitted).
 2. Scaffold the new spec directory:
-   \`spec-flow spec create <spec-id> --title "<Feature Title>"\`
+   \`spexy spec create <spec-id> --title "<Feature Title>"\`
    This generates:
-   - \`.specflow/specs/<spec-id>/requirements.md\`
-   - \`.specflow/specs/<spec-id>/design.md\`
-   - \`.specflow/specs/<spec-id>/tasks.yaml\`
-   - \`.specflow/specs/<spec-id>/references/\`
-   - \`.specflow/specs/<spec-id>/images/\`
+   - \`.spexy/specs/<spec-id>/requirements.md\`
+   - \`.spexy/specs/<spec-id>/design.md\`
+   - \`.spexy/specs/<spec-id>/tasks.yaml\`
+   - \`.spexy/specs/<spec-id>/references/\`
+   - \`.spexy/specs/<spec-id>/images/\`
 3. Reference templates in \`templates/specs/\`:
    - \`requirements.template.md\`: User story, functional requirements with acceptance criteria, and non-functional requirements.
    - \`design.template.md\`: Architecture, components, interfaces, data models, integration contracts, and error handling.
@@ -1157,7 +1163,7 @@ Scaffold and author \`requirements.md\` and \`design.md\` for a new feature.
    - Define exact schemas, boundary conditions, and test assertions.
 5. Place auxiliary artifacts (diagrams, API contracts) into \`references/\` or \`images/\`.
 6. Run workspace diagnostic check:
-   \`spec-flow doctor\`
+   \`spexy doctor\`
 7. Confirm spec file discovery:
    Review discovered files with \`listSpecFiles\` or the dashboard file tree.
 `,
@@ -1169,13 +1175,13 @@ Scaffold and author \`requirements.md\` and \`design.md\` for a new feature.
 You are an expert software engineer breaking down a feature specification into executable tasks.
 
 ## Goal
-Generate a valid, DAG-enforced \`tasks.yaml\` in \`.specflow/specs/<spec-id>/tasks.yaml\`.
+Generate a valid, DAG-enforced \`tasks.yaml\` in \`.spexy/specs/<spec-id>/tasks.yaml\`.
 
 ## Prerequisites
 - Completed \`requirements.md\` and \`design.md\` for the target spec.
 
 ## Instructions
-1. Analyze \`.specflow/specs/<spec-id>/requirements.md\` and \`design.md\`.
+1. Analyze \`.spexy/specs/<spec-id>/requirements.md\` and \`design.md\`.
 2. Reference the template in \`templates/specs/tasks.template.yaml\`.
 3. Organize tasks into sequential phases (Foundation, Implementation, Integration, Verification).
 4. Each task item must define:
@@ -1190,17 +1196,17 @@ Generate a valid, DAG-enforced \`tasks.yaml\` in \`.specflow/specs/<spec-id>/tas
    - \`files\`: Expected target files to create or modify.
 5. Group independent tracks under \`dependency_graph.parallel_tracks\`.
 6. Validate task graph and schema integrity:
-   \`spec-flow doctor\`
+   \`spexy doctor\`
    Ensure 0 errors and no circular dependencies before committing or proceeding.
 7. Inspect task availability list:
-   \`spec-flow task list <spec-id>\`
+   \`spexy task list <spec-id>\`
 `,
     },
     {
       filename: "04-execute-task.md",
       content: `# Agent Prompt: 04 - Execute Task
 
-You are an autonomous coding agent executing assigned tasks in Spec-Flow.
+You are an autonomous coding agent executing assigned tasks in Spexy.
 
 ## Goal
 Claim an available task, implement code and tests, follow git commit patterns, and submit it for human review.
@@ -1210,9 +1216,9 @@ Claim an available task, implement code and tests, follow git commit patterns, a
 
 ## Instructions
 1. Inspect available tasks whose dependencies are resolved:
-   \`spec-flow task list <spec-id> --available\`
+   \`spexy task list <spec-id> --available\`
 2. Claim the target task:
-   \`spec-flow task start <task-id>\`
+   \`spexy task start <task-id>\`
    This sets status to \`in-progress\` and records the agent lease.
 3. Switch or create designated branch if defined:
    \`git checkout -b <branch>\` (e.g., \`feature/<spec-id>/<task-id>\`)
@@ -1225,15 +1231,15 @@ Claim an available task, implement code and tests, follow git commit patterns, a
    \`bun run typecheck\`
    Ensure 100% test pass rate.
 7. Verify workspace schema and DAG health:
-   \`spec-flow doctor\`
+   \`spexy doctor\`
    Must pass with 0 errors before committing or submitting.
 8. Commit changes following the task's commit message pattern:
    \`git commit -m "<commit_pattern>"\` (e.g., \`feat(<spec-id>): <task-title> (refs #<task-id>)\`)
 9. Submit the task for human verification (HITL Gate):
-   \`spec-flow task complete <task-id> --note "Implemented feature with tests passing."\`
+   \`spexy task complete <task-id> --note "Implemented feature with tests passing."\`
    Note: Autonomous agents are strictly forbidden from setting status to \`done\`.
 10. Check for human feedback comments:
-    \`spec-flow comment list --pending\`
+    \`spexy comment list --pending\`
 `,
     },
     {
@@ -1250,9 +1256,9 @@ Review pending anchored comments, apply fixes, and resolve comments with history
 
 ## Instructions
 1. List pending comments across the project:
-   \`spec-flow comment list --pending\`
+   \`spexy comment list --pending\`
    Or output as JSON for parsing:
-   \`spec-flow comment list --pending --json\`
+   \`spexy comment list --pending --json\`
 2. For each comment:
    - Note \`id\`, \`target_file\`, line anchors, and the \`instruction\`.
    - Inspect the anchored lines in \`target_file\`.
@@ -1261,14 +1267,14 @@ Review pending anchored comments, apply fixes, and resolve comments with history
      \`bun test\`
      \`bun run typecheck\`
    - Verify workspace health:
-     \`spec-flow doctor\`
+     \`spexy doctor\`
 3. Resolve the comment:
-   \`spec-flow comment resolve <comment-id> --note "Addressed feedback and updated tests."\`
+   \`spexy comment resolve <comment-id> --note "Addressed feedback and updated tests."\`
    This automatically archives the comment to history and prunes it from pending.
 4. Verify all comments are cleared:
-   \`spec-flow comment list --pending\`
+   \`spexy comment list --pending\`
 5. Check resolved history if needed:
-   \`spec-flow comment history --file <target_file>\`
+   \`spexy comment history --file <target_file>\`
 `,
     },
   ];
@@ -1290,7 +1296,7 @@ Review pending anchored comments, apply fixes, and resolve comments with history
     {
       file: "tech.md",
       title: "Technical Architecture & Constraints",
-      content: `# Technical Architecture & Rules\n\n## Stack\n- Monorepo with TypeScript, Bun, and Turborepo.\n- Local-first architecture: state persisted in .specflow/ YAML and Markdown.\n- Embedded Fastify WebSocket server for real-time dashboard updates.\n`,
+      content: `# Technical Architecture & Rules\n\n## Stack\n- Monorepo with TypeScript, Bun, and Turborepo.\n- Local-first architecture: state persisted in .spexy/ YAML and Markdown.\n- Embedded Fastify WebSocket server for real-time dashboard updates.\n`,
     },
     {
       file: "structure.md",
@@ -1334,7 +1340,7 @@ This directory provides project context, system architecture, and onboarding doc
       progressDoc,
       `# Project Milestones & Progress Log
 
-- **${now.slice(0, 10)}**: Workspace initialized with Spec-Flow SDD methodology.
+- **${now.slice(0, 10)}**: Workspace initialized with Spexy SDD methodology.
 `,
       "utf-8",
     );
@@ -1347,14 +1353,14 @@ This directory provides project context, system architecture, and onboarding doc
       `# Quickstart & Onboarding Guide
 
 ## For AI Agents
-1. Run \`spec-flow status\` to inspect steering approval state.
-2. List available work: \`spec-flow task list <spec-id> --available\`.
-3. Claim a task: \`spec-flow task start <task-id>\`.
-4. When implementation is verified with unit tests, submit for review: \`spec-flow task complete <task-id> --note "..."\`.
-5. Check for human feedback: \`spec-flow comment list --pending\`.
+1. Run \`spexy status\` to inspect steering approval state.
+2. List available work: \`spexy task list <spec-id> --available\`.
+3. Claim a task: \`spexy task start <task-id>\`.
+4. When implementation is verified with unit tests, submit for review: \`spexy task complete <task-id> --note "..."\`.
+5. Check for human feedback: \`spexy comment list --pending\`.
 
 ## For Human Architects
-1. Launch dashboard: \`spec-flow --dashboard\`.
+1. Launch dashboard: \`spexy --dashboard\`.
 2. Review steering documents and approve them.
 3. Review submitted tasks in the Kanban board and approve or reject them.
 `,

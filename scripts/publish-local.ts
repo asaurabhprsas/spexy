@@ -8,9 +8,9 @@ const projectRoot = path.resolve(import.meta.dirname, "..");
 const cliBinPath = path.join(projectRoot, "packages", "cli", "src", "bin.ts");
 const homeDir = os.homedir();
 const localBinDir = path.join(homeDir, ".local", "bin");
-const symlinkPath = path.join(localBinDir, "spec-flow");
+const symlinkPath = path.join(localBinDir, "spexy");
 
-console.log("\n📦 [Spec-Flow] Publishing CLI locally...\n");
+console.log("\n📦 [Spexy] Publishing CLI locally...\n");
 
 // 1. Run typecheck
 console.log("1/4  Running typecheck (TypeScript 7)...");
@@ -25,7 +25,7 @@ console.log("\n3/4  Configuring CLI executable...");
 fs.chmodSync(cliBinPath, 0o755);
 
 // 4. Create symlink in ~/.local/bin
-console.log("\n4/4  Installing binary to ~/.local/bin/spec-flow...");
+console.log("\n4/4  Installing binary to ~/.local/bin/spexy...");
 if (!fs.existsSync(localBinDir)) {
   fs.mkdirSync(localBinDir, { recursive: true });
 }
@@ -40,13 +40,24 @@ try {
 
 fs.symlinkSync(cliBinPath, symlinkPath);
 
+// Also maintain backwards-compatible spec-flow alias in ~/.local/bin
+const legacySymlink = path.join(localBinDir, "spec-flow");
+try {
+  if (fs.existsSync(legacySymlink) || fs.lstatSync(legacySymlink).isSymbolicLink()) {
+    fs.unlinkSync(legacySymlink);
+  }
+} catch {}
+try {
+  fs.symlinkSync(cliBinPath, legacySymlink);
+} catch {}
+
 // Verify installation
 console.log("\n✅ Verification:");
 try {
   const version = execSync(`${symlinkPath} --version`, { encoding: "utf-8" }).trim();
-  console.log(`   spec-flow v${version} installed successfully at ${symlinkPath}`);
+  console.log(`   spexy v${version} installed successfully at ${symlinkPath}`);
 } catch (err: any) {
-  console.error("   Warning: Could not execute spec-flow directly:", err.message);
+  console.error("   Warning: Could not execute spexy directly:", err.message);
 }
 
 // Check PATH
@@ -56,6 +67,6 @@ if (!currentPath.split(path.delimiter).includes(localBinDir)) {
   console.log(`   Add it with: export PATH="${localBinDir}:$PATH"`);
 } else {
   console.log("\n🚀 CLI is ready for global use!");
-  console.log("   Try running: spec-flow --help");
-  console.log("   Try running: spec-flow dashboard");
+  console.log("   Try running: spexy --help");
+  console.log("   Try running: spexy dashboard");
 }

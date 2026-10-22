@@ -11,7 +11,7 @@ approved_by: null
   - `packages/core/`: Domain logic, DAG workflow engine, Zod schemas, file operations.
   - `packages/cli/`: Command-line interface, server daemon, dashboard runner.
   - `packages/ui/`: Frontend single-page application dashboard.
-- **`.specflow/`**:
+- **`.spexy/`**:
   - `steering/`: Foundational product, tech, and structure steering documents.
   - `specs/`: Feature specifications with requirements, design, and tasks.yaml.
   - `prompts/`: Standardized AI agent prompt guides.
@@ -27,7 +27,7 @@ approved_by: null
 - **Files & Directories**:
   - Source files: `kebab-case.ts` (e.g., `ring-buffer.ts`, `fuzzy-anchor.ts`).
   - Test files: `*.test.ts` co-located with source or in test suites.
-  - Documentation: `kebab-case.md` or `.specflow/` standard conventions.
+  - Documentation: `kebab-case.md` or `.spexy/` standard conventions.
 - **Source Code Symbols**:
   - Classes, interfaces, types: `PascalCase` (e.g., `TasksDocumentSchema`, `TaskItem`).
   - Functions, methods, variables: `camelCase` (e.g., `computeTaskAvailability`).
@@ -37,7 +37,7 @@ approved_by: null
 - **Import Ordering**:
   - 1. Node.js built-ins (`node:fs`, `node:path`, `node:crypto`).
   - 2. External third-party packages (`yaml`, `zod`, `commander`).
-  - 3. Internal monorepo package imports (`@spec-flow/core`).
+  - 3. Internal monorepo package imports (`@spexy/core`).
   - 4. Relative file imports (`./server`, `../fs/workspace`).
 - **Barrel Exports**:
   - Clean public APIs exported via root `index.ts` in each package.

@@ -117,7 +117,7 @@ export const useWorkflowUiStore = create<WorkflowUiState>()(
       },
     }),
     {
-      name: "specflow-preferences",
+      name: "spexy-preferences",
       partialize: (state) => ({
         isInspectorFullWidth: state.isInspectorFullWidth,
         compactMode: state.compactMode,

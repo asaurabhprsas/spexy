@@ -1,13 +1,14 @@
 {
-  "name": "@spec-flow/cli",
+  "name": "@spexy/cli",
   "version": "0.1.0",
   "private": true,
   "type": "module",
   "bin": {
+    "spexy": "./src/bin.ts",
     "spec-flow": "./src/bin.ts"
   },
   "dependencies": {
-    "@spec-flow/core": "workspace:*",
+    "@spexy/core": "workspace:*",
     "commander": "^15.0.0"
   }
 }

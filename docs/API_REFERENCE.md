@@ -1,6 +1,6 @@
-# Spec-Flow Server API Reference
+# Spexy Server API Reference
 
-Spec-Flow exposes a lightweight, local-first REST and WebSocket API at `http://127.0.0.1:4200` powered by Bun and Fastify.
+Spexy exposes a lightweight, local-first REST and WebSocket API at `http://127.0.0.1:4200` powered by Bun and Fastify.
 
 ---
 
@@ -10,7 +10,7 @@ Spec-Flow exposes a lightweight, local-first REST and WebSocket API at `http://1
 - `GET /api/status`: Returns steering document statuses, active specifications, workspace configuration, and overall health.
 - `GET /api/dashboard`: Aggregated dashboard summary with active features, task progress percentages, and recent activities.
 - `GET /api/preferences`: Retrieves persisted user preferences (theme, font, compact mode, expanded view).
-- `PUT /api/preferences`: Updates and saves user preferences to `.specflow/config.json`.
+- `PUT /api/preferences`: Updates and saves user preferences to `.spexy/config.json`.
 
 ### Steering Documents
 - `GET /api/steering`: Lists all steering documents with metadata and approval status.
@@ -51,7 +51,7 @@ Spec-Flow exposes a lightweight, local-first REST and WebSocket API at `http://1
 - `GET /api/comments/history`: Retrieves resolved comment history.
 
 ### Document Archiving
-- `POST /api/documents/:id/archive`: Safely moves a document to `.specflow/archived/` and broadcasts `DOC_ARCHIVED`.
+- `POST /api/documents/:id/archive`: Safely moves a document to `.spexy/archived/` and broadcasts `DOC_ARCHIVED`.
 
 ---
 

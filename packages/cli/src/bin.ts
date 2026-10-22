@@ -6,7 +6,7 @@ import YAML from "yaml";
 import {
   findProjectRoot,
   getSpecflowDir,
-  initSpecFlowWorkspace,
+  initSpexyWorkspace,
   getSteeringStatus,
   listSpecs,
   createSpec,
@@ -38,7 +38,7 @@ import {
   type TaskItem,
   type TasksDocument,
   type HealthReport,
-} from "@spec-flow/core";
+} from "@spexy/core";
 import { startServer } from "./server";
 
 type OutputFormat = "json" | "yaml" | "text";
@@ -75,8 +75,8 @@ function dumpYaml(data: unknown): string {
 const program = new Command();
 
 program
-  .name("spec-flow")
-  .description("Spec-Flow CLI: Spec-Driven Development orchestration for AI agents and human architects")
+  .name("spexy")
+  .description("Spexy CLI: Spec-Driven Development orchestration for AI agents and human architects")
   .version("0.1.0")
   .option("--dashboard", "Start the local dashboard server")
   .option("--port <port>", "Port for dashboard server", (v) => parseInt(v, 10))
@@ -144,16 +144,16 @@ function findTaskAcrossSpecs(projectRoot: string, taskId: string): {
 // 1. init
 program
   .command("init")
-  .description("Initialize .specflow/ workspace and docs/ directory")
+  .description("Initialize .spexy/ workspace and docs/ directory")
   .argument("[dir]", "Target workspace directory", ".")
   .action((dir) => {
     try {
       const targetDir = path.resolve(process.cwd(), dir);
-      initSpecFlowWorkspace(targetDir);
-      console.log(`✓ Spec-Flow workspace initialized at: ${targetDir}`);
-      console.log(`  • Created .specflow/ (steering, specs, .cache) and templates/`);
+      initSpexyWorkspace(targetDir);
+      console.log(`✓ Spexy workspace initialized at: ${targetDir}`);
+      console.log(`  • Created .spexy/ (steering, specs, .cache) and templates/`);
       console.log(`  • Created docs/ (ARCHITECTURE.md, PROGRESS.md, ONBOARDING.md)`);
-      console.log(`\nNext step: Run "spec-flow status" to review steering documents.`);
+      console.log(`\nNext step: Run "spexy status" to review steering documents.`);
     } catch (err: any) {
       console.error(`Error initializing workspace: ${err.message}`);
       process.exit(1);
@@ -176,7 +176,7 @@ program
         return;
       }
 
-      console.log(`=== Spec-Flow Workspace Status ===`);
+      console.log(`=== Spexy Workspace Status ===`);
       console.log(`Root: ${projectRoot}\n`);
 
       const steeringStatusLabel = steering.approved
@@ -185,7 +185,7 @@ program
 
       console.log(`Steering Documents Gate: [${steeringStatusLabel}]`);
       if (steering.documents.length === 0) {
-        console.log(`  (No steering documents found. Run "spec-flow init".)`);
+        console.log(`  (No steering documents found. Run "spexy init".)`);
       } else {
         for (const doc of steering.documents) {
           const badge = doc.status === "approved" ? "APPROVED" : "DRAFT   ";
@@ -196,7 +196,7 @@ program
 
       console.log(`\nActive Specs (${specs.length}):`);
       if (specs.length === 0) {
-        console.log(`  (No specs found. Create one with "spec-flow spec create <id>".)`);
+        console.log(`  (No specs found. Create one with "spexy spec create <id>".)`);
       } else {
         for (const spec of specs) {
           const percent = spec.taskCount > 0 ? Math.round((spec.completedTaskCount / spec.taskCount) * 100) : 0;
@@ -247,7 +247,7 @@ specCmd
       }
 
       if (outputSpecs.length === 0) {
-        console.log(`No specs found. Create a spec with "spec-flow spec create <id>".`);
+        console.log(`No specs found. Create a spec with "spexy spec create <id>".`);
         return;
       }
 
@@ -281,7 +281,7 @@ specCmd
       const projectRoot = getRoot();
       createSpec(projectRoot, id, { force: options.force, title: options.title });
       console.log(`✓ Spec "${id}" created successfully.`);
-      console.log(`  Files created under: .specflow/specs/${id}/`);
+      console.log(`  Files created under: .spexy/specs/${id}/`);
       console.log(`  • requirements.md`);
       console.log(`  • design.md`);
       console.log(`  • tasks.yaml`);
@@ -315,7 +315,7 @@ taskCmd
         } else if (format === "yaml") {
           console.log(dumpYaml([]));
         } else {
-          console.log(`No specs found. Create a spec with "spec-flow spec create <id>".`);
+          console.log(`No specs found. Create a spec with "spexy spec create <id>".`);
         }
         return;
       }
@@ -494,7 +494,7 @@ taskCmd
       if (options.note) {
         console.log(`  • Note:   ${options.note}`);
       }
-      console.log(`\nNotice: Only a human reviewer can verify and mark tasks as "done" (spec-flow task approve ${taskId} --human).`);
+      console.log(`\nNotice: Only a human reviewer can verify and mark tasks as "done" (spexy task approve ${taskId} --human).`);
     } catch (err: any) {
       console.error(`Error completing task "${taskId}": ${err.message}`);
       process.exit(1);
@@ -977,7 +977,7 @@ docCmd
 
 docCmd
   .command("archive <path-or-id>")
-  .description("Archive a document into .specflow/archived/ and remove the source file")
+  .description("Archive a document into .spexy/archived/ and remove the source file")
   .action((pathOrId) => {
     try {
       const projectRoot = getRoot();
@@ -992,7 +992,7 @@ docCmd
 // 8. dashboard command
 program
   .command("dashboard")
-  .description("Start the local Spec-Flow dashboard server")
+  .description("Start the local Spexy dashboard server")
   .option("--port <port>", "Port to listen on", (v) => parseInt(v, 10))
   .option("--host <host>", "Host interface to bind")
   .action(async (options) => {
@@ -1008,7 +1008,7 @@ program
 // 9. doctor and check commands
 program
   .command("doctor")
-  .description("Run comprehensive health and diagnostic checks on the Spec-Flow workspace")
+  .description("Run comprehensive health and diagnostic checks on the Spexy workspace")
   .option("--compact", "Output token-optimized compact single-line report")
   .option("--json", "Output full diagnostic report as JSON")
   .action((options) => {

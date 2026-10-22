@@ -3,7 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
 import { startServer, ServerInstance } from "./index";
-import { initSpecFlowWorkspace, createSnapshot } from "./core";
+import { initSpexyWorkspace, createSnapshot } from "./core";
 import { withFileWriteLock, isFileWriteLocked, startWatcher } from "./watcher";
 
 describe("Track B: Fastify/Bun WebSocket Server & File Watcher", () => {
@@ -13,8 +13,8 @@ describe("Track B: Fastify/Bun WebSocket Server & File Watcher", () => {
   let baseUrl: string;
 
   beforeAll(async () => {
-    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "specflow-test-"));
-    initSpecFlowWorkspace(tmpDir);
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "spexy-test-"));
+    initSpexyWorkspace(tmpDir);
 
     testPort = 42000 + Math.floor(Math.random() * 1000);
     serverInstance = startServer({
@@ -260,7 +260,7 @@ describe("Track B: Fastify/Bun WebSocket Server & File Watcher", () => {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        target_file: ".specflow/steering/product.md",
+        target_file: ".spexy/steering/product.md",
         anchor: {
           start_line: 1,
           end_line: 3,
@@ -349,7 +349,7 @@ describe("Track B: Fastify/Bun WebSocket Server & File Watcher", () => {
       JSON.stringify({
         type: "COMMENT_CREATE",
         payload: {
-          target_file: ".specflow/steering/tech.md",
+          target_file: ".spexy/steering/tech.md",
           anchor: { start_line: 1, end_line: 2, anchor_text: "Technical Architecture" },
           instruction: "Verify DB migration strategy",
           author: "human",
@@ -380,7 +380,7 @@ describe("Track B: Fastify/Bun WebSocket Server & File Watcher", () => {
   });
 
   it("Lock token inhibitor prevents watcher echoing back internal writes", async () => {
-    const dummyFile = path.join(tmpDir, ".specflow", "steering", "temp.md");
+    const dummyFile = path.join(tmpDir, ".spexy", "steering", "temp.md");
 
     let lockActiveInside = false;
     await withFileWriteLock(dummyFile, () => {
@@ -412,7 +412,7 @@ describe("Track B: Fastify/Bun WebSocket Server & File Watcher", () => {
     };
 
     // External markdown change
-    const docPath = path.join(tmpDir, ".specflow", "steering", "structure.md");
+    const docPath = path.join(tmpDir, ".spexy", "steering", "structure.md");
     fs.appendFileSync(docPath, "\n\n<!-- External comment addition -->\n");
 
     // Wait for chokidar event
@@ -445,7 +445,7 @@ describe("Track B: Fastify/Bun WebSocket Server & File Watcher", () => {
     };
 
     // Write corrupted tasks.yaml with cycle or invalid schema
-    const tasksPath = path.join(tmpDir, ".specflow", "specs", "auth-system", "tasks.yaml");
+    const tasksPath = path.join(tmpDir, ".spexy", "specs", "auth-system", "tasks.yaml");
     fs.writeFileSync(tasksPath, "broken_yaml: [not valid task schema", "utf-8");
 
     let matched = false;
@@ -630,7 +630,7 @@ describe("Track B: Fastify/Bun WebSocket Server & File Watcher", () => {
     expect(body.files.some((f: any) => f.name === "tasks.yaml")).toBe(true);
 
     // 2. Add an extra file in references/
-    const specDir = path.join(tmpDir, ".specflow", "specs", "auth-system");
+    const specDir = path.join(tmpDir, ".spexy", "specs", "auth-system");
     const refDir = path.join(specDir, "references");
     fs.mkdirSync(refDir, { recursive: true });
     fs.writeFileSync(path.join(refDir, "architecture.md"), "# Architecture Reference\nContent", "utf-8");
@@ -882,12 +882,12 @@ describe("Track B: Fastify/Bun WebSocket Server & File Watcher", () => {
   });
 
   it("GET /api/comments/history supports normalized target_file matching", async () => {
-    // 1. Create and resolve a comment on .specflow/steering/tech.md
+    // 1. Create and resolve a comment on .spexy/steering/tech.md
     const createRes = await fetch(`${baseUrl}/api/comments`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        target_file: ".specflow/steering/tech.md",
+        target_file: ".spexy/steering/tech.md",
         anchor: {
           start_line: 1,
           end_line: 2,
@@ -906,13 +906,13 @@ describe("Track B: Fastify/Bun WebSocket Server & File Watcher", () => {
     });
     expect(resolveRes.status).toBe(200);
 
-    // 2. Query with normalized variants: "steering/tech.md", ".specflow/steering/tech.md", or "documentId=steering/tech.md"
+    // 2. Query with normalized variants: "steering/tech.md", ".spexy/steering/tech.md", or "documentId=steering/tech.md"
     const res1 = await fetch(`${baseUrl}/api/comments/history?target_file=steering/tech.md`);
     expect(res1.status).toBe(200);
     const history1: any = await res1.json();
     expect(history1.some((c: any) => c.id === comment.id)).toBe(true);
 
-    const res2 = await fetch(`${baseUrl}/api/comments/history?documentId=.specflow/steering/tech.md`);
+    const res2 = await fetch(`${baseUrl}/api/comments/history?documentId=.spexy/steering/tech.md`);
     expect(res2.status).toBe(200);
     const history2: any = await res2.json();
     expect(history2.some((c: any) => c.id === comment.id)).toBe(true);
@@ -934,7 +934,7 @@ describe("Track B: Fastify/Bun WebSocket Server & File Watcher", () => {
     };
 
     // 1. Create file in references
-    const specDir = path.join(tmpDir, ".specflow", "specs", "auth-system");
+    const specDir = path.join(tmpDir, ".spexy", "specs", "auth-system");
     const refDir = path.join(specDir, "references");
     fs.mkdirSync(refDir, { recursive: true });
     const testDoc = path.join(refDir, "spec-file-test.txt");
@@ -981,9 +981,9 @@ describe("Track B: Fastify/Bun WebSocket Server & File Watcher", () => {
     ws.close();
   });
 
-  it("POST /api/documents/:id/archive and POST /api/documents/archive moves docs to .specflow/archived/ and broadcasts event", async () => {
+  it("POST /api/documents/:id/archive and POST /api/documents/archive moves docs to .spexy/archived/ and broadcasts event", async () => {
     // 1. Create a custom steering document
-    const steeringDocPath = path.join(tmpDir, ".specflow", "steering", "custom-rules.md");
+    const steeringDocPath = path.join(tmpDir, ".spexy", "steering", "custom-rules.md");
     fs.writeFileSync(steeringDocPath, "# Custom Rules\nSome rules.", "utf-8");
 
     // Test POST /api/documents/:id/archive
@@ -993,8 +993,8 @@ describe("Track B: Fastify/Bun WebSocket Server & File Watcher", () => {
     expect(res1.status).toBe(200);
     const body1: any = await res1.json();
     expect(body1.success).toBe(true);
-    expect(body1.originalPath).toBe(".specflow/steering/custom-rules.md");
-    expect(body1.archivedPath).toBe(".specflow/archived/steering/custom-rules.md");
+    expect(body1.originalPath).toBe(".spexy/steering/custom-rules.md");
+    expect(body1.archivedPath).toBe(".spexy/archived/steering/custom-rules.md");
     expect(fs.existsSync(steeringDocPath)).toBe(false);
     expect(fs.existsSync(path.join(tmpDir, body1.archivedPath))).toBe(true);
 
@@ -1012,7 +1012,7 @@ describe("Track B: Fastify/Bun WebSocket Server & File Watcher", () => {
     const body2: any = await res2.json();
     expect(body2.success).toBe(true);
     expect(body2.originalPath).toBe("docs/archivable.md");
-    expect(body2.archivedPath).toBe(".specflow/archived/docs/archivable.md");
+    expect(body2.archivedPath).toBe(".spexy/archived/docs/archivable.md");
     expect(fs.existsSync(arbitraryDocPath)).toBe(false);
     expect(fs.existsSync(path.join(tmpDir, body2.archivedPath))).toBe(true);
   });

@@ -5,12 +5,12 @@ import os from "node:os";
 import { execSync } from "node:child_process";
 import YAML from "yaml";
 
-describe("@spec-flow/cli Comprehensive Test Suite", () => {
+describe("@spexy/cli Comprehensive Test Suite", () => {
   let tmpDir: string;
   const binPath = path.resolve(__dirname, "bin.ts");
 
   beforeEach(() => {
-    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "specflow-cli-test-"));
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "spexy-cli-test-"));
   });
 
   afterEach(() => {
@@ -36,7 +36,7 @@ describe("@spec-flow/cli Comprehensive Test Suite", () => {
 
   it("prints help successfully", () => {
     const output = runCli(["--help"]);
-    expect(output).toContain("Spec-Flow CLI");
+    expect(output).toContain("Spexy CLI");
     expect(output).toContain("init");
     expect(output).toContain("status");
     expect(output).toContain("spec");
@@ -48,8 +48,8 @@ describe("@spec-flow/cli Comprehensive Test Suite", () => {
 
   it("initializes workspace and reports status", () => {
     const initOutput = runCli(["init"]);
-    expect(initOutput).toContain("Spec-Flow workspace initialized");
-    expect(fs.existsSync(path.join(tmpDir, ".specflow", "config.yaml"))).toBe(true);
+    expect(initOutput).toContain("Spexy workspace initialized");
+    expect(fs.existsSync(path.join(tmpDir, ".spexy", "config.yaml"))).toBe(true);
 
     const statusOutput = runCli(["status"]);
     expect(statusOutput).toContain("Steering Documents Gate");
@@ -133,7 +133,7 @@ describe("@spec-flow/cli Comprehensive Test Suite", () => {
     runCli(["init"]);
 
     // Add a comment directly into cache
-    const commentsPath = path.join(tmpDir, ".specflow", ".cache", "pending-comments.yaml");
+    const commentsPath = path.join(tmpDir, ".spexy", ".cache", "pending-comments.yaml");
     const commentContent = `comments:
   - id: cmt-test-1
     target_file: docs/ARCHITECTURE.md
@@ -210,7 +210,7 @@ describe("@spec-flow/cli Comprehensive Test Suite", () => {
     fs.writeFileSync(testDoc, "Version 1 content", "utf-8");
 
     // Create a snapshot by importing createSnapshot from core
-    const checkpointsDir = path.join(tmpDir, ".specflow", ".cache", "checkpoints");
+    const checkpointsDir = path.join(tmpDir, ".spexy", ".cache", "checkpoints");
     fs.mkdirSync(checkpointsDir, { recursive: true });
     const backupFile = "hash1-PROGRESS.md.bak";
     fs.writeFileSync(path.join(checkpointsDir, backupFile), "Version 1 content", "utf-8");
@@ -248,7 +248,7 @@ describe("@spec-flow/cli Comprehensive Test Suite", () => {
     runCli(["init"]);
     runCli(["spec", "create", "compact-tasks-spec", "--force"]);
 
-    // 1. spec-flow task list --compact --json
+    // 1. spexy task list --compact --json
     const compactJsonOut = runCli(["task", "list", "--compact", "--json"]);
     const compactTasks = JSON.parse(compactJsonOut);
     expect(Array.isArray(compactTasks)).toBe(true);
@@ -263,7 +263,7 @@ describe("@spec-flow/cli Comprehensive Test Suite", () => {
     expect(taskJson.notes).toBeUndefined();
     expect(taskJson.history).toBeUndefined();
 
-    // 2. spec-flow task list --compact --yaml
+    // 2. spexy task list --compact --yaml
     const compactYamlOut = runCli(["task", "list", "--compact", "--yaml"]);
     const compactYamlTasks = YAML.parse(compactYamlOut);
     expect(Array.isArray(compactYamlTasks)).toBe(true);
@@ -283,7 +283,7 @@ describe("@spec-flow/cli Comprehensive Test Suite", () => {
 
   it("outputs token-optimized compact comment list", () => {
     runCli(["init"]);
-    const commentsPath = path.join(tmpDir, ".specflow", ".cache", "pending-comments.yaml");
+    const commentsPath = path.join(tmpDir, ".spexy", ".cache", "pending-comments.yaml");
     const commentContent = `comments:
   - id: cmt-compact-1
     target_file: docs/ARCHITECTURE.md
@@ -300,7 +300,7 @@ describe("@spec-flow/cli Comprehensive Test Suite", () => {
 `;
     fs.writeFileSync(commentsPath, commentContent, "utf-8");
 
-    // spec-flow comment list --compact --json
+    // spexy comment list --compact --json
     const compactCommentOut = runCli(["comment", "list", "--compact", "--json"]);
     const compactComments = JSON.parse(compactCommentOut);
     expect(Array.isArray(compactComments)).toBe(true);
@@ -317,7 +317,7 @@ describe("@spec-flow/cli Comprehensive Test Suite", () => {
     expect(cmt.anchor).toBeUndefined();
     expect(cmt.resolution_note).toBeUndefined();
 
-    // spec-flow comment list --compact --yaml
+    // spexy comment list --compact --yaml
     const compactCommentYaml = runCli(["comment", "list", "-c", "--yaml"]);
     const parsedYamlComments = YAML.parse(compactCommentYaml);
     expect(parsedYamlComments[0].lines).toBe("12-15");
@@ -329,7 +329,7 @@ describe("@spec-flow/cli Comprehensive Test Suite", () => {
     runCli(["spec", "create", "spec-a", "--force"]);
     runCli(["spec", "create", "spec-b", "--force"]);
 
-    // spec-flow spec list --compact --json
+    // spexy spec list --compact --json
     const compactSpecOut = runCli(["spec", "list", "--compact", "--json"]);
     const compactSpecs = JSON.parse(compactSpecOut);
     expect(Array.isArray(compactSpecs)).toBe(true);
@@ -341,7 +341,7 @@ describe("@spec-flow/cli Comprehensive Test Suite", () => {
       tasks: "0/1",
     });
 
-    // spec-flow spec list --compact --yaml
+    // spexy spec list --compact --yaml
     const compactSpecYaml = runCli(["spec", "list", "-c", "--yaml"]);
     const parsedSpecYaml = YAML.parse(compactSpecYaml);
     expect(parsedSpecYaml.length).toBe(2);
@@ -354,7 +354,7 @@ describe("@spec-flow/cli Comprehensive Test Suite", () => {
     runCli(["init"]);
     runCli(["spec", "create", "auth-feature", "--force", "--title", "Authentication Feature"]);
 
-    // 1. spec-flow doc list --compact --json
+    // 1. spexy doc list --compact --json
     const compactDocListOut = runCli(["doc", "list", "--compact", "--json"]);
     const compactDocs = JSON.parse(compactDocListOut);
     expect(Array.isArray(compactDocs)).toBe(true);
@@ -368,12 +368,12 @@ describe("@spec-flow/cli Comprehensive Test Suite", () => {
     expect(compactDocs.some((d: any) => d.id === "product")).toBe(true);
     expect(compactDocs.some((d: any) => d.id === "auth-feature:requirements")).toBe(true);
 
-    // 2. spec-flow doc list (full) --json
+    // 2. spexy doc list (full) --json
     const fullDocListOut = runCli(["doc", "list", "--json"]);
     const fullDocs = JSON.parse(fullDocListOut);
     expect(fullDocs.some((d: any) => d.id === "product" && d.kind === "steering" && d.title)).toBe(true);
 
-    // 3. spec-flow doc get product.md --compact --json
+    // 3. spexy doc get product.md --compact --json
     const compactDocGetJson = runCli(["doc", "get", "product.md", "--compact", "--json"]);
     const parsedGetJson = JSON.parse(compactDocGetJson);
     expect(parsedGetJson.status).toBe("draft");
@@ -383,7 +383,7 @@ describe("@spec-flow/cli Comprehensive Test Suite", () => {
     expect(parsedGetJson.content).toBeUndefined();
     expect(parsedGetJson.body).toBeUndefined();
 
-    // 4. spec-flow doc get product.md --compact --yaml
+    // 4. spexy doc get product.md --compact --yaml
     const compactDocGetYaml = runCli(["doc", "get", "product.md", "--compact", "--yaml"]);
     const parsedGetYaml = YAML.parse(compactDocGetYaml);
     expect(parsedGetYaml.status).toBe("draft");
@@ -394,28 +394,28 @@ describe("@spec-flow/cli Comprehensive Test Suite", () => {
     expect(compactDocGetYaml).not.toContain("## Vision");
     expect(compactDocGetYaml).not.toContain("## Target Users");
 
-    // 5. spec-flow doc get with full content (default text output)
+    // 5. spexy doc get with full content (default text output)
     const fullDocText = runCli(["doc", "get", "product.md"]);
     expect(fullDocText).toContain("# Product Vision & Direction");
     expect(fullDocText).toContain("## Vision");
 
-    // 6. spec-flow doc get with nonexistent doc should fail gracefully
+    // 6. spexy doc get with nonexistent doc should fail gracefully
     const failOutput = runCli(["doc", "get", "does-not-exist.md"], { expectFail: true });
     expect(failOutput).toContain('Document "does-not-exist.md" not found');
   });
 
-  it("archives documents via spec-flow doc archive <path-or-id>", () => {
+  it("archives documents via spexy doc archive <path-or-id>", () => {
     runCli(["init"]);
 
     // Create a steering document to archive
-    const docPath = path.join(tmpDir, ".specflow", "steering", "constitution.md");
+    const docPath = path.join(tmpDir, ".spexy", "steering", "constitution.md");
     fs.writeFileSync(docPath, "# Constitution\nTeam principles.", "utf-8");
 
     const output = runCli(["doc", "archive", "constitution.md"]);
-    expect(output).toContain("Archived .specflow/steering/constitution.md -> .specflow/archived/steering/constitution.md");
+    expect(output).toContain("Archived .spexy/steering/constitution.md -> .spexy/archived/steering/constitution.md");
 
     expect(fs.existsSync(docPath)).toBe(false);
-    expect(fs.existsSync(path.join(tmpDir, ".specflow", "archived", "steering", "constitution.md"))).toBe(true);
+    expect(fs.existsSync(path.join(tmpDir, ".spexy", "archived", "steering", "constitution.md"))).toBe(true);
 
     // Archiving non-existent doc should fail
     const failOut = runCli(["doc", "archive", "does-not-exist.md"], { expectFail: true });
@@ -426,39 +426,39 @@ describe("@spec-flow/cli Comprehensive Test Suite", () => {
     runCli(["init"]);
     runCli(["spec", "create", "core-feature", "--force", "--title", "Core Feature"]);
 
-    // 1. spec-flow doctor
+    // 1. spexy doctor
     const doctorOut = runCli(["doctor"]);
-    expect(doctorOut).toContain("Spec-Flow Health Check Diagnostic Report");
+    expect(doctorOut).toContain("Spexy Health Check Diagnostic Report");
     expect(doctorOut).toContain("Steering Documents");
     expect(doctorOut).toContain("Feature Specifications");
     expect(doctorOut).toContain("Workspace is healthy");
 
-    // 2. spec-flow check (alias for doctor)
+    // 2. spexy check (alias for doctor)
     const checkOut = runCli(["check"]);
-    expect(checkOut).toContain("Spec-Flow Health Check Diagnostic Report");
+    expect(checkOut).toContain("Spexy Health Check Diagnostic Report");
     expect(checkOut).toContain("Workspace is healthy");
 
-    // 3. spec-flow --doctor root flag
+    // 3. spexy --doctor root flag
     const flagDoctorOut = runCli(["--doctor"]);
-    expect(flagDoctorOut).toContain("Spec-Flow Health Check Diagnostic Report");
+    expect(flagDoctorOut).toContain("Spexy Health Check Diagnostic Report");
     expect(flagDoctorOut).toContain("Workspace is healthy");
 
-    // 4. spec-flow --check root flag
+    // 4. spexy --check root flag
     const flagCheckOut = runCli(["--check"]);
-    expect(flagCheckOut).toContain("Spec-Flow Health Check Diagnostic Report");
+    expect(flagCheckOut).toContain("Spexy Health Check Diagnostic Report");
     expect(flagCheckOut).toContain("Workspace is healthy");
 
-    // 5. spec-flow doctor --compact
+    // 5. spexy doctor --compact
     const compactDoctorOut = runCli(["doctor", "--compact"]);
     expect(compactDoctorOut).toContain("PASS");
     expect(compactDoctorOut).toContain("steering");
     expect(compactDoctorOut).toContain("specs");
 
-    // 6. spec-flow check --compact
+    // 6. spexy check --compact
     const compactCheckOut = runCli(["check", "--compact"]);
     expect(compactCheckOut).toContain("PASS");
 
-    // 7. spec-flow doctor --json
+    // 7. spexy doctor --json
     const jsonDoctorOut = runCli(["doctor", "--json"]);
     const parsedReport = JSON.parse(jsonDoctorOut);
     expect(parsedReport.valid).toBe(true);
@@ -467,9 +467,9 @@ describe("@spec-flow/cli Comprehensive Test Suite", () => {
     expect(Array.isArray(parsedReport.checks)).toBe(true);
 
     // 8. Corrupt the workspace: delete tech.md and break tasks.yaml
-    fs.unlinkSync(path.join(tmpDir, ".specflow", "steering", "tech.md"));
+    fs.unlinkSync(path.join(tmpDir, ".spexy", "steering", "tech.md"));
     fs.writeFileSync(
-      path.join(tmpDir, ".specflow", "specs", "core-feature", "tasks.yaml"),
+      path.join(tmpDir, ".spexy", "specs", "core-feature", "tasks.yaml"),
       "broken: [yaml syntax",
       "utf-8",
     );

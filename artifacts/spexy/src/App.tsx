@@ -36,7 +36,7 @@ function Shell({ children }: { children: ReactNode }) {
       <div className="flex items-center justify-between px-5 py-5 md:block md:px-6 md:pt-7">
         <Link href="/" className="group flex items-center gap-3 text-sidebar-foreground no-underline">
           <span className="grid size-10 place-items-center rounded-xl border border-white/10 bg-white/[.07] text-primary"><TerminalSquare size={19}/></span>
-          <span><span className="block font-serif text-[17px] font-bold tracking-tight">spec-flow</span><span className="mt-0.5 block font-mono text-[9px] uppercase tracking-[.19em] text-white/45">human × agent</span></span>
+          <span><span className="block font-serif text-[17px] font-bold tracking-tight">spexy</span><span className="mt-0.5 block font-mono text-[9px] uppercase tracking-[.19em] text-white/45">human × agent</span></span>
         </Link>
         <span className="rounded-full border border-white/10 px-2.5 py-1 font-mono text-[10px] text-white/60 md:mt-7 md:inline-flex md:items-center md:gap-2"><span className={cx('size-1.5 rounded-full', health.isError ? 'bg-rose-400' : 'bg-emerald-400')}/>{health.isError ? 'offline' : health.data?.status ?? 'connecting'}</span>
       </div>

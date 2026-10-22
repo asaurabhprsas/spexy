@@ -3,7 +3,7 @@ import { z } from "zod";
 export const ConfigSchema = z.object({
   version: z.string().default("1.0"),
   project: z.object({
-    name: z.string().min(1).default("Spec-Flow Project"),
+    name: z.string().min(1).default("Spexy Project"),
     primary_branch: z.string().default("main"),
   }),
   gates: z.object({

@@ -107,7 +107,7 @@ export function DocumentInspector({ documentId, onClose }: DocumentInspectorProp
       if (res.ok) {
         toast({
           title: 'Document Archived',
-          description: 'Document moved to .specflow/archived/ successfully.',
+          description: 'Document moved to .spexy/archived/ successfully.',
         });
         void queryClient.invalidateQueries({ queryKey: getListDocumentsQueryKey() });
         void queryClient.invalidateQueries({ queryKey: getGetDashboardQueryKey() });
@@ -648,7 +648,7 @@ export function DocumentInspector({ documentId, onClose }: DocumentInspectorProp
             onClick={() => setShowArchiveDialog(true)}
             disabled={isArchiving}
             className="h-8 px-2 text-xs gap-1.5 text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors cursor-pointer"
-            title="Archive this document to .specflow/archived/"
+            title="Archive this document to .spexy/archived/"
             data-testid="button-archive-document"
           >
             {isArchiving ? <Loader2 size={13} className="animate-spin" /> : <Archive size={13} />}
@@ -1187,7 +1187,7 @@ export function DocumentInspector({ documentId, onClose }: DocumentInspectorProp
               Archive Document
             </AlertDialogTitle>
             <AlertDialogDescription>
-              Are you sure you want to archive <strong className="text-foreground">{doc?.title || documentId}</strong>? It will be moved to <code className="font-mono text-xs text-primary">.specflow/archived/</code> and removed from your active workspace specifications.
+              Are you sure you want to archive <strong className="text-foreground">{doc?.title || documentId}</strong>? It will be moved to <code className="font-mono text-xs text-primary">.spexy/archived/</code> and removed from your active workspace specifications.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

@@ -24,7 +24,7 @@ export interface FontConfig {
 export const POPULAR_THEMES: ThemeConfig[] = [
   {
     id: 'default',
-    name: 'Spec-Flow Editorial',
+    name: 'Spexy Editorial',
     description: 'Quiet editorial warmth with signal-orange review accents.',
     swatch: {
       primary: 'hsl(25 88% 54%)',
@@ -292,7 +292,7 @@ export const POPULAR_FONTS: FontConfig[] = [
   {
     id: 'default',
     name: 'DM Sans + Space Grotesk',
-    description: 'Spec-Flow signature editorial fonts with DM Mono.',
+    description: 'Spexy signature editorial fonts with DM Mono.',
     category: 'sans',
     fontSans: "'DM Sans', sans-serif",
     fontSerif: "'Space Grotesk', sans-serif",

@@ -1,9 +1,9 @@
 {
-  "name": "spec-flow",
+  "name": "spexy",
   "version": "0.1.0",
   "license": "MIT",
   "scripts": {
-    "build": "pnpm --filter @workspace/spec-flow build",
+    "build": "pnpm --filter @workspace/spexy build",
     "typecheck": "tsc --noEmit && tsc -p packages/ui/tsconfig.json --noEmit",
     "publish:local": "bun run ./scripts/publish-local.ts",
     "local:publish": "bun run ./scripts/publish-local.ts",

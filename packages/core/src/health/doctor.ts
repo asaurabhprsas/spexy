@@ -38,10 +38,10 @@ export function runHealthCheck(projectRoot: string): HealthReport {
     checks.push({
       id: "workspace-dir",
       category: "workspace",
-      name: ".specflow directory existence",
+      name: ".spexy directory existence",
       status: "fail",
-      message: "The .specflow/ directory was not found in the project root.",
-      actionable: "Run `spec-flow init` to initialize the Spec-Flow workspace.",
+      message: "The .spexy/ directory was not found in the project root.",
+      actionable: "Run `spexy init` to initialize the Spexy workspace.",
     });
 
     return buildReport(checks);
@@ -49,9 +49,9 @@ export function runHealthCheck(projectRoot: string): HealthReport {
     checks.push({
       id: "workspace-dir",
       category: "workspace",
-      name: ".specflow directory existence",
+      name: ".spexy directory existence",
       status: "pass",
-      message: ".specflow/ directory exists.",
+      message: ".spexy/ directory exists.",
     });
   }
 
@@ -65,8 +65,8 @@ export function runHealthCheck(projectRoot: string): HealthReport {
       category: "steering",
       name: "Steering directory",
       status: "fail",
-      message: "Steering directory .specflow/steering/ is missing.",
-      actionable: "Run `spec-flow init` to generate foundational steering documents.",
+      message: "Steering directory .spexy/steering/ is missing.",
+      actionable: "Run `spexy init` to generate foundational steering documents.",
     });
   } else {
     for (const file of requiredSteering) {
@@ -77,8 +77,8 @@ export function runHealthCheck(projectRoot: string): HealthReport {
           category: "steering",
           name: `Steering doc: ${file}`,
           status: "fail",
-          message: `Missing steering document: .specflow/steering/${file}`,
-          actionable: `Create .specflow/steering/${file} with valid YAML frontmatter or run \`spec-flow init\`.`,
+          message: `Missing steering document: .spexy/steering/${file}`,
+          actionable: `Create .spexy/steering/${file} with valid YAML frontmatter or run \`spexy init\`.`,
         });
         continue;
       }
@@ -92,8 +92,8 @@ export function runHealthCheck(projectRoot: string): HealthReport {
             category: "steering",
             name: `Steering doc frontmatter: ${file}`,
             status: "fail",
-            message: `Document .specflow/steering/${file} lacks valid YAML frontmatter.`,
-            actionable: `Add YAML frontmatter (e.g. --- status: draft ---) to .specflow/steering/${file}.`,
+            message: `Document .spexy/steering/${file} lacks valid YAML frontmatter.`,
+            actionable: `Add YAML frontmatter (e.g. --- status: draft ---) to .spexy/steering/${file}.`,
           });
         } else if (!parsed.frontmatter.status) {
           checks.push({
@@ -101,8 +101,8 @@ export function runHealthCheck(projectRoot: string): HealthReport {
             category: "steering",
             name: `Steering doc status: ${file}`,
             status: "fail",
-            message: `Document .specflow/steering/${file} missing required 'status' field in frontmatter.`,
-            actionable: `Add 'status: draft' (or 'approved') to frontmatter of .specflow/steering/${file}.`,
+            message: `Document .spexy/steering/${file} missing required 'status' field in frontmatter.`,
+            actionable: `Add 'status: draft' (or 'approved') to frontmatter of .spexy/steering/${file}.`,
           });
         } else {
           checks.push({
@@ -119,14 +119,14 @@ export function runHealthCheck(projectRoot: string): HealthReport {
           category: "steering",
           name: `Steering doc: ${file}`,
           status: "fail",
-          message: `Failed to read or parse .specflow/steering/${file}: ${err.message}`,
-          actionable: `Check file permissions and YAML frontmatter syntax in .specflow/steering/${file}.`,
+          message: `Failed to read or parse .spexy/steering/${file}: ${err.message}`,
+          actionable: `Check file permissions and YAML frontmatter syntax in .spexy/steering/${file}.`,
         });
       }
     }
   }
 
-  // 3. Spec docs in .specflow/specs/*
+  // 3. Spec docs in .spexy/specs/*
   const specsDir = path.join(sfDir, "specs");
   let specDirs: string[] = [];
   if (fs.existsSync(specsDir)) {
@@ -146,7 +146,7 @@ export function runHealthCheck(projectRoot: string): HealthReport {
       category: "specs",
       name: "Specifications directory",
       status: "pass",
-      message: "No specifications created yet (.specflow/specs is empty or clean).",
+      message: "No specifications created yet (.spexy/specs is empty or clean).",
     });
   } else {
     for (const specId of specDirs) {
@@ -161,7 +161,7 @@ export function runHealthCheck(projectRoot: string): HealthReport {
           name: `Spec "${specId}" requirements.md`,
           status: "fail",
           message: `Missing requirements.md in spec "${specId}".`,
-          actionable: `Create .specflow/specs/${specId}/requirements.md with frontmatter.`,
+          actionable: `Create .spexy/specs/${specId}/requirements.md with frontmatter.`,
         });
       } else {
         try {
@@ -173,7 +173,7 @@ export function runHealthCheck(projectRoot: string): HealthReport {
               category: "specs",
               name: `Spec "${specId}" requirements.md frontmatter`,
               status: "fail",
-              message: `Invalid YAML frontmatter in .specflow/specs/${specId}/requirements.md.`,
+              message: `Invalid YAML frontmatter in .spexy/specs/${specId}/requirements.md.`,
               actionable: `Add YAML frontmatter (e.g. --- status: draft ---) to requirements.md.`,
             });
           } else {
@@ -206,7 +206,7 @@ export function runHealthCheck(projectRoot: string): HealthReport {
           name: `Spec "${specId}" design.md`,
           status: "fail",
           message: `Missing design.md in spec "${specId}".`,
-          actionable: `Create .specflow/specs/${specId}/design.md with frontmatter.`,
+          actionable: `Create .spexy/specs/${specId}/design.md with frontmatter.`,
         });
       } else {
         try {
@@ -218,7 +218,7 @@ export function runHealthCheck(projectRoot: string): HealthReport {
               category: "specs",
               name: `Spec "${specId}" design.md frontmatter`,
               status: "fail",
-              message: `Invalid YAML frontmatter in .specflow/specs/${specId}/design.md.`,
+              message: `Invalid YAML frontmatter in .spexy/specs/${specId}/design.md.`,
               actionable: `Add YAML frontmatter (e.g. --- status: draft ---) to design.md.`,
             });
           } else {
@@ -251,7 +251,7 @@ export function runHealthCheck(projectRoot: string): HealthReport {
           name: `Spec "${specId}" tasks.yaml`,
           status: "fail",
           message: `Missing tasks.yaml in spec "${specId}".`,
-          actionable: `Create .specflow/specs/${specId}/tasks.yaml or run \`spec-flow spec create ${specId}\`.`,
+          actionable: `Create .spexy/specs/${specId}/tasks.yaml or run \`spexy spec create ${specId}\`.`,
         });
         continue;
       }
@@ -266,8 +266,8 @@ export function runHealthCheck(projectRoot: string): HealthReport {
           category: "tasks",
           name: `Spec "${specId}" tasks.yaml YAML syntax`,
           status: "fail",
-          message: `YAML syntax error in .specflow/specs/${specId}/tasks.yaml: ${err.message}`,
-          actionable: `Fix YAML indentation and syntax in .specflow/specs/${specId}/tasks.yaml.`,
+          message: `YAML syntax error in .spexy/specs/${specId}/tasks.yaml: ${err.message}`,
+          actionable: `Fix YAML indentation and syntax in .spexy/specs/${specId}/tasks.yaml.`,
         });
         continue;
       }
@@ -283,7 +283,7 @@ export function runHealthCheck(projectRoot: string): HealthReport {
           name: `Spec "${specId}" TasksDocumentSchema validation`,
           status: "fail",
           message: `tasks.yaml schema violations in spec "${specId}": ${issues}`,
-          actionable: `Update .specflow/specs/${specId}/tasks.yaml to adhere to TasksDocumentSchema.`,
+          actionable: `Update .spexy/specs/${specId}/tasks.yaml to adhere to TasksDocumentSchema.`,
         });
         continue;
       } else {
@@ -318,7 +318,7 @@ export function runHealthCheck(projectRoot: string): HealthReport {
           name: `Spec "${specId}" task graph DAG & availability`,
           status: "fail",
           message: `Task graph error in spec "${specId}": ${err.message}`,
-          actionable: `Fix circular dependencies or missing referenced task IDs in .specflow/specs/${specId}/tasks.yaml.`,
+          actionable: `Fix circular dependencies or missing referenced task IDs in .spexy/specs/${specId}/tasks.yaml.`,
         });
       }
     }
@@ -456,7 +456,7 @@ export function formatHealthReport(
   }
 
   const lines: string[] = [];
-  lines.push("Spec-Flow Health Check Diagnostic Report");
+  lines.push("Spexy Health Check Diagnostic Report");
   lines.push("==========================================");
 
   const categories = [
