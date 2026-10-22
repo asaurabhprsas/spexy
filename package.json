@@ -3,19 +3,28 @@
   "version": "0.1.0",
   "license": "MIT",
   "scripts": {
-    "build": "turbo run build",
-    "test": "bun test packages/core",
+    "build": "pnpm --filter @workspace/spec-flow build",
+    "typecheck": "tsc --noEmit && tsc -p packages/ui/tsconfig.json --noEmit",
+    "publish:local": "bun run ./scripts/publish-local.ts",
+    "local:publish": "bun run ./scripts/publish-local.ts",
+    "test": "bun test",
     "lint": "oxlint .",
     "format": "oxfmt .",
     "format:check": "oxfmt --check ."
   },
   "private": true,
   "devDependencies": {
+    "@types/node": "catalog:",
+    "bun-types": "^1.4.3",
     "oxfmt": "^0.74.0",
     "oxlint": "^1.89.0",
     "prettier": "^3.9.6",
     "turbo": "^2.11.10",
-    "typescript": "~5.9.3",
+    "typescript": "^7.0.2",
     "vitest": "^5.0.5"
-  }
+  },
+  "workspaces": [
+    "packages/*",
+    "skills/*"
+  ]
 }

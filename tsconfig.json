@@ -1,19 +1,13 @@
 {
   "extends": "./tsconfig.base.json",
-  "compileOnSave": false,
-  "files": [],
-  "references": [
-    {
-      "path": "./lib/db"
-    },
-    {
-      "path": "./lib/api-client-react"
-    },
-    {
-      "path": "./lib/api-zod"
-    },
-    {
-      "path": "./lib/spec-flow-core"
+  "compilerOptions": {
+    "noEmit": true,
+    "paths": {
+      "@spec-flow/core": ["./packages/core/src/index.ts"]
     }
+  },
+  "include": [
+    "packages/core/src/**/*",
+    "packages/cli/src/**/*"
   ]
 }

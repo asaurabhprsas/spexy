@@ -17,19 +17,31 @@
   - [x] Clean packages layout: `packages/core`, `packages/cli`, `packages/ui`, `skills/spec-flow`.
   - [x] Cloned shadcn UI components and design system into `packages/ui`.
 
-- [ ] **Phase 2: CLI Binary & Agent Skills (`@spec-flow/cli` & `skills/spec-flow`)** *(In Progress via Subagent)*
-  - [ ] Commander CLI binary with all 14 commands (`init`, `status`, `spec`, `task`, `comment`, `checkpoint`, `dashboard`).
-  - [ ] `--json` agent output format on all read commands.
-  - [ ] `skills/spec-flow/SKILL.md` agent skill contract.
+- [x] **Phase 2: CLI Binary & Agent Skills (`@spec-flow/cli` & `skills/spec-flow`)**
+  - [x] Commander CLI binary with all 14 commands (`init`, `status`, `spec`, `task`, `comment`, `checkpoint`, `dashboard`).
+  - [x] `--json` agent output format on all read/write commands.
+  - [x] `skills/spec-flow/SKILL.md` agent skill contract and reference manual.
+  - [x] Globally installed local binary at `~/.local/bin/spec-flow`.
 
-- [ ] **Phase 3: Fastify Real-Time Server & Bi-Directional Watcher** *(In Progress via Subagent)*
-  - [ ] Fastify HTTP and WebSocket `/ws` server.
-  - [ ] Chokidar file watcher with 100ms write-loop lock token.
-  - [ ] Real-time event broadcasting and static dashboard asset serving.
+- [x] **Phase 3: Fastify/Bun Real-Time Server & Bi-Directional Watcher**
+  - [x] Bun HTTP & WebSocket `/ws` server engine (`packages/cli/src/server/index.ts`).
+  - [x] Chokidar file watcher with 100ms write-loop lock-token inhibitor.
+  - [x] Real-time event broadcasting (`DOC_UPDATED`, `TASK_UPDATED`, `COMMENTS_UPDATED`, `FILE_CORRUPTED`).
+  - [x] Static SPA fallback asset serving from pre-bundled assets.
+  - [x] Full REST API endpoints supporting UI compatibility (`/api/dashboard`, `/api/documents/:id/approve`, `/api/comments`).
 
-- [ ] **Phase 4: Web UI Dashboard Views & Static Bundling (`@spec-flow/ui`)** *(In Progress via Subagent)*
-  - [ ] Split-pane Document Inspector with floating *"Add Comment for AI"* button.
-  - [ ] Hierarchical Accordion Task List with subtask connectors.
-  - [ ] Interactive SVG DAG Dependency Graph.
-  - [ ] `@dnd-kit` Kanban Board connected to WebSocket.
-  - [ ] Pre-bundled build into `packages/cli/static`.
+- [x] **Phase 4: Web UI Dashboard Views & Static Bundling (`packages/ui`)**
+  - [x] Split-pane Document Inspector with floating *"Add Comment for AI"* text selection toolbar.
+  - [x] Hierarchical Accordion Task List with subtask line connectors and security/testing notes.
+  - [x] Interactive SVG DAG Dependency Graph with cycle prevention and status highlighting.
+  - [x] `@dnd-kit` Kanban Board with role-guarded human verification modal for `done`.
+  - [x] WebSocket auto-reconnect and React Query real-time cache invalidation (`useWebSocketSync.ts`).
+  - [x] Pre-bundled build into `packages/cli/static`.
+  - [x] 37/37 automated tests passing across core, CLI, and server suites.
+
+## Remaining Enhancements & Future Scope
+
+- [ ] **MCP Adapter Layer**: Expose `@spec-flow/core` operations as standard Model Context Protocol (MCP) tools for environments that prefer JSON-RPC over CLI.
+- [ ] **Worktree UI Switcher**: Expose active Git worktree heartbeats and lease switches in the dashboard navbar.
+- [ ] **Custom Template CLI Command**: Dedicated `spec-flow template apply <name>` to instantiate custom user spec scaffolds.
+- [ ] **Headless E2E Browser Suite**: Playwright end-to-end testing validating browser clicks, text selection, and drag-and-drop.

@@ -19,6 +19,7 @@ import {
   readTasksYaml,
   resolveComment,
   restoreSnapshot,
+  serializeDocumentWithFrontmatter,
   TaskAction,
   TaskItem,
   TaskStatus,
@@ -67,6 +68,20 @@ const MIME_TYPES: Record<string, string> = {
   ".ttf": "font/ttf",
   ".txt": "text/plain; charset=utf-8",
 };
+
+function formatComment(c: any) {
+  return {
+    ...c,
+    documentId: c.target_file,
+    target_file: c.target_file,
+    selectedText: c.anchor?.anchor_text ?? c.selectedText ?? "",
+    startLine: c.anchor?.start_line ?? c.startLine ?? 1,
+    endLine: c.anchor?.end_line ?? c.endLine ?? 1,
+    status: c.status === "addressed" ? "resolved" : c.status,
+    resolutionNote: c.resolution_note ?? null,
+    createdAt: c.created_at || new Date().toISOString(),
+  };
+}
 
 function json(data: any, status: number = 200, headers: Record<string, string> = {}): Response {
   return new Response(JSON.stringify(data), {
@@ -326,14 +341,15 @@ export function createServer(options: ServerOptions = {}): {
           return json(steering.documents);
         }
 
-        // GET /api/steering/:id
+        // GET /api/steering/:id & GET /api/documents/:id
         const steeringIdMatch = pathname.match(/^\/api\/steering\/([^/]+)$/);
         if (steeringIdMatch && method === "GET") {
-          const id = decodeURIComponent(steeringIdMatch[1]);
+          const rawId = decodeURIComponent(steeringIdMatch[1]);
+          const id = rawId.replace(/^steering-/, "");
           const steering = getSteeringStatus(projectRoot);
-          const doc = steering.documents.find((d) => d.id === id || d.filename === id);
+          const doc = steering.documents.find((d) => d.id === id || d.filename === id || d.id === rawId);
           if (!doc) {
-            return json({ error: `Steering document "${id}" not found` }, 404);
+            return json({ error: `Steering document "${rawId}" not found` }, 404);
           }
           const { frontmatter, body } = parseDocumentFrontmatter(doc.content);
           return json({
@@ -343,64 +359,135 @@ export function createServer(options: ServerOptions = {}): {
           });
         }
 
-        // PUT /api/steering/:id
-        if (steeringIdMatch && method === "PUT") {
-          const id = decodeURIComponent(steeringIdMatch[1]);
+        // PUT /api/steering/:id & PUT /api/documents/:id
+        const docUpdateMatch = pathname.match(/^\/api\/(?:steering|documents)\/([^/]+)$/);
+        if (docUpdateMatch && method === "PUT") {
+          const rawId = decodeURIComponent(docUpdateMatch[1]);
+          const id = rawId.replace(/^steering-/, "");
+          const reqBody = await parseBody(req);
+          const data = reqBody.data || reqBody;
+          const actor = data.actor || reqBody.actor || "human";
+          const newContentOrBody = data.content ?? data.body ?? "";
+          const newFrontmatter = data.frontmatter;
+
           const steering = getSteeringStatus(projectRoot);
-          const doc = steering.documents.find((d) => d.id === id || d.filename === id);
-          if (!doc) {
-            return json({ error: `Steering document "${id}" not found` }, 404);
+          const doc = steering.documents.find((d) => d.id === id || d.filename === id || d.id === rawId);
+          if (doc) {
+            const fullPath = path.join(getSpecflowDir(projectRoot), "steering", doc.filename);
+            await withFileWriteLock(fullPath, () => {
+              updateSteeringDocument(projectRoot, doc.filename, newContentOrBody, newFrontmatter, actor);
+            });
+
+            broadcast({
+              type: "DOC_UPDATED",
+              payload: { file: path.relative(projectRoot, fullPath) },
+            });
+
+            const updatedSteering = getSteeringStatus(projectRoot);
+            const updatedDoc = updatedSteering.documents.find((d) => d.id === doc.id);
+            return json({
+              id: rawId,
+              title: updatedDoc?.title || doc.title,
+              path: updatedDoc?.relativePath || doc.relativePath,
+              status: updatedDoc?.status || "in-review",
+              content: newContentOrBody,
+              revision: (data.expectedRevision || 1) + 1,
+              success: true,
+              document: updatedDoc,
+            });
           }
 
-          const reqBody = await parseBody(req);
-          const actor = reqBody.actor || "human";
-          const newContentOrBody = reqBody.body ?? reqBody.content ?? doc.content;
-          const newFrontmatter = reqBody.frontmatter;
+          if (rawId.includes(":")) {
+            const [specId, kind] = rawId.split(":");
+            const filename = kind === "requirements" ? "requirements.md" : "design.md";
+            const fullPath = path.join(getSpecflowDir(projectRoot), "specs", specId, filename);
+            if (fs.existsSync(fullPath)) {
+              await withFileWriteLock(fullPath, () => {
+                fs.writeFileSync(fullPath, newContentOrBody, "utf-8");
+              });
+              broadcast({
+                type: "DOC_UPDATED",
+                payload: { file: path.relative(projectRoot, fullPath) },
+              });
+              return json({
+                id: rawId,
+                title: `${specId} ${kind}`,
+                path: path.relative(projectRoot, fullPath),
+                status: "in-review",
+                content: newContentOrBody,
+                revision: (data.expectedRevision || 1) + 1,
+                success: true,
+              });
+            }
+          }
 
-          const fullPath = path.join(getSpecflowDir(projectRoot), "steering", doc.filename);
-          await withFileWriteLock(fullPath, () => {
-            updateSteeringDocument(projectRoot, doc.filename, newContentOrBody, newFrontmatter, actor);
-          });
-
-          broadcast({
-            type: "DOC_UPDATED",
-            payload: { file: path.relative(projectRoot, fullPath) },
-          });
-
-          const updatedSteering = getSteeringStatus(projectRoot);
-          const updatedDoc = updatedSteering.documents.find((d) => d.id === doc.id);
-          return json({ success: true, document: updatedDoc });
+          return json({ error: `Document "${rawId}" not found` }, 404);
         }
 
-        // POST /api/steering/:id/approve
-        const steeringApproveMatch = pathname.match(/^\/api\/steering\/([^/]+)\/approve$/);
-        if (steeringApproveMatch && method === "POST") {
-          const id = decodeURIComponent(steeringApproveMatch[1]);
+        // POST /api/steering/:id/approve & POST /api/documents/:id/approve
+        const docApproveMatch = pathname.match(/^\/api\/(?:steering|documents)\/([^/]+)\/approve$/);
+        if (docApproveMatch && method === "POST") {
+          const rawId = decodeURIComponent(docApproveMatch[1]);
+          const id = rawId.replace(/^steering-/, "");
           const steering = getSteeringStatus(projectRoot);
-          const doc = steering.documents.find((d) => d.id === id || d.filename === id);
-          if (!doc) {
-            return json({ error: `Steering document "${id}" not found` }, 404);
+          const doc = steering.documents.find((d) => d.id === id || d.filename === id || d.id === rawId);
+          if (doc) {
+            const fullPath = path.join(getSpecflowDir(projectRoot), "steering", doc.filename);
+            const { body } = parseDocumentFrontmatter(doc.content);
+
+            await withFileWriteLock(fullPath, () => {
+              updateSteeringDocument(
+                projectRoot,
+                doc.filename,
+                body,
+                { status: "approved", approved_by: "human" },
+                "human",
+              );
+            });
+
+            broadcast({
+              type: "DOC_UPDATED",
+              payload: { file: path.relative(projectRoot, fullPath) },
+            });
+
+            return json({
+              id: rawId,
+              status: "approved",
+              approvedBy: "human",
+              approved_by: "human",
+              success: true,
+            });
           }
 
-          const fullPath = path.join(getSpecflowDir(projectRoot), "steering", doc.filename);
-          const { body } = parseDocumentFrontmatter(doc.content);
+          if (rawId.includes(":")) {
+            const [specId, kind] = rawId.split(":");
+            const filename = kind === "requirements" ? "requirements.md" : "design.md";
+            const fullPath = path.join(getSpecflowDir(projectRoot), "specs", specId, filename);
+            if (fs.existsSync(fullPath)) {
+              const raw = fs.readFileSync(fullPath, "utf-8");
+              const { body } = parseDocumentFrontmatter(raw);
+              const updated = serializeDocumentWithFrontmatter(
+                { status: "approved", updated_at: new Date().toISOString(), approved_by: "human" },
+                body,
+              );
+              await withFileWriteLock(fullPath, () => {
+                fs.writeFileSync(fullPath, updated, "utf-8");
+              });
+              broadcast({
+                type: "DOC_UPDATED",
+                payload: { file: path.relative(projectRoot, fullPath) },
+              });
+              return json({
+                id: rawId,
+                status: "approved",
+                approvedBy: "human",
+                approved_by: "human",
+                success: true,
+              });
+            }
+          }
 
-          await withFileWriteLock(fullPath, () => {
-            updateSteeringDocument(
-              projectRoot,
-              doc.filename,
-              body,
-              { status: "approved", approved_by: "human" },
-              "human",
-            );
-          });
-
-          broadcast({
-            type: "DOC_UPDATED",
-            payload: { file: path.relative(projectRoot, fullPath) },
-          });
-
-          return json({ success: true, id: doc.id, status: "approved", approved_by: "human" });
+          return json({ error: `Document "${rawId}" not found for approval` }, 404);
         }
 
         // GET /api/specs & GET /api/features
@@ -621,19 +708,20 @@ export function createServer(options: ServerOptions = {}): {
           const target_file = url.searchParams.get("target_file") || undefined;
           const pendingOnly = url.searchParams.get("pendingOnly") === "true";
           const comments = listComments(projectRoot, { target_file, pendingOnly });
-          return json(comments);
+          return json(comments.map(formatComment));
         }
 
         // POST /api/comments
         if (pathname === "/api/comments" && method === "POST") {
           const reqBody = await parseBody(req);
-          const target_file = reqBody.target_file || reqBody.documentId;
-          const instruction = reqBody.instruction;
-          const anchor = reqBody.anchor || {
-            start_line: Number(reqBody.startLine) || 1,
-            end_line: Number(reqBody.endLine) || 1,
-            anchor_text: reqBody.selectedText || "",
-            context_before: "",
+          const data = reqBody.data || reqBody;
+          const target_file = data.target_file || data.documentId;
+          const instruction = data.instruction;
+          const anchor = data.anchor || {
+            start_line: Number(data.startLine) || Number(data.start_line) || 1,
+            end_line: Number(data.endLine) || Number(data.end_line) || 1,
+            anchor_text: data.selectedText || data.anchor_text || "",
+            context_before: data.contextBefore || data.context_before || "",
           };
 
           if (!target_file || !instruction) {
@@ -645,20 +733,20 @@ export function createServer(options: ServerOptions = {}): {
 
           await withFileWriteLock(commentsPath, () => {
             newComment = addComment(projectRoot, {
-              id: reqBody.id,
+              id: data.id,
               target_file,
               anchor,
               instruction,
-              author: reqBody.author || "human",
+              author: data.author || "human",
             });
           });
 
           broadcast({
             type: "COMMENTS_UPDATED",
-            payload: { comments: readPendingCommentsDoc(projectRoot).comments },
+            payload: { comments: readPendingCommentsDoc(projectRoot).comments.map(formatComment) },
           });
 
-          return json(newComment, 201);
+          return json(formatComment(newComment), 201);
         }
 
         // POST /api/comments/:id/resolve
@@ -666,8 +754,9 @@ export function createServer(options: ServerOptions = {}): {
         if (commentResolveMatch && method === "POST") {
           const commentId = decodeURIComponent(commentResolveMatch[1]);
           const reqBody = await parseBody(req).catch(() => ({}));
-          const note = reqBody.note || "Resolved";
-          const purge = reqBody.purge !== false;
+          const data = reqBody.data || reqBody;
+          const note = data.note || "Resolved";
+          const purge = data.purge !== false;
 
           const commentsPath = path.join(getSpecflowDir(projectRoot), ".cache", "pending-comments.yaml");
           let resolved: any;
@@ -678,10 +767,10 @@ export function createServer(options: ServerOptions = {}): {
 
           broadcast({
             type: "COMMENTS_UPDATED",
-            payload: { comments: readPendingCommentsDoc(projectRoot).comments },
+            payload: { comments: readPendingCommentsDoc(projectRoot).comments.map(formatComment) },
           });
 
-          return json({ success: true, comment: resolved });
+          return json({ success: true, comment: formatComment(resolved) });
         }
 
         // GET /api/checkpoints
@@ -759,10 +848,11 @@ export function createServer(options: ServerOptions = {}): {
         const documentIdMatch = pathname.match(/^\/api\/documents\/([^/]+)$/);
         if (documentIdMatch && method === "GET") {
           const docId = decodeURIComponent(documentIdMatch[1]);
+          const cleanId = docId.replace(/^steering-/, "");
 
           // Steering doc?
           const steering = getSteeringStatus(projectRoot);
-          const stDoc = steering.documents.find((d) => d.id === docId);
+          const stDoc = steering.documents.find((d) => d.id === docId || d.id === cleanId || d.filename === docId);
           if (stDoc) {
             return json({
               id: stDoc.id,
@@ -851,7 +941,7 @@ export function createServer(options: ServerOptions = {}): {
 
       // Fallback HTML if static/index.html is missing
       return new Response(
-        `<!DOCTYPE html><html><head><title>Spec-Flow</title></head><body><h1>Spec-Flow Server Running</h1><p>API is active at <code>/api/status</code></p></body></html>`,
+        `<!DOCTYPE html><html><head><title>Spec-Flow</title><style>body{font-family:sans-serif;padding:2rem;text-align:center;}</style></head><body><h1>Spec-Flow Server Active</h1><p>API is listening at <code>/api/status</code>.</p><p style="color:#666;">Web UI static assets have not been built yet.<br>Run <code>pnpm local:publish</code> or <code>pnpm build</code> to compile the web dashboard.</p></body></html>`,
         { headers: { "Content-Type": "text/html; charset=utf-8" } },
       );
     }

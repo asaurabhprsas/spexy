@@ -33,7 +33,7 @@ describe("Track B: Fastify/Bun WebSocket Server & File Watcher", () => {
   it("GET /api/status returns steering, specs, and config", async () => {
     const res = await fetch(`${baseUrl}/api/status`);
     expect(res.status).toBe(200);
-    const body = await res.json();
+    const body: any = await res.json();
     expect(body).toHaveProperty("steering");
     expect(body).toHaveProperty("specs");
     expect(body).toHaveProperty("config");
@@ -44,7 +44,7 @@ describe("Track B: Fastify/Bun WebSocket Server & File Watcher", () => {
   it("GET /api/steering returns list of steering documents", async () => {
     const res = await fetch(`${baseUrl}/api/steering`);
     expect(res.status).toBe(200);
-    const docs = await res.json();
+    const docs: any = await res.json();
     expect(Array.isArray(docs)).toBe(true);
     expect(docs.some((d: any) => d.id === "product")).toBe(true);
   });
@@ -52,7 +52,7 @@ describe("Track B: Fastify/Bun WebSocket Server & File Watcher", () => {
   it("GET /api/steering/:id returns content and frontmatter", async () => {
     const res = await fetch(`${baseUrl}/api/steering/product`);
     expect(res.status).toBe(200);
-    const doc = await res.json();
+    const doc: any = await res.json();
     expect(doc.id).toBe("product");
     expect(doc).toHaveProperty("frontmatter");
     expect(doc).toHaveProperty("body");
@@ -69,11 +69,11 @@ describe("Track B: Fastify/Bun WebSocket Server & File Watcher", () => {
       }),
     });
     expect(res.status).toBe(200);
-    const result = await res.json();
+    const result: any = await res.json();
     expect(result.success).toBe(true);
 
     const checkRes = await fetch(`${baseUrl}/api/steering/product`);
-    const doc = await checkRes.json();
+    const doc: any = await checkRes.json();
     expect(doc.frontmatter.status).toBe("in-review");
     expect(doc.body).toContain("New product details.");
   });
@@ -84,13 +84,13 @@ describe("Track B: Fastify/Bun WebSocket Server & File Watcher", () => {
         method: "POST",
       });
       expect(res.status).toBe(200);
-      const data = await res.json();
+      const data: any = await res.json();
       expect(data.status).toBe("approved");
       expect(data.approved_by).toBe("human");
     }
 
     const statusRes = await fetch(`${baseUrl}/api/status`);
-    const statusData = await statusRes.json();
+    const statusData: any = await statusRes.json();
     expect(statusData.steering.approved).toBe(true);
   });
 
@@ -104,18 +104,18 @@ describe("Track B: Fastify/Bun WebSocket Server & File Watcher", () => {
       }),
     });
     expect(createRes.status).toBe(201);
-    const createData = await createRes.json();
+    const createData: any = await createRes.json();
     expect(createData.id).toBe("auth-system");
 
     const listRes = await fetch(`${baseUrl}/api/specs`);
-    const specs = await listRes.json();
+    const specs: any = await listRes.json();
     expect(specs.some((s: any) => s.id === "auth-system")).toBe(true);
   });
 
   it("GET /api/specs/:id/tasks returns DAG availability and blockers", async () => {
     const res = await fetch(`${baseUrl}/api/specs/auth-system/tasks`);
     expect(res.status).toBe(200);
-    const data = await res.json();
+    const data: any = await res.json();
     expect(data).toHaveProperty("tasks");
     expect(data).toHaveProperty("availability");
     expect(data).toHaveProperty("blockers");
@@ -135,7 +135,7 @@ describe("Track B: Fastify/Bun WebSocket Server & File Watcher", () => {
       }),
     });
     expect(claimRes.status).toBe(200);
-    const claimData = await claimRes.json();
+    const claimData: any = await claimRes.json();
     expect(claimData.task.status).toBe("in-progress");
     expect(claimData.task.worktree).toBe("agent-worktree");
 
@@ -150,7 +150,7 @@ describe("Track B: Fastify/Bun WebSocket Server & File Watcher", () => {
       }),
     });
     expect(submitRes.status).toBe(200);
-    const submitData = await submitRes.json();
+    const submitData: any = await submitRes.json();
     expect(submitData.task.status).toBe("to-review");
 
     // 3. Agent trying to approve task directly must fail (HITL gate)
@@ -163,7 +163,7 @@ describe("Track B: Fastify/Bun WebSocket Server & File Watcher", () => {
       }),
     });
     expect(illegalApproveRes.status).toBe(400);
-    const errData = await illegalApproveRes.json();
+    const errData: any = await illegalApproveRes.json();
     expect(errData.code).toBe("HUMAN_REVIEW_REQUIRED");
 
     // 4. Human approving task succeeds
@@ -176,7 +176,7 @@ describe("Track B: Fastify/Bun WebSocket Server & File Watcher", () => {
       }),
     });
     expect(humanApproveRes.status).toBe(200);
-    const approvedData = await humanApproveRes.json();
+    const approvedData: any = await humanApproveRes.json();
     expect(approvedData.task.status).toBe("done");
   });
 
@@ -198,13 +198,13 @@ describe("Track B: Fastify/Bun WebSocket Server & File Watcher", () => {
       }),
     });
     expect(createRes.status).toBe(201);
-    const comment = await createRes.json();
+    const comment: any = await createRes.json();
     expect(comment.id).toBeDefined();
     expect(comment.status).toBe("pending");
 
     // List comments
     const listRes = await fetch(`${baseUrl}/api/comments?pendingOnly=true`);
-    const comments = await listRes.json();
+    const comments: any = await listRes.json();
     expect(comments.some((c: any) => c.id === comment.id)).toBe(true);
 
     // Resolve comment
@@ -217,7 +217,7 @@ describe("Track B: Fastify/Bun WebSocket Server & File Watcher", () => {
 
     // List comments again - should be purged
     const afterListRes = await fetch(`${baseUrl}/api/comments?pendingOnly=true`);
-    const afterComments = await afterListRes.json();
+    const afterComments: any = await afterListRes.json();
     expect(afterComments.some((c: any) => c.id === comment.id)).toBe(false);
   });
 
@@ -234,7 +234,7 @@ describe("Track B: Fastify/Bun WebSocket Server & File Watcher", () => {
     // List snapshots
     const listRes = await fetch(`${baseUrl}/api/checkpoints?file=test-checkpoint.txt`);
     expect(listRes.status).toBe(200);
-    const snapshots = await listRes.json();
+    const snapshots: any = await listRes.json();
     expect(snapshots.length).toBeGreaterThan(0);
 
     // Restore snapshot
@@ -242,7 +242,7 @@ describe("Track B: Fastify/Bun WebSocket Server & File Watcher", () => {
       method: "POST",
     });
     expect(restoreRes.status).toBe(200);
-    const restored = await restoreRes.json();
+    const restored: any = await restoreRes.json();
     expect(restored.success).toBe(true);
 
     // File content restored
@@ -385,6 +385,55 @@ describe("Track B: Fastify/Bun WebSocket Server & File Watcher", () => {
 
     expect(matched).toBe(true);
     ws.close();
+  });
+
+  it("UI compatibility: GET /api/dashboard, POST /api/documents/tech/approve, and UI-formatted comments", async () => {
+    // 1. GET /api/dashboard
+    const dashRes = await fetch(`${baseUrl}/api/dashboard`);
+    expect(dashRes.status).toBe(200);
+    const dashData: any = await dashRes.json();
+    expect(dashData).toHaveProperty("projectName");
+    expect(dashData).toHaveProperty("taskCounts");
+    expect(dashData).toHaveProperty("steeringApproved");
+
+    // 2. POST /api/documents/tech/approve
+    const approveRes = await fetch(`${baseUrl}/api/documents/tech/approve`, { method: "POST" });
+    expect(approveRes.status).toBe(200);
+    const approveData: any = await approveRes.json();
+    expect(approveData.status).toBe("approved");
+
+    // 3. POST /api/comments with UI body shape
+    const commentRes = await fetch(`${baseUrl}/api/comments`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        data: {
+          documentId: "tech",
+          selectedText: "Tech Stack & Architecture",
+          startLine: 1,
+          endLine: 2,
+          instruction: "Please explain database migration strategy",
+        },
+      }),
+    });
+    expect(commentRes.status).toBe(201);
+    const commentData: any = await commentRes.json();
+    expect(commentData.documentId).toBe("tech");
+    expect(commentData.selectedText).toBe("Tech Stack & Architecture");
+    expect(commentData.startLine).toBe(1);
+    expect(commentData.endLine).toBe(2);
+
+    // 4. GET /api/comments contains documentId
+    const listRes = await fetch(`${baseUrl}/api/comments`);
+    expect(listRes.status).toBe(200);
+    const listData: any = await listRes.json();
+    expect(listData.some((c: any) => c.documentId === "tech")).toBe(true);
+
+    // 5. GET /dashboard serves SPA index.html
+    const pageRes = await fetch(`${baseUrl}/dashboard`);
+    expect(pageRes.status).toBe(200);
+    const html = await pageRes.text();
+    expect(html.toLowerCase()).toContain("<!doctype html>");
   });
 });
 

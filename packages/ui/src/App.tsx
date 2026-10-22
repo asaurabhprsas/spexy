@@ -1048,6 +1048,7 @@ function Router() {
       <Shell>
         <Switch>
           <Route path="/" component={Dashboard} />
+          <Route path="/dashboard" component={Dashboard} />
           <Route path="/documents" component={DocumentsPage} />
           <Route path="/features" component={FeaturesPage} />
           <Route path="/features/:featureId" component={FeatureTasksPage} />
