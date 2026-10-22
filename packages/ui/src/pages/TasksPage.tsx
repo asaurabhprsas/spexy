@@ -157,7 +157,7 @@ export function TasksPage() {
   const handleTransitionAction = async (
     task: Task,
     action: string,
-    params: { note?: string; worktree?: string; actor?: string; decision?: string } = {}
+    params: { note?: string; worktree?: string; actor?: string; decision?: string; status?: string } = {}
   ) => {
     const actor = params.actor || 'human';
     const note = params.note || '';
@@ -170,6 +170,7 @@ export function TasksPage() {
       if (note) payload.note = note;
       if (params.decision) payload.decision = params.decision;
       if (worktree) payload.worktree = worktree;
+      if (params.status) payload.status = params.status;
 
       let transitioned = false;
       // Target parent spec endpoint first if known!
@@ -213,6 +214,21 @@ export function TasksPage() {
       return;
     }
 
+    if (action === 'set_status') {
+      try {
+        await fetch(
+          `/api/specs/${encodeURIComponent(selectedSpecId)}/tasks/${encodeURIComponent(originalTaskId)}/transition`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action: 'set_status', status: params.status, actor: 'human' }),
+          }
+        );
+        refresh();
+      } catch {}
+      return;
+    }
+
     if (action === 'claim') {
       claimTask.mutate(
         { featureId: selectedSpecId, taskId: originalTaskId, data: { worktree, actor } },
@@ -250,6 +266,10 @@ export function TasksPage() {
 
   const handleReject = (task: Task, note?: string) => {
     void handleTransitionAction(task, 'reject', { note, decision: 'reject' });
+  };
+
+  const handleSetStatus = (task: Task, newStatus: Task['status']) => {
+    void handleTransitionAction(task, 'set_status', { status: newStatus });
   };
 
   const rawTasks = isAllSpecs ? allTasksQuery.data : singleSpecTasksQuery.data;
@@ -462,6 +482,7 @@ export function TasksPage() {
               onSubmitReview={(t, note) => handleSubmit(t, note)}
               onApproveDone={(t, note) => handleApprove(t, note)}
               onRequestChanges={(t, note) => handleReject(t, note)}
+              onSetStatus={(t, status) => handleSetStatus(t, status)}
             />
           </TabsContent>
 
@@ -472,6 +493,7 @@ export function TasksPage() {
               onSubmitReview={(t, note) => handleSubmit(t, note)}
               onApprove={(t, note) => handleApprove(t, note)}
               onRequestChanges={(t, note) => handleReject(t, note)}
+              onSetStatus={(t, status) => handleSetStatus(t, status)}
             />
           </TabsContent>
 

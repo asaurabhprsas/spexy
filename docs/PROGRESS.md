@@ -10,38 +10,30 @@
   - [x] Bounded checkpoint ring-buffer engine (`.cache/checkpoints/` max 20).
   - [x] Fuzzy 3-line context anchor hasher for comment resynchronization.
   - [x] Git worktree common directory resolver & lease locks.
-  - [x] 12/12 unit tests passing in Bun test suite.
+  - [x] Document archiving engine with collision handling (`.specflow/archived/`).
+  - [x] Turnkey templates and actionable agent prompts.
 
-- [x] **Monorepo Cleanup & Reorganization**
-  - [x] Decommissioned database and legacy `artifacts/api-server`.
-  - [x] Clean packages layout: `packages/core`, `packages/cli`, `packages/ui`, `skills/spec-flow`.
-  - [x] Cloned shadcn UI components and design system into `packages/ui`.
-
-- [x] **Phase 2: CLI Binary & Agent Skills (`@spec-flow/cli` & `skills/spec-flow`)**
-  - [x] Commander CLI binary with all 14 commands (`init`, `status`, `spec`, `task`, `comment`, `checkpoint`, `dashboard`).
-  - [x] `--json` agent output format on all read/write commands.
+- [x] **Phase 2: CLI Binary & Token Optimization Engine (`@spec-flow/cli`)**
+  - [x] Commander CLI binary with all commands (`init`, `status`, `spec`, `task`, `comment`, `checkpoint`, `doc archive`, `doctor`, `check`, `serve`).
+  - [x] Token Killer compact mode (`--compact`) cutting up to 80% tokens on status, tasks, docs, and comments.
+  - [x] Health diagnostic tool (`spec-flow doctor` / `check`) validating steering, specs, schemas, and graph topology.
   - [x] `skills/spec-flow/SKILL.md` agent skill contract and reference manual.
   - [x] Globally installed local binary at `~/.local/bin/spec-flow`.
 
 - [x] **Phase 3: Fastify/Bun Real-Time Server & Bi-Directional Watcher**
   - [x] Bun HTTP & WebSocket `/ws` server engine (`packages/cli/src/server/index.ts`).
-  - [x] Chokidar file watcher with 100ms write-loop lock-token inhibitor.
-  - [x] Real-time event broadcasting (`DOC_UPDATED`, `TASK_UPDATED`, `COMMENTS_UPDATED`, `FILE_CORRUPTED`).
-  - [x] Static SPA fallback asset serving from pre-bundled assets.
-  - [x] Full REST API endpoints supporting UI compatibility (`/api/dashboard`, `/api/documents/:id/approve`, `/api/comments`).
+  - [x] Chokidar file watcher with write-loop lock-token inhibitor.
+  - [x] Real-time event broadcasting (`DOC_UPDATED`, `TASK_UPDATED`, `SPEC_FILES_UPDATED`, `DOC_ARCHIVED`, `LOG_EVENT`).
+  - [x] Multi-spec task aggregation endpoints (`/api/tasks`, `/api/specs/all/tasks`).
+  - [x] Human manual status overrides and backwards transitions (`set_status`).
+  - [x] User preferences API with persistence in `.specflow/config.json`.
 
 - [x] **Phase 4: Web UI Dashboard Views & Static Bundling (`packages/ui`)**
-  - [x] Split-pane Document Inspector with floating *"Add Comment for AI"* text selection toolbar.
-  - [x] Hierarchical Accordion Task List with subtask line connectors and security/testing notes.
-  - [x] Interactive SVG DAG Dependency Graph with cycle prevention and status highlighting.
-  - [x] `@dnd-kit` Kanban Board with role-guarded human verification modal for `done`.
-  - [x] WebSocket auto-reconnect and React Query real-time cache invalidation (`useWebSocketSync.ts`).
-  - [x] Pre-bundled build into `packages/cli/static`.
-  - [x] 37/37 automated tests passing across core, CLI, and server suites.
-
-## Remaining Enhancements & Future Scope
-
-- [ ] **MCP Adapter Layer**: Expose `@spec-flow/core` operations as standard Model Context Protocol (MCP) tools for environments that prefer JSON-RPC over CLI.
-- [ ] **Worktree UI Switcher**: Expose active Git worktree heartbeats and lease switches in the dashboard navbar.
-- [ ] **Custom Template CLI Command**: Dedicated `spec-flow template apply <name>` to instantiate custom user spec scaffolds.
-- [ ] **Headless E2E Browser Suite**: Playwright end-to-end testing validating browser clicks, text selection, and drag-and-drop.
+  - [x] ClickUp-style hierarchical task list with collapsible subtasks and progress indicators.
+  - [x] True topological SVG DAG dependency graph with rank-based columns, cubic bezier curves, and node highlight chains.
+  - [x] `@dnd-kit` Kanban Board with backwards drag-and-drop transitions and dedicated blocked dependencies queue.
+  - [x] In-place edge-to-edge Document Inspector expansion with route persistence.
+  - [x] Markdown source mode with line numbers, top save button, and context-anchored commenting toolbar.
+  - [x] Theme manager featuring popular themes (Tokyo Night, Catppuccin, Gruvbox, Nord, Dracula) and custom typography.
+  - [x] Settings management page for appearance and workflow defaults.
+  - [x] Comprehensive documentation in `docs/` (`ARCHITECTURE.md`, `CLI_REFERENCE.md`, `API_REFERENCE.md`, `WORKFLOW_GUIDE.md`, `DASHBOARD_GUIDE.md`).

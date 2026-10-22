@@ -32,6 +32,7 @@ interface KanbanBoardProps {
   onSubmitReview: (task: Task, note?: string) => void;
   onApproveDone: (task: Task, note?: string) => void;
   onRequestChanges: (task: Task, note?: string) => void;
+  onSetStatus?: (task: Task, status: Task['status']) => void;
 }
 
 export function KanbanBoard({
@@ -40,6 +41,7 @@ export function KanbanBoard({
   onSubmitReview,
   onApproveDone,
   onRequestChanges,
+  onSetStatus,
 }: KanbanBoardProps) {
   // Dragging active item state for smooth DragOverlay
   const [activeTaskId, setActiveTaskId] = useState<string | null>(null);
@@ -64,12 +66,7 @@ export function KanbanBoard({
 
     if (!task || destinationLane === task.status) return;
 
-    // Instant transitions without ANY intrusive window.prompt!
-    if (destinationLane === 'done') {
-      onApproveDone(task, 'Verified and approved by reviewer');
-      return;
-    }
-
+    // Standard forward transitions
     if (task.status === 'todo' && destinationLane === 'in-progress') {
       onClaim(task, task.worktree || '', 'human');
       return;
@@ -80,9 +77,30 @@ export function KanbanBoard({
       return;
     }
 
-    if (task.status === 'to-review' && (destinationLane === 'in-progress' || destinationLane === 'todo')) {
+    if (task.status === 'to-review' && destinationLane === 'done') {
+      onApproveDone(task, 'Verified and approved by reviewer');
+      return;
+    }
+
+    if (task.status === 'to-review' && destinationLane === 'todo') {
       onRequestChanges(task, 'Changes requested');
       return;
+    }
+
+    // Backward transitions or manual status overrides (e.g. done -> in-progress, done -> todo, to-review -> in-progress, etc.)
+    if (onSetStatus) {
+      onSetStatus(task, destinationLane);
+    } else {
+      const originalTaskId = (task as any).originalId || task.id;
+      const parentSpecId = (task as any).specId || (task as any).spec_id || task.groupId || task.featureId;
+      const url = parentSpecId
+        ? `/api/specs/${encodeURIComponent(parentSpecId)}/tasks/${encodeURIComponent(originalTaskId)}/transition`
+        : `/api/tasks/${encodeURIComponent(originalTaskId)}/transition`;
+      void fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'set_status', status: destinationLane, actor: 'human' }),
+      });
     }
   };
 
@@ -93,9 +111,11 @@ export function KanbanBoard({
     { id: 'done', label: 'Done' },
   ];
 
-  const blockedTasks = tasks.filter(
-    (t) => t.availability === 'blocked' || (t.blockers && t.blockers.length > 0)
-  );
+  // Only show tasks in the "Blocked Dependencies" box if task.status === 'todo' AND task.blockers && task.blockers.length > 0
+  const isTaskBlocked = (t: Task) =>
+    t.status === 'todo' && Boolean(t.blockers && t.blockers.length > 0);
+
+  const blockedTasks = tasks.filter(isTaskBlocked);
   const activeTask = activeTaskId
     ? tasks.find((t) => (t as any).compositeKey === activeTaskId || t.id === activeTaskId)
     : null;
@@ -110,7 +130,7 @@ export function KanbanBoard({
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
           {lanes.map((lane) => {
             const laneTasks = tasks.filter(
-              (t) => t.status === lane.id && (lane.id !== 'todo' || t.availability !== 'blocked')
+              (t) => t.status === lane.id && (lane.id !== 'todo' || !isTaskBlocked(t))
             );
             return (
               <KanbanLane
@@ -156,6 +176,10 @@ export function KanbanBoard({
         onRequestChanges={(t, note) => {
           onRequestChanges(t, note);
           setDetailTask((prev) => (prev ? { ...prev, status: 'todo' } : null));
+        }}
+        onSetStatus={(t, status) => {
+          onSetStatus?.(t, status);
+          setDetailTask((prev) => (prev ? { ...prev, status } : null));
         }}
       />
 
@@ -295,7 +319,8 @@ function KanbanCard({
   onQuickReject,
 }: KanbanCardProps) {
   const cardId = (task as any).compositeKey || task.id;
-  const isDraggable = task.status !== 'done' && task.availability !== 'blocked';
+  const isBlocked = task.status === 'todo' && Boolean(task.blockers && task.blockers.length > 0);
+  const isDraggable = !isBlocked;
   const { attributes, listeners, setNodeRef, setActivatorNodeRef, isDragging } =
     useDraggable({
       id: cardId,

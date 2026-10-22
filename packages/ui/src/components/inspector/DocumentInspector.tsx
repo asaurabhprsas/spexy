@@ -216,12 +216,6 @@ export function DocumentInspector({ documentId, onClose }: DocumentInspectorProp
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isInspectorFullWidth, setInspectorFullWidth]);
 
-  // Reset full width state on unmount
-  useEffect(() => {
-    return () => {
-      setInspectorFullWidth(false);
-    };
-  }, [setInspectorFullWidth]);
 
   // Comments for this document
   const docComments = useMemo(() => {

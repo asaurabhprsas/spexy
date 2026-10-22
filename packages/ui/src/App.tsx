@@ -1345,6 +1345,19 @@ function Router() {
 }
 
 function App() {
+  const updatePreferences = useWorkflowUiStore((state) => state.updatePreferences);
+
+  useEffect(() => {
+    fetch('/api/preferences')
+      .then((r) => r.json())
+      .then((prefs) => {
+        if (prefs && typeof prefs === 'object') {
+          updatePreferences(prefs);
+        }
+      })
+      .catch(() => {});
+  }, [updatePreferences]);
+
   return (
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>

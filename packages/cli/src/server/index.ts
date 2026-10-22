@@ -227,7 +227,13 @@ export function createServer(options: ServerOptions = {}): {
       }
 
       if (message.type === "TASK_TRANSITION") {
-        const { specId, taskId, action, actor = "human", note, worktree, branch } = message.payload || {};
+        const { specId, taskId, note, worktree, branch } = message.payload || {};
+        let { action, actor = "human" } = message.payload || {};
+        const targetStatus = message.payload?.status || message.payload?.target_status || message.payload?.targetStatus;
+        if (targetStatus || action === "set_status") {
+          action = "set_status";
+          actor = "human";
+        }
         const doc = readTasksYaml(projectRoot, specId);
         const tasks = flattenTasks(doc);
         const target = tasks.find((t) => t.id === taskId);
@@ -236,17 +242,18 @@ export function createServer(options: ServerOptions = {}): {
           return;
         }
 
-        const nextStatus = transitionTask(target.status, action as TaskAction, actor as WorkflowActor);
+        const nextStatus = transitionTask(target.status, action as TaskAction, actor as WorkflowActor, targetStatus);
         const updatedTask: TaskItem = { ...target, status: nextStatus };
 
-        if (action === "claim") {
+        if (action === "claim" || (action === "set_status" && nextStatus === "in-progress")) {
           updatedTask.worktree = worktree || target.worktree;
           updatedTask.branch = branch || target.branch;
           updatedTask.locked_at = new Date().toISOString();
         } else if (action === "submit" && note) {
           updatedTask.notes = { ...target.notes, testing: note };
-        } else if (action === "reject" && note) {
-          updatedTask.notes = { ...target.notes, security: note };
+        } else if (action === "reject" || (action === "set_status" && nextStatus === "todo")) {
+          updatedTask.locked_at = null;
+          if (note) updatedTask.notes = { ...target.notes, security: note };
         }
 
         const updatedDoc = updateTaskInDoc(doc, updatedTask);
@@ -713,14 +720,19 @@ export function createServer(options: ServerOptions = {}): {
           const taskId = decodeURIComponent(globalTaskTransitionMatch[1]);
           const reqBody = await parseBody(req);
 
-          const action = reqBody.action as TaskAction;
+          let action = reqBody.action as TaskAction;
+          const targetStatus = reqBody.status || reqBody.target_status || reqBody.targetStatus;
+          if (targetStatus || action === "set_status") {
+            action = "set_status";
+          }
+
           if (!action) {
             return json({ error: "Missing required 'action'" }, 400);
           }
 
           let actor = reqBody.actor as WorkflowActor;
           if (!actor) {
-            actor = action === "approve" || action === "reject" ? "human" : "agent";
+            actor = action === "approve" || action === "reject" || action === "set_status" ? "human" : "agent";
           }
 
           let taskLocation: { specId: string; tasksDoc: TasksDocument; task: TaskItem; specDir: string };
@@ -732,10 +744,16 @@ export function createServer(options: ServerOptions = {}): {
 
           const { specId, tasksDoc: doc, task: target } = taskLocation;
 
-          const nextStatus = transitionTask(target.status, action, actor);
+          let nextStatus: TaskStatus;
+          try {
+            nextStatus = transitionTask(target.status, action, actor, targetStatus);
+          } catch (err: any) {
+            return json({ error: err.message, code: err.code }, 400);
+          }
+
           const updatedTask: TaskItem = { ...target, status: nextStatus };
 
-          if (action === "claim") {
+          if (action === "claim" || (action === "set_status" && nextStatus === "in-progress")) {
             updatedTask.worktree = reqBody.worktree || target.worktree;
             updatedTask.branch = reqBody.branch || target.branch;
             updatedTask.locked_at = new Date().toISOString();
@@ -743,7 +761,8 @@ export function createServer(options: ServerOptions = {}): {
             if (reqBody.note) {
               updatedTask.notes = { ...target.notes, testing: reqBody.note };
             }
-          } else if (action === "reject") {
+          } else if (action === "reject" || (action === "set_status" && nextStatus === "todo")) {
+            updatedTask.locked_at = null;
             if (reqBody.note) {
               updatedTask.notes = { ...target.notes, security: reqBody.note };
             }
@@ -833,7 +852,8 @@ export function createServer(options: ServerOptions = {}): {
             priority: reqBody.priority || "medium",
             depends_on: reqBody.dependsOn || reqBody.depends_on || [],
             worktree: null,
-            branch: null,
+            branch: reqBody.branch || `feature/${specId}/${reqBody.id || "task"}`,
+            commit_pattern: reqBody.commit_pattern || reqBody.commitPattern || null,
             locked_at: null,
             files: reqBody.files || [],
             leverage: reqBody.leverage || "",
@@ -871,14 +891,19 @@ export function createServer(options: ServerOptions = {}): {
           const taskId = decodeURIComponent(taskTransitionMatch[2]);
           const reqBody = await parseBody(req);
 
-          const action = reqBody.action as TaskAction;
+          let action = reqBody.action as TaskAction;
+          const targetStatus = reqBody.status || reqBody.target_status || reqBody.targetStatus;
+          if (targetStatus || action === "set_status") {
+            action = "set_status";
+          }
+
           if (!action) {
             return json({ error: "Missing required 'action'" }, 400);
           }
 
           let actor = reqBody.actor as WorkflowActor;
           if (!actor) {
-            actor = action === "approve" || action === "reject" ? "human" : "agent";
+            actor = action === "approve" || action === "reject" || action === "set_status" ? "human" : "agent";
           }
 
           const doc = readTasksYaml(projectRoot, specId);
@@ -888,10 +913,16 @@ export function createServer(options: ServerOptions = {}): {
             return json({ error: `Task "${taskId}" not found in spec "${specId}"` }, 404);
           }
 
-          const nextStatus = transitionTask(target.status, action, actor);
+          let nextStatus: TaskStatus;
+          try {
+            nextStatus = transitionTask(target.status, action, actor, targetStatus);
+          } catch (err: any) {
+            return json({ error: err.message, code: err.code }, 400);
+          }
+
           const updatedTask: TaskItem = { ...target, status: nextStatus };
 
-          if (action === "claim") {
+          if (action === "claim" || (action === "set_status" && nextStatus === "in-progress")) {
             updatedTask.worktree = reqBody.worktree || target.worktree;
             updatedTask.branch = reqBody.branch || target.branch;
             updatedTask.locked_at = new Date().toISOString();
@@ -899,7 +930,8 @@ export function createServer(options: ServerOptions = {}): {
             if (reqBody.note) {
               updatedTask.notes = { ...target.notes, testing: reqBody.note };
             }
-          } else if (action === "reject") {
+          } else if (action === "reject" || (action === "set_status" && nextStatus === "todo")) {
+            updatedTask.locked_at = null;
             if (reqBody.note) {
               updatedTask.notes = { ...target.notes, security: reqBody.note };
             }
@@ -995,6 +1027,7 @@ export function createServer(options: ServerOptions = {}): {
 
           let action: TaskAction = "claim";
           let actor: WorkflowActor = "agent";
+          const targetStatus = reqBody.status || reqBody.target_status || reqBody.targetStatus;
 
           if (subAction === "claim") {
             action = "claim";
@@ -1003,8 +1036,12 @@ export function createServer(options: ServerOptions = {}): {
             action = "submit";
             actor = "agent";
           } else if (subAction === "review") {
-            action = reqBody.decision === "approve" ? "approve" : "reject";
-            actor = "human";
+            actor = (reqBody.actor as WorkflowActor) || "human";
+            if (targetStatus || reqBody.action === "set_status") {
+              action = "set_status";
+            } else {
+              action = reqBody.decision === "approve" ? "approve" : "reject";
+            }
           }
 
           const doc = readTasksYaml(projectRoot, specId);
@@ -1014,15 +1051,26 @@ export function createServer(options: ServerOptions = {}): {
             return json({ error: `Task "${taskId}" not found` }, 404);
           }
 
-          const nextStatus = transitionTask(target.status, action, actor);
+          let nextStatus: TaskStatus;
+          try {
+            nextStatus = transitionTask(target.status, action, actor, targetStatus);
+          } catch (err: any) {
+            return json({ error: err.message, code: err.code }, 400);
+          }
+
           const updatedTask: TaskItem = { ...target, status: nextStatus };
 
-          if (action === "claim") {
+          if (action === "claim" || (action === "set_status" && nextStatus === "in-progress")) {
             updatedTask.worktree = reqBody.worktree || target.worktree;
+            updatedTask.branch = reqBody.branch || target.branch;
+            updatedTask.locked_at = new Date().toISOString();
           } else if (action === "submit" && reqBody.note) {
             updatedTask.notes = { ...target.notes, testing: reqBody.note };
-          } else if (action === "reject" && reqBody.note) {
-            updatedTask.notes = { ...target.notes, security: reqBody.note };
+          } else if (action === "reject" || (action === "set_status" && nextStatus === "todo")) {
+            updatedTask.locked_at = null;
+            if (reqBody.note) {
+              updatedTask.notes = { ...target.notes, security: reqBody.note };
+            }
           }
 
           const updatedDoc = updateTaskInDoc(doc, updatedTask);
@@ -1031,6 +1079,11 @@ export function createServer(options: ServerOptions = {}): {
           await withFileWriteLock(tasksPath, () => {
             writeTasksYaml(projectRoot, specId, updatedDoc);
           });
+
+          const allTasksInDoc = flattenTasks(updatedDoc);
+          const statuses: Record<string, TaskStatus> = {};
+          for (const t of allTasksInDoc) statuses[t.id] = t.status;
+          const availabilityMap = getTaskAvailability(allTasksInDoc, statuses);
 
           logActivity({
             category: "task",
@@ -1050,10 +1103,16 @@ export function createServer(options: ServerOptions = {}): {
 
           broadcast({
             type: "TASK_UPDATED",
-            payload: { specId, tasks: flattenTasks(updatedDoc) },
+            payload: { specId, tasks: allTasksInDoc },
           });
 
-          return json({ success: true, task: updatedTask });
+          return json({
+            success: true,
+            task: {
+              ...updatedTask,
+              availability: availabilityMap.get(updatedTask.id) ?? updatedTask.status,
+            },
+          });
         }
 
         // GET /api/comments

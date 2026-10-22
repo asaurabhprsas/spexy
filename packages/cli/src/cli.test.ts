@@ -421,4 +421,64 @@ describe("@spec-flow/cli Comprehensive Test Suite", () => {
     const failOut = runCli(["doc", "archive", "does-not-exist.md"], { expectFail: true });
     expect(failOut).toContain('Error archiving document "does-not-exist.md"');
   });
+
+  it("performs comprehensive workspace health checks via doctor and check commands and flags", () => {
+    runCli(["init"]);
+    runCli(["spec", "create", "core-feature", "--force", "--title", "Core Feature"]);
+
+    // 1. spec-flow doctor
+    const doctorOut = runCli(["doctor"]);
+    expect(doctorOut).toContain("Spec-Flow Health Check Diagnostic Report");
+    expect(doctorOut).toContain("Steering Documents");
+    expect(doctorOut).toContain("Feature Specifications");
+    expect(doctorOut).toContain("Workspace is healthy");
+
+    // 2. spec-flow check (alias for doctor)
+    const checkOut = runCli(["check"]);
+    expect(checkOut).toContain("Spec-Flow Health Check Diagnostic Report");
+    expect(checkOut).toContain("Workspace is healthy");
+
+    // 3. spec-flow --doctor root flag
+    const flagDoctorOut = runCli(["--doctor"]);
+    expect(flagDoctorOut).toContain("Spec-Flow Health Check Diagnostic Report");
+    expect(flagDoctorOut).toContain("Workspace is healthy");
+
+    // 4. spec-flow --check root flag
+    const flagCheckOut = runCli(["--check"]);
+    expect(flagCheckOut).toContain("Spec-Flow Health Check Diagnostic Report");
+    expect(flagCheckOut).toContain("Workspace is healthy");
+
+    // 5. spec-flow doctor --compact
+    const compactDoctorOut = runCli(["doctor", "--compact"]);
+    expect(compactDoctorOut).toContain("PASS");
+    expect(compactDoctorOut).toContain("steering");
+    expect(compactDoctorOut).toContain("specs");
+
+    // 6. spec-flow check --compact
+    const compactCheckOut = runCli(["check", "--compact"]);
+    expect(compactCheckOut).toContain("PASS");
+
+    // 7. spec-flow doctor --json
+    const jsonDoctorOut = runCli(["doctor", "--json"]);
+    const parsedReport = JSON.parse(jsonDoctorOut);
+    expect(parsedReport.valid).toBe(true);
+    expect(parsedReport.summary.failed).toBe(0);
+    expect(parsedReport.summary.passed).toBeGreaterThan(0);
+    expect(Array.isArray(parsedReport.checks)).toBe(true);
+
+    // 8. Corrupt the workspace: delete tech.md and break tasks.yaml
+    fs.unlinkSync(path.join(tmpDir, ".specflow", "steering", "tech.md"));
+    fs.writeFileSync(
+      path.join(tmpDir, ".specflow", "specs", "core-feature", "tasks.yaml"),
+      "broken: [yaml syntax",
+      "utf-8",
+    );
+
+    const failDoctorOut = runCli(["doctor"], { expectFail: true });
+    expect(failDoctorOut).toContain("✖");
+    expect(failDoctorOut).toContain("Actionable");
+
+    const failCompactOut = runCli(["doctor", "--compact"], { expectFail: true });
+    expect(failCompactOut).toContain("FAIL");
+  });
 });

@@ -8,9 +8,9 @@ dependency_graph:
   cross_dependencies: []
 notes:
   security:
-    - "Validate all input parameters"
+    - "Validate all input parameters with Zod schemas"
   testing:
-    - "Achieve 100% test pass rate"
+    - "Achieve 100% test pass rate with bun test"
 groups:
   - id: "foundation"
     name: "Foundation & Schemas"
@@ -22,8 +22,8 @@ groups:
         status: "todo"
         priority: "high"
         depends_on: []
-        worktree: null
-        branch: null
+        branch: "feature/<spec-id>/1"
+        commit_pattern: "feat(<spec-id>): Define Schemas and Interfaces (refs #1)"
         locked_at: null
         files: []
         leverage: ""
@@ -38,8 +38,8 @@ groups:
         status: "todo"
         priority: "high"
         depends_on: ["1"]
-        worktree: null
-        branch: null
+        branch: "feature/<spec-id>/2"
+        commit_pattern: "feat(<spec-id>): Implement Domain Logic (refs #2)"
         locked_at: null
         files: []
         leverage: ""

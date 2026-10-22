@@ -27,5 +27,7 @@ Scaffold and author `requirements.md` and `design.md` for a new feature.
    - Ensure every requirement has a distinct tag (`REQ-1`, `REQ-2`).
    - Define exact schemas, boundary conditions, and test assertions.
 5. Place auxiliary artifacts (diagrams, API contracts) into `references/` or `images/`.
-6. Confirm spec file discovery:
+6. Run workspace diagnostic check:
+   `spec-flow doctor`
+7. Confirm spec file discovery:
    Review discovered files with `listSpecFiles` or the dashboard file tree.

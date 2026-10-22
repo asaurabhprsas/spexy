@@ -178,6 +178,80 @@ describe("Track B: Fastify/Bun WebSocket Server & File Watcher", () => {
     expect(humanApproveRes.status).toBe(200);
     const approvedData: any = await humanApproveRes.json();
     expect(approvedData.task.status).toBe("done");
+
+    // 5. Manual human status override: backwards transition from done -> in-progress
+    const backwardsRes = await fetch(`${baseUrl}/api/specs/auth-system/tasks/1/transition`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        status: "in-progress",
+        actor: "human",
+      }),
+    });
+    expect(backwardsRes.status).toBe(200);
+    const backwardsData: any = await backwardsRes.json();
+    expect(backwardsData.task.status).toBe("in-progress");
+
+    // 6. Manual human status override: backwards transition to todo via target_status
+    const toTodoRes = await fetch(`${baseUrl}/api/specs/auth-system/tasks/1/transition`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        action: "set_status",
+        target_status: "todo",
+        actor: "human",
+      }),
+    });
+    expect(toTodoRes.status).toBe(200);
+    const toTodoData: any = await toTodoRes.json();
+    expect(toTodoData.task.status).toBe("todo");
+
+    // 7. Test review endpoint: reject decision sets task to todo and availability to available (not blocked)
+    // First claim & submit task 1
+    await fetch(`${baseUrl}/api/specs/auth-system/tasks/1/transition`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "claim", actor: "agent" }),
+    });
+    await fetch(`${baseUrl}/api/specs/auth-system/tasks/1/transition`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "submit", actor: "agent", note: "Ready for review" }),
+    });
+
+    const rejectRes = await fetch(`${baseUrl}/api/specs/auth-system/tasks/1/review`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        decision: "reject",
+        note: "Needs additional unit test",
+      }),
+    });
+    expect(rejectRes.status).toBe(200);
+    const rejectData: any = await rejectRes.json();
+    expect(rejectData.success).toBe(true);
+    expect(rejectData.task.status).toBe("todo");
+    expect(rejectData.task.availability).toBe("available");
+
+    // 8. Manual human status override via review endpoint
+    const manualReviewRes = await fetch(`${baseUrl}/api/specs/auth-system/tasks/1/review`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        status: "in-progress",
+        actor: "human",
+      }),
+    });
+    expect(manualReviewRes.status).toBe(200);
+    const manualReviewData: any = await manualReviewRes.json();
+    expect(manualReviewData.task.status).toBe("in-progress");
+
+    // Finally approve task 1 back to done for subsequent tests
+    await fetch(`${baseUrl}/api/specs/auth-system/tasks/1/transition`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "set_status", status: "done", actor: "human" }),
+    });
   });
 
   it("POST /api/comments creates anchored comment and POST /api/comments/:id/resolve resolves it", async () => {

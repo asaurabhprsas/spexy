@@ -16,6 +16,13 @@ import { Textarea } from '@/components/ui/textarea';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Separator } from '@/components/ui/separator';
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import {
   GitBranch,
   Check,
   CheckCheck,
@@ -58,6 +65,7 @@ export interface TaskDetailSheetProps {
   onSubmitReview?: (task: Task, note?: string) => void;
   onApprove?: (task: Task, note?: string) => void;
   onRequestChanges?: (task: Task, note?: string) => void;
+  onSetStatus?: (task: Task, status: Task['status']) => void;
 }
 
 export function TaskDetailSheet({
@@ -70,6 +78,7 @@ export function TaskDetailSheet({
   onSubmitReview,
   onApprove,
   onRequestChanges,
+  onSetStatus,
 }: TaskDetailSheetProps) {
   // Local form state for inline actions without window.prompt
   const [worktreeInput, setWorktreeInput] = useState('');
@@ -141,6 +150,26 @@ export function TaskDetailSheet({
     onRequestChanges?.(task, note);
   };
 
+  const handleStatusSelect = async (newStatus: Task['status']) => {
+    if (!task || newStatus === task.status) return;
+    if (onSetStatus) {
+      onSetStatus(task, newStatus);
+    } else {
+      const originalTaskId = (task as any).originalId || task.id;
+      const specId = (task as any).specId || (task as any).spec_id || task.groupId || task.featureId;
+      const url = specId
+        ? `/api/specs/${encodeURIComponent(specId)}/tasks/${encodeURIComponent(originalTaskId)}/transition`
+        : `/api/tasks/${encodeURIComponent(originalTaskId)}/transition`;
+      try {
+        await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'set_status', status: newStatus, actor: 'human' }),
+        });
+      } catch {}
+    }
+  };
+
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent
@@ -159,12 +188,34 @@ export function TaskDetailSheet({
             >
               {task.priority} priority
             </Badge>
-            <Badge
-              variant="outline"
-              className={`font-mono text-[10px] uppercase tracking-wider ${getStatusBadgeClass(task.status)}`}
+
+            {/* Manual Status Selector Dropdown */}
+            <Select
+              value={task.status}
+              onValueChange={(val) => handleStatusSelect(val as Task['status'])}
             >
-              {task.status.replace('-', ' ')}
-            </Badge>
+              <SelectTrigger
+                className={`h-6 text-[10px] font-mono uppercase tracking-wider px-2 py-0 border ${getStatusBadgeClass(task.status)} font-semibold shadow-xs gap-1`}
+                aria-label="Change task status"
+                data-testid="select-task-status"
+              >
+                <SelectValue placeholder={task.status.replace('-', ' ')} />
+              </SelectTrigger>
+              <SelectContent align="start">
+                <SelectItem value="todo" className="text-xs font-mono uppercase">
+                  To Do
+                </SelectItem>
+                <SelectItem value="in-progress" className="text-xs font-mono uppercase">
+                  In Progress
+                </SelectItem>
+                <SelectItem value="to-review" className="text-xs font-mono uppercase">
+                  To Review
+                </SelectItem>
+                <SelectItem value="done" className="text-xs font-mono uppercase">
+                  Done
+                </SelectItem>
+              </SelectContent>
+            </Select>
             {isBlocked && (
               <Badge variant="destructive" className="font-mono text-[10px] uppercase tracking-wider gap-1">
                 <AlertCircle size={11} />
@@ -268,13 +319,29 @@ export function TaskDetailSheet({
 
               {/* Action Area for Claim or Submit */}
               <div className="rounded-xl border border-border/80 bg-accent/20 p-4 space-y-3">
-                <div className="flex items-center justify-between">
+                <div className="flex flex-wrap items-center justify-between gap-2">
                   <span className="font-mono text-xs font-semibold text-foreground uppercase tracking-wider">
                     Workflow Actions
                   </span>
-                  <span className="text-[11px] font-mono text-muted-foreground">
-                    Status: <strong className="text-foreground">{task.status}</strong>
-                  </span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[11px] font-mono text-muted-foreground">
+                      Status:
+                    </span>
+                    <Select
+                      value={task.status}
+                      onValueChange={(val) => handleStatusSelect(val as Task['status'])}
+                    >
+                      <SelectTrigger className="h-7 w-32 text-xs font-mono uppercase tracking-wider">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent align="end">
+                        <SelectItem value="todo" className="text-xs font-mono uppercase">To Do</SelectItem>
+                        <SelectItem value="in-progress" className="text-xs font-mono uppercase">In Progress</SelectItem>
+                        <SelectItem value="to-review" className="text-xs font-mono uppercase">To Review</SelectItem>
+                        <SelectItem value="done" className="text-xs font-mono uppercase">Done</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
                 </div>
 
                 {/* Claim Options */}

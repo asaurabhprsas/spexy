@@ -9,3 +9,4 @@ export * from "./git/worktree";
 export * from "./comments/fuzzy-anchor";
 export * from "./documents/archive";
 export * from "./config";
+export * from "./health/doctor";

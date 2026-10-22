@@ -15,3 +15,4 @@ Each prompt guides the agent through an SDD stage using Spec-Flow templates and 
 2. **DAG Integrity**: Every task prerequisite must be declared; circular dependencies are rejected.
 3. **HITL Two-Tier Gate**: Agents submit tasks to `to-review`; only human reviewers approve to `done`.
 4. **History Preservation**: Resolved comments are automatically archived in `.specflow/.cache/history/`.
+5. **Health Diagnostics**: Always run `spec-flow doctor` (or `spec-flow check`) to verify schema and graph integrity before committing or submitting.

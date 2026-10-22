@@ -309,7 +309,8 @@ Define interfaces, types, and data models.
             priority: "high",
             depends_on: [],
             worktree: null,
-            branch: null,
+            branch: `feature/${specId}/1`,
+            commit_pattern: `feat(${specId}): Initialize ${title} (refs #1)`,
             locked_at: null,
             files: [],
             leverage: "",
@@ -701,20 +702,63 @@ approved_by: null
 
 # Product Vision & Strategy: [Project Name]
 
-## 1. Vision & Executive Summary
-Brief high-level description of what this product accomplishes and the core problem it solves.
+## 1. Product Purpose
+- **Core Problem**:
+  - What pain points or operational bottlenecks does this project solve?
+  - Why is the existing solution or status quo insufficient?
+- **Value Proposition**:
+  - Primary value delivered to users and stakeholders.
+  - Expected transformative outcome.
 
 ## 2. Target Users & Personas
-- **Primary Persona**: Description, workflows, core pain points.
-- **Secondary Persona**: Supporting roles and administrative users.
+- **Primary Persona**:
+  - Role, background, and responsibilities.
+  - Daily workflows, key needs, and major frustrations.
+- **Secondary Personas**:
+  - Supporting roles, administrators, reviewers, or executive stakeholders.
+  - Permission levels and reporting requirements.
 
-## 3. Core Features & Capabilities
-- **Feature Area 1**: Detailed capabilities and desired outcomes.
-- **Feature Area 2**: Automation, integrations, or workflows.
+## 3. Key Features & Capabilities
+- **Core Feature 1**:
+  - Description and expected workflow.
+  - User outcome and acceptance criteria.
+- **Core Feature 2**:
+  - Automation, integration, or intelligence capabilities.
+  - Differentiating characteristics.
+- **Core Feature 3**:
+  - Extension points, reporting, or collaboration tooling.
 
-## 4. Product Principles & Success Metrics
-- **Principle 1**: Usability, performance, or reliability standard.
-- **Key Metrics (KPIs)**: Quantifiable metrics for product validation.
+## 4. Business Objectives & Success Metrics
+- **Business Goals**:
+  - Strategic objective 1 (e.g., efficiency, quality, speed).
+  - Strategic objective 2 (e.g., cost reduction, compliance).
+- **Key Performance Indicators (KPIs)**:
+  - Metric 1: Quantifiable baseline and target threshold.
+  - Metric 2: Adoption, performance, or accuracy targets.
+
+## 5. Product Principles
+- **Principle 1**:
+  - Core philosophy guiding architectural and product trade-offs.
+- **Principle 2**:
+  - Quality, security, or developer experience standard.
+- **Principle 3**:
+  - Simplicity, modularity, or local-first philosophy.
+
+## 6. Monitoring & Visibility
+- **Dashboard Type**:
+  - Web UI, CLI daemon, or embedded terminal interface.
+- **Real-time Observability**:
+  - WebSocket, polling, or event stream notification mechanism.
+- **Surfaced Metrics**:
+  - High-priority state (e.g., task progress, review queue, cycle times).
+- **Sharing & Collaboration**:
+  - Read-only review links, exports, or audit log persistence.
+
+## 7. Future Vision & Roadmap
+- **Short-Term Horizons**:
+  - Immediate milestones following initial release.
+- **Long-Term Horizons**:
+  - Advanced automation, remote synchronization, and analytics capabilities.
 `,
     },
     {
@@ -727,21 +771,60 @@ approved_by: null
 
 # Technical Architecture & Constraints: [Project Name]
 
-## 1. Technology Stack
-- **Runtime & Language**: e.g., Bun / Node.js, TypeScript.
-- **Frameworks & Libraries**: Key dependencies and UI/backend frameworks.
-- **Persistence & Storage**: Database, caching, or file formats.
+## 1. Project Type & Classification
+- **Archetype**:
+  - Web application, CLI tool, API service, library package, or distributed system.
+- **Target Runtime**:
+  - Bun, Node.js, browser runtime, or multi-platform targets.
 
-## 2. Architecture & Design Patterns
-- Component architecture, layering, and service boundaries.
-- Error handling, validation schemas (e.g., Zod), and state management.
+## 2. Core Technologies
+- **Primary Language & Tools**:
+  - Language: TypeScript / ECMAScript target.
+  - Package manager and task orchestrator (e.g., Bun, Turborepo).
+- **Frameworks & Libraries**:
+  - Web/Server framework (e.g., Fastify, native Bun HTTP).
+  - Validation engine (e.g., Zod schemas).
+  - Serialization: YAML, JSON, frontmatter.
+- **Application Architecture**:
+  - Layered architecture: Core domain logic vs CLI presentation vs server adapters.
+  - State management: File system as single source of truth (.specflow/).
+  - Event model: Reactive WebSocket broadcasting and file watchers.
+- **Storage & Data Formats**:
+  - Primary storage: Local-first Markdown files and YAML documents.
+  - Cache: Ring-buffer snapshot backups in \`.specflow/.cache/checkpoints/\`.
+- **Integrations & Protocols**:
+  - Local WebSocket server (\`ws://\` and \`http://\`).
+  - Git integration: branch isolation, worktrees, and commit hooks.
 
-## 3. Security, Quality & Coding Standards
-- Security policies, input sanitization, and authentication.
-- Testing expectations: Unit test coverage, integration tests, type safety.
+## 3. Development Environment & Quality Standards
+- **Build & Dev Tooling**:
+  - Test runner: \`bun test\`.
+  - Type checking: \`tsc --noEmit\`.
+- **Static Analysis & Formatting**:
+  - Linter and formatter configurations.
+  - Zero-warning policy for production branches.
+- **Testing Requirements**:
+  - Unit tests for core domain logic and DAG engines.
+  - Integration tests for CLI commands and HTTP/WebSocket endpoints.
+  - 100% test pass rate required before human review submission.
 
-## 4. Non-Negotiable Rules & Constraints
-- Constraints that autonomous agents and human developers must obey.
+## 4. Technical Constraints & Security
+- **Performance Benchmarks**:
+  - Sub-second CLI command startup and execution.
+  - Token-optimized outputs (\`--compact\` and \`--json\` modes).
+- **Security & Sandboxing**:
+  - Path traversal validation and sandboxing.
+  - Strict input sanitization and schema parsing.
+- **Reliability & Resilience**:
+  - File locking with mutex inhibitors to avoid watcher echo loops.
+  - Atomic file writes and ring-buffer checkpoint rollback.
+
+## 5. Architectural Decision Log & Limitations
+- **Key Decisions**:
+  - ADR 1: Local-first file-backed storage over remote database.
+  - ADR 2: Two-tier human-in-the-loop (HITL) approval gate for tasks.
+- **Known Limitations**:
+  - Documented technical constraints and planned remediations.
 `,
     },
     {
@@ -754,19 +837,60 @@ approved_by: null
 
 # Project Structure & Conventions: [Project Name]
 
-## 1. Workspace Layout
-- \`packages/\`: Monorepo packages and libraries.
-- \`apps/\`: Application entrypoints.
-- \`.specflow/\`: Spec-Driven Development steering, specs, and cache.
-- \`docs/\`: Long-term human documentation.
+## 1. Monorepo Directory Organization
+- **\`packages/\`**:
+  - \`packages/core/\`: Domain logic, DAG workflow engine, Zod schemas, file operations.
+  - \`packages/cli/\`: Command-line interface, server daemon, dashboard runner.
+  - \`packages/ui/\`: Frontend single-page application dashboard.
+- **\`.specflow/\`**:
+  - \`steering/\`: Foundational product, tech, and structure steering documents.
+  - \`specs/\`: Feature specifications with requirements, design, and tasks.yaml.
+  - \`prompts/\`: Standardized AI agent prompt guides.
+  - \`archived/\`: Archived steering and specification documents.
+  - \`.cache/\`: Snapshot ring-buffer checkpoints and resolved comment history.
+- **\`templates/\`**:
+  - \`steering/\`: Turnkey templates for steering documents.
+  - \`specs/\`: Turnkey templates for feature specifications and task graphs.
+- **\`docs/\`**:
+  - Long-term human documentation and architecture reference manuals.
 
-## 2. Naming & File Conventions
-- File naming: kebab-case for filenames, PascalCase for classes/types.
-- Exports: explicit index.ts exports and barrel conventions.
+## 2. Naming Conventions
+- **Files & Directories**:
+  - Source files: \`kebab-case.ts\` (e.g., \`ring-buffer.ts\`, \`fuzzy-anchor.ts\`).
+  - Test files: \`*.test.ts\` co-located with source or in test suites.
+  - Documentation: \`kebab-case.md\` or \`.specflow/\` standard conventions.
+- **Source Code Symbols**:
+  - Classes, interfaces, types: \`PascalCase\` (e.g., \`TasksDocumentSchema\`, \`TaskItem\`).
+  - Functions, methods, variables: \`camelCase\` (e.g., \`computeTaskAvailability\`).
+  - Constants & Enums: \`UPPER_SNAKE_CASE\` or \`PascalCase\` object enums.
 
-## 3. Branching & Worktree Strategy
-- Branch naming: \`feature/<spec-id>/<task-id>\` or \`spec/<spec-id>\`.
-- Git worktree guidelines for isolated agent execution.
+## 3. Import & Export Patterns
+- **Import Ordering**:
+  - 1. Node.js built-ins (\`node:fs\`, \`node:path\`, \`node:crypto\`).
+  - 2. External third-party packages (\`yaml\`, \`zod\`, \`commander\`).
+  - 3. Internal monorepo package imports (\`@spec-flow/core\`).
+  - 4. Relative file imports (\`./server\`, \`../fs/workspace\`).
+- **Barrel Exports**:
+  - Clean public APIs exported via root \`index.ts\` in each package.
+
+## 4. Code Organization & Modularity Principles
+- **Single Responsibility Principle**:
+  - Each module focuses on a single domain (DAG, checkpoints, comments, workspace).
+- **Service & Utility Decoupling**:
+  - Separation between file-system mutation, data validation, and CLI rendering.
+- **File & Function Size Budgets**:
+  - Target modular files under 400 lines where practical.
+  - Functions should perform a single logical operation with clear return types.
+
+## 5. Branching & Commit Conventions
+- **Branch Strategy**:
+  - Feature task branches: \`feature/<spec-id>/<task-id>\` or \`spec/<spec-id>\`.
+  - Main branch: \`main\` (always protected, verified via CI).
+- **Commit Message Patterns**:
+  - Format: \`<type>(<spec-id>): <task-title> (refs #<task-id>)\`.
+  - Examples:
+    - \`feat(auth): Define Schemas and Interfaces (refs #1)\`
+    - \`fix(auth): Resolve session expiration edge-case (refs #2)\`
 `,
     },
     {
@@ -777,21 +901,43 @@ updated_at: 2026-01-01T00:00:00.000Z
 approved_by: null
 ---
 
-# Requirements: [Feature Title]
+# Requirements Specification: [Feature Title]
 
-## 1. User Story & Problem Statement
-As a [user role], I want to [goal] so that [benefit].
+## 1. Introduction & User Value
+- **Feature Overview**:
+  - Executive summary of the feature and problem addressed.
+- **User Goals**:
+  - What users accomplish through this feature.
+- **Alignment with Steering**:
+  - Direct contribution to objectives in \`.specflow/steering/product.md\`.
 
-## 2. Functional Requirements & Acceptance Criteria
-- **REQ-1**: [Core functional requirement]
-  - Acceptance Criteria: Given X, when Y, then Z.
-- **REQ-2**: [Additional functional capability]
-  - Acceptance Criteria: Validation and expected response.
+## 2. Requirements & Acceptance Criteria
+
+### REQ-1: [Core Capability Title]
+- **User Story**:
+  - As a [user role], I want [capability] so that [tangible benefit].
+- **Acceptance Criteria (EARS Format)**:
+  - Criteria 1: WHEN [trigger event occurs] THEN [system] SHALL [expected response].
+  - Criteria 2: IF [precondition is met] THEN [system] SHALL [expected response].
+  - Criteria 3: WHEN [invalid input provided] THEN [system] SHALL [reject with error].
+
+### REQ-2: [Secondary Capability Title]
+- **User Story**:
+  - As a [user role], I want [capability] so that [tangible benefit].
+- **Acceptance Criteria**:
+  - Criteria 1: WHEN [trigger event] THEN [system] SHALL [action].
+  - Criteria 2: IF [precondition] THEN [system] SHALL [action].
 
 ## 3. Non-Functional Requirements
-- **Performance**: Response times, throughput, and resource limits.
-- **Security**: Access controls, encryption, and auditability.
-- **Reliability & Resilience**: Fallback behavior, retry policies, and error handling.
+- **Architecture & Modularity**:
+  - Single responsibility principle applied to all new modules.
+  - Clean separation of interface definitions from implementation logic.
+- **Performance**:
+  - Maximum latency and memory overhead constraints.
+- **Security & Authorization**:
+  - Input validation via Zod schemas, sanitization, and permission checks.
+- **Reliability & Resilience**:
+  - Graceful degradation on failure, structured error reporting.
 `,
     },
     {
@@ -804,17 +950,53 @@ approved_by: null
 
 # Technical Design: [Feature Title]
 
-## 1. System Architecture
-Overview of components, module interactions, and sequence flow for this feature.
+## 1. Overview & Steering Alignment
+- **Architectural Fit**:
+  - How this design integrates with \`.specflow/steering/tech.md\` and \`structure.md\`.
+- **Core Design Patterns**:
+  - Selected patterns (e.g., DAG traversal, reactive state, modular adapters).
 
-## 2. Data Models & Schemas
-Define TypeScript interfaces, Zod schemas, or database entities.
+## 2. Code Reuse & Integration Analysis
+- **Existing Components to Leverage**:
+  - Shared models, validation utilities, or core services to reuse.
+- **Integration Touchpoints**:
+  - Inter-package APIs, database schema extensions, or CLI commands.
 
-## 3. Integration Points & API Contracts
-Endpoints, events, or inter-package API contracts.
+## 3. Architecture & Data Flow
+- **Modular Component Breakdown**:
+  - Component A: Responsibilities and boundaries.
+  - Component B: Responsibilities and boundaries.
+- **Component Interaction Diagram**:
+  \`\`\`mermaid
+  graph TD
+      A[Client Request / CLI] --> B[Validation & DAG Engine]
+      B --> C[File Mutation & Checkpoint]
+      C --> D[WebSocket Broadcast & Log]
+  \`\`\`
 
-## 4. Edge Cases & Error Handling
-Specific failure modes, boundary conditions, and mitigation strategies.
+## 4. Components & Interfaces
+- **Component 1**:
+  - Public methods, inputs, and return types.
+  - Error conditions and exceptions raised.
+- **Component 2**:
+  - Contract interfaces and dependencies.
+
+## 5. Data Models & Schemas
+- **TypeScript Interfaces & Zod Schemas**:
+  - Schema definitions with validation bounds.
+  - Invariants and serialization mappings.
+
+## 6. Error Handling & Edge Cases
+- **Failure Scenario 1**:
+  - Trigger, detection, and mitigation strategy.
+- **Failure Scenario 2**:
+  - Recovery mechanism and user-facing diagnostic message.
+
+## 7. Testing & Verification Strategy
+- **Unit Tests**:
+  - Scope: Component-level coverage and schema boundary tests.
+- **Integration Tests**:
+  - Scope: End-to-end command or API workflow verification.
 `,
     },
     {
@@ -829,9 +1011,9 @@ dependency_graph:
   cross_dependencies: []
 notes:
   security:
-    - "Validate all input parameters"
+    - "Validate all input parameters with Zod schemas"
   testing:
-    - "Achieve 100% test pass rate"
+    - "Achieve 100% test pass rate with bun test"
 groups:
   - id: "foundation"
     name: "Foundation & Schemas"
@@ -843,8 +1025,8 @@ groups:
         status: "todo"
         priority: "high"
         depends_on: []
-        worktree: null
-        branch: null
+        branch: "feature/<spec-id>/1"
+        commit_pattern: "feat(<spec-id>): Define Schemas and Interfaces (refs #1)"
         locked_at: null
         files: []
         leverage: ""
@@ -859,8 +1041,8 @@ groups:
         status: "todo"
         priority: "high"
         depends_on: ["1"]
-        worktree: null
-        branch: null
+        branch: "feature/<spec-id>/2"
+        commit_pattern: "feat(<spec-id>): Implement Domain Logic (refs #2)"
         locked_at: null
         files: []
         leverage: ""
@@ -900,6 +1082,7 @@ Each prompt guides the agent through an SDD stage using Spec-Flow templates and 
 2. **DAG Integrity**: Every task prerequisite must be declared; circular dependencies are rejected.
 3. **HITL Two-Tier Gate**: Agents submit tasks to \`to-review\`; only human reviewers approve to \`done\`.
 4. **History Preservation**: Resolved comments are automatically archived in \`.specflow/.cache/history/\`.
+5. **Health Diagnostics**: Always run \`spec-flow doctor\` (or \`spec-flow check\`) to verify schema and graph integrity before committing or submitting.
 `,
     },
     {
@@ -934,7 +1117,9 @@ Draft or update foundational steering documents (\`product.md\`, \`tech.md\`, \`
    - \`.specflow/steering/product.md\`
    - \`.specflow/steering/tech.md\`
    - \`.specflow/steering/structure.md\`
-5. Inform the human architect to review and approve the steering documents:
+5. Verify document integrity and frontmatter:
+   \`spec-flow doctor\`
+6. Inform the human architect to review and approve the steering documents:
    - Autonomous agents cannot mark steering documents as \`approved\`.
    - The steering gate must be approved by a human before spec execution begins.
    - Run \`spec-flow status\` to verify approval status.
@@ -971,7 +1156,9 @@ Scaffold and author \`requirements.md\` and \`design.md\` for a new feature.
    - Ensure every requirement has a distinct tag (\`REQ-1\`, \`REQ-2\`).
    - Define exact schemas, boundary conditions, and test assertions.
 5. Place auxiliary artifacts (diagrams, API contracts) into \`references/\` or \`images/\`.
-6. Confirm spec file discovery:
+6. Run workspace diagnostic check:
+   \`spec-flow doctor\`
+7. Confirm spec file discovery:
    Review discovered files with \`listSpecFiles\` or the dashboard file tree.
 `,
     },
@@ -997,12 +1184,16 @@ Generate a valid, DAG-enforced \`tasks.yaml\` in \`.specflow/specs/<spec-id>/tas
    - \`status\`: Always start with \`"todo"\`.
    - \`priority\`: \`"high"\` | \`"medium"\` | \`"low"\`.
    - \`depends_on\`: Array of explicit task IDs that must complete first.
+   - \`branch\`: Suggested task branch name (e.g., \`feature/<spec-id>/<task-id>\`).
+   - \`commit_pattern\`: Standardized commit message pattern (e.g., \`feat(<spec-id>): <task-title> (refs #<task-id>)\`).
    - \`requirements_ref\`: Array of referenced requirement IDs (e.g., \`["REQ-1"]\`).
    - \`files\`: Expected target files to create or modify.
 5. Group independent tracks under \`dependency_graph.parallel_tracks\`.
-6. Validate the task graph:
+6. Validate task graph and schema integrity:
+   \`spec-flow doctor\`
+   Ensure 0 errors and no circular dependencies before committing or proceeding.
+7. Inspect task availability list:
    \`spec-flow task list <spec-id>\`
-   Verify that no cycles exist and all dependencies resolve cleanly.
 `,
     },
     {
@@ -1012,7 +1203,7 @@ Generate a valid, DAG-enforced \`tasks.yaml\` in \`.specflow/specs/<spec-id>/tas
 You are an autonomous coding agent executing assigned tasks in Spec-Flow.
 
 ## Goal
-Claim an available task, implement code and tests, and submit it for human review.
+Claim an available task, implement code and tests, follow git commit patterns, and submit it for human review.
 
 ## Prerequisites
 - Task dependencies are satisfied (\`status: done\`).
@@ -1023,19 +1214,26 @@ Claim an available task, implement code and tests, and submit it for human revie
 2. Claim the target task:
    \`spec-flow task start <task-id>\`
    This sets status to \`in-progress\` and records the agent lease.
-3. Review steering principles and requirements referenced in the task.
-4. Implement the changes in the designated files:
+3. Switch or create designated branch if defined:
+   \`git checkout -b <branch>\` (e.g., \`feature/<spec-id>/<task-id>\`)
+4. Review steering principles and requirements referenced in the task.
+5. Implement the changes in the designated files:
    - Write clean, modular TypeScript code conforming to tech guidelines.
    - Preserve comments, existing contracts, and error handling patterns.
-5. Write and execute comprehensive unit and integration tests:
+6. Write and execute comprehensive unit and integration tests:
    \`bun test\`
    \`bun run typecheck\`
-   Ensure 100% test pass rate before submission.
-6. Submit the task for human verification (HITL Gate):
+   Ensure 100% test pass rate.
+7. Verify workspace schema and DAG health:
+   \`spec-flow doctor\`
+   Must pass with 0 errors before committing or submitting.
+8. Commit changes following the task's commit message pattern:
+   \`git commit -m "<commit_pattern>"\` (e.g., \`feat(<spec-id>): <task-title> (refs #<task-id>)\`)
+9. Submit the task for human verification (HITL Gate):
    \`spec-flow task complete <task-id> --note "Implemented feature with tests passing."\`
    Note: Autonomous agents are strictly forbidden from setting status to \`done\`.
-7. Check for human feedback comments:
-   \`spec-flow comment list --pending\`
+10. Check for human feedback comments:
+    \`spec-flow comment list --pending\`
 `,
     },
     {
@@ -1062,6 +1260,8 @@ Review pending anchored comments, apply fixes, and resolve comments with history
    - Verify changes with test suite:
      \`bun test\`
      \`bun run typecheck\`
+   - Verify workspace health:
+     \`spec-flow doctor\`
 3. Resolve the comment:
    \`spec-flow comment resolve <comment-id> --note "Addressed feedback and updated tests."\`
    This automatically archives the comment to history and prunes it from pending.

@@ -32,9 +32,12 @@ import {
   findDocument,
   archiveDocument,
   parseDocumentFrontmatter,
+  runHealthCheck,
+  formatHealthReport,
   WorkflowRuleError,
   type TaskItem,
   type TasksDocument,
+  type HealthReport,
 } from "@spec-flow/core";
 import { startServer } from "./server";
 
@@ -77,10 +80,32 @@ program
   .version("0.1.0")
   .option("--dashboard", "Start the local dashboard server")
   .option("--port <port>", "Port for dashboard server", (v) => parseInt(v, 10))
-  .option("--host <host>", "Host for dashboard server");
+  .option("--host <host>", "Host for dashboard server")
+  .option("--doctor", "Run workspace health checks")
+  .option("--check", "Run workspace health checks (alias for --doctor)");
 
 function getRoot(): string {
   return findProjectRoot(process.cwd());
+}
+
+function handleDoctor(options: { compact?: boolean; json?: boolean }): void {
+  try {
+    const projectRoot = getRoot();
+    const report = runHealthCheck(projectRoot);
+    if (options.json) {
+      console.log(JSON.stringify(report, null, 2));
+    } else if (options.compact) {
+      console.log(formatHealthReport(report, { compact: true }));
+    } else {
+      console.log(formatHealthReport(report));
+    }
+    if (!report.valid) {
+      process.exit(1);
+    }
+  } catch (err: any) {
+    console.error(`Error executing health check: ${err.message}`);
+    process.exit(1);
+  }
 }
 
 function appendToImplementationLog(specDir: string, message: string): void {
@@ -980,7 +1005,26 @@ program
     }
   });
 
-// Handle root --dashboard flag
+// 9. doctor and check commands
+program
+  .command("doctor")
+  .description("Run comprehensive health and diagnostic checks on the Spec-Flow workspace")
+  .option("--compact", "Output token-optimized compact single-line report")
+  .option("--json", "Output full diagnostic report as JSON")
+  .action((options) => {
+    handleDoctor(options);
+  });
+
+program
+  .command("check")
+  .description("Alias for 'doctor': run workspace health and diagnostic checks")
+  .option("--compact", "Output token-optimized compact single-line report")
+  .option("--json", "Output full diagnostic report as JSON")
+  .action((options) => {
+    handleDoctor(options);
+  });
+
+// Handle root flags: --dashboard, --doctor, --check
 const rawArgs = process.argv.slice(2);
 if (rawArgs.includes("--dashboard")) {
   const projectRoot = getRoot();
@@ -992,6 +1036,10 @@ if (rawArgs.includes("--dashboard")) {
     console.error(`Error starting dashboard: ${err.message}`);
     process.exit(1);
   });
+} else if (rawArgs.includes("--doctor") || rawArgs.includes("--check")) {
+  const compact = rawArgs.includes("--compact");
+  const json = rawArgs.includes("--json");
+  handleDoctor({ compact, json });
 } else {
   program.parse();
 }

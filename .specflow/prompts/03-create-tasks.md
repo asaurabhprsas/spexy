@@ -18,9 +18,13 @@ Generate a valid, DAG-enforced `tasks.yaml` in `.specflow/specs/<spec-id>/tasks.
    - `status`: Always start with `"todo"`.
    - `priority`: `"high"` | `"medium"` | `"low"`.
    - `depends_on`: Array of explicit task IDs that must complete first.
+   - `branch`: Suggested task branch name (e.g., `feature/<spec-id>/<task-id>`).
+   - `commit_pattern`: Standardized commit message pattern (e.g., `feat(<spec-id>): <task-title> (refs #<task-id>)`).
    - `requirements_ref`: Array of referenced requirement IDs (e.g., `["REQ-1"]`).
    - `files`: Expected target files to create or modify.
 5. Group independent tracks under `dependency_graph.parallel_tracks`.
-6. Validate the task graph:
+6. Validate task graph and schema integrity:
+   `spec-flow doctor`
+   Ensure 0 errors and no circular dependencies before committing or proceeding.
+7. Inspect task availability list:
    `spec-flow task list <spec-id>`
-   Verify that no cycles exist and all dependencies resolve cleanly.

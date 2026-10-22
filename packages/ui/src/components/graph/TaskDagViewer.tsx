@@ -36,6 +36,12 @@ interface DagEdge {
   toNode: DagNode;
 }
 
+function getTaskDependencies(task: Task | undefined): string[] {
+  if (!task) return [];
+  const deps = task.dependsOn || (task as any).depends_on || [];
+  return Array.isArray(deps) ? deps : [];
+}
+
 export function TaskDagViewer({ tasks, onSelectTask }: TaskDagViewerProps) {
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
   const [zoomLevel, setZoomLevel] = useState<number>(1);
@@ -52,6 +58,9 @@ export function TaskDagViewer({ tasks, onSelectTask }: TaskDagViewerProps) {
     const taskMap = new Map<string, Task>();
     for (const t of tasks) {
       taskMap.set(t.id, t);
+      if ((t as any).originalId) {
+        taskMap.set((t as any).originalId, t);
+      }
     }
 
     // 1. Calculate ranks (topological levels)
@@ -63,13 +72,14 @@ export function TaskDagViewer({ tasks, onSelectTask }: TaskDagViewerProps) {
 
       visited.add(taskId);
       const t = taskMap.get(taskId);
-      if (!t || !t.dependsOn || t.dependsOn.length === 0) {
+      const deps = getTaskDependencies(t);
+      if (!t || deps.length === 0) {
         rankMap.set(taskId, 0);
         return 0;
       }
 
       let maxDepRank = -1;
-      for (const depId of t.dependsOn) {
+      for (const depId of deps) {
         if (taskMap.has(depId)) {
           const r = calculateRank(depId, new Set(visited));
           if (r > maxDepRank) maxDepRank = r;
@@ -124,13 +134,16 @@ export function TaskDagViewer({ tasks, onSelectTask }: TaskDagViewerProps) {
     const calculatedEdges: DagEdge[] = [];
     for (const t of tasks) {
       const toNode = nMap.get(t.id);
-      if (!toNode || !t.dependsOn) continue;
+      if (!toNode) continue;
+      const deps = getTaskDependencies(t);
 
-      for (const depId of t.dependsOn) {
-        const fromNode = nMap.get(depId);
+      for (const depId of deps) {
+        const fromNode =
+          nMap.get(depId) ||
+          Array.from(nMap.values()).find((n) => (n.task as any).originalId === depId);
         if (fromNode) {
           calculatedEdges.push({
-            fromId: depId,
+            fromId: fromNode.task.id,
             toId: t.id,
             fromNode,
             toNode,
@@ -140,7 +153,7 @@ export function TaskDagViewer({ tasks, onSelectTask }: TaskDagViewerProps) {
     }
 
     const calculatedWidth = Math.max(900, paddingX * 2 + (maxRank + 1) * xSpacing);
-    const calculatedHeight = Math.max(500, paddingY * 2 + maxColumnLength * ySpacing);
+    const calculatedHeight = Math.max(500, paddingY * 2 + maxColumnLength * ySpacing + 40);
 
     return {
       nodes: calculatedNodes,
@@ -167,13 +180,18 @@ export function TaskDagViewer({ tasks, onSelectTask }: TaskDagViewerProps) {
     const traverseUp = (currId: string) => {
       const node = nodeMap.get(currId);
       if (!node) return;
-      for (const depId of node.task.dependsOn || []) {
-        if (!nodeIds.has(depId)) {
-          nodeIds.add(depId);
-          edgeKeys.add(`${depId}->${currId}`);
-          traverseUp(depId);
+      const deps = getTaskDependencies(node.task);
+      for (const depId of deps) {
+        const targetNode =
+          nodeMap.get(depId) ||
+          Array.from(nodeMap.values()).find((n) => (n.task as any).originalId === depId);
+        const resolvedId = targetNode ? targetNode.task.id : depId;
+        if (!nodeIds.has(resolvedId)) {
+          nodeIds.add(resolvedId);
+          edgeKeys.add(`${resolvedId}->${currId}`);
+          traverseUp(resolvedId);
         } else {
-          edgeKeys.add(`${depId}->${currId}`);
+          edgeKeys.add(`${resolvedId}->${currId}`);
         }
       }
     };
@@ -501,7 +519,7 @@ export function TaskDagViewer({ tasks, onSelectTask }: TaskDagViewerProps) {
                     y="54"
                     className="font-mono text-[9px] fill-muted-foreground capitalize"
                   >
-                    {node.task.status.replace('-', ' ')} • {node.task.dependsOn?.length || 0} dep
+                    {node.task.status.replace('-', ' ')} • {getTaskDependencies(node.task).length} dep
                   </text>
                 </g>
               );
@@ -550,7 +568,12 @@ export function TaskDagViewer({ tasks, onSelectTask }: TaskDagViewerProps) {
               <div className="pt-2 border-t border-border/60 text-[10px] font-mono space-y-1">
                 <div className="flex items-center gap-1 text-muted-foreground">
                   <LinkIcon size={10} />
-                  <span>Depends on: {selectedTask.dependsOn?.length ? selectedTask.dependsOn.join(', ') : 'None (Root)'}</span>
+                  <span>
+                    Depends on:{' '}
+                    {getTaskDependencies(selectedTask).length
+                      ? getTaskDependencies(selectedTask).join(', ')
+                      : 'None (Root)'}
+                  </span>
                 </div>
                 {selectedTask.blockers && selectedTask.blockers.length > 0 && (
                   <div className="flex items-center gap-1 text-rose-600 dark:text-rose-400">

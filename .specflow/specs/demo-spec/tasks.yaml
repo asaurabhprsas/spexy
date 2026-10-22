@@ -61,7 +61,6 @@ groups:
         notes:
           security: Enforce foreign key tenant constraints.
           testing: Test schema migrations on fresh database.
-
       - id: "1.1"
         parent_id: "1"
         title: Generate Prisma migrations for Tenant model
@@ -80,7 +79,6 @@ groups:
         notes:
           security: null
           testing: Run migration rollback and verify idempotency.
-
       - id: "1.2"
         parent_id: "1"
         title: Add seed fixtures for tenant isolation
@@ -100,7 +98,6 @@ groups:
         notes:
           security: null
           testing: Verify isolated queries between tenant A and tenant B.
-
       - id: "2"
         parent_id: null
         title: Authentication & Authorization Engine
@@ -121,7 +118,6 @@ groups:
         notes:
           security: Rotate JWT signing keys using JWKS.
           testing: Test expired token refresh and permission denial.
-
       - id: "2.1"
         parent_id: "2"
         title: Implement JWT token rotation middleware
@@ -141,7 +137,6 @@ groups:
         notes:
           security: Constant-time signature verification.
           testing: Verify unauthorized 401 when token is tampered.
-
       - id: "2.2"
         parent_id: "2"
         title: Build RBAC permission evaluator
@@ -161,7 +156,6 @@ groups:
         notes:
           security: Default deny policy for unknown actions.
           testing: Coverage for admin, member, and viewer roles.
-
       - id: "2.3"
         parent_id: "2"
         title: Add OAuth2 GitHub & Google strategies
@@ -181,7 +175,6 @@ groups:
         notes:
           security: Validate state parameter to prevent CSRF.
           testing: Mock OAuth callback responses.
-
   - id: phase-2
     name: "Phase 2: Frontend & Real-time Integration"
     tasks:
@@ -189,7 +182,7 @@ groups:
         parent_id: null
         title: Real-time Notification Service
         description: Scalable WebSocket communication pipeline for task and spec alerts.
-        status: to-review
+        status: todo
         priority: high
         depends_on:
           - "2.1"
@@ -203,9 +196,8 @@ groups:
         requirements_ref:
           - REQ-3
         notes:
-          security: Authenticate WS handshake with token query or cookie.
+          security: try option 1
           testing: Benchmark 5,000 concurrent socket connections.
-
       - id: "3.1"
         parent_id: "3"
         title: WebSocket connection pool manager
@@ -225,7 +217,6 @@ groups:
         notes:
           security: null
           testing: Detect and clean up dead sockets within 30s.
-
       - id: "3.2"
         parent_id: "3"
         title: Event bus bridge with Redis PubSub
@@ -245,7 +236,6 @@ groups:
         notes:
           security: Encrypt sensitive event payloads in transit.
           testing: Test message delivery across 3 mock cluster nodes.
-
       - id: "3.3"
         parent_id: "3"
         title: Client-side reconnection & backoff hook
@@ -265,7 +255,6 @@ groups:
         notes:
           security: null
           testing: Simulate network drop and assert message buffer replay.
-
       - id: "4"
         parent_id: null
         title: Dashboard Analytics & Data Visualization
@@ -285,7 +274,6 @@ groups:
         notes:
           security: Restrict metrics visibility to tenant admins.
           testing: Component snapshot and chart rendering tests.
-
       - id: "4.1"
         parent_id: "4"
         title: Aggregate metrics rollup endpoint
@@ -305,7 +293,6 @@ groups:
         notes:
           security: null
           testing: Query performance test on 1M simulated metric rows.
-
       - id: "4.2"
         parent_id: "4"
         title: Interactive latency histogram & charts

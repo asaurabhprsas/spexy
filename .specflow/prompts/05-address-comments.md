@@ -20,6 +20,8 @@ Review pending anchored comments, apply fixes, and resolve comments with history
    - Verify changes with test suite:
      `bun test`
      `bun run typecheck`
+   - Verify workspace health:
+     `spec-flow doctor`
 3. Resolve the comment:
    `spec-flow comment resolve <comment-id> --note "Addressed feedback and updated tests."`
    This automatically archives the comment to history and prunes it from pending.

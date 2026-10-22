@@ -8,7 +8,7 @@ export type TaskAvailability =
   | "done";
 
 export type WorkflowActor = "agent" | "human";
-export type TaskAction = "claim" | "submit" | "approve" | "reject";
+export type TaskAction = "claim" | "submit" | "approve" | "reject" | "set_status";
 
 export class WorkflowRuleError extends Error {
   readonly code: string;
@@ -152,22 +152,29 @@ export function getTaskAvailability(
       continue;
     }
 
-    if ((children.get(task.id)?.length ?? 0) > 0) {
-      availability.set(task.id, subtreeIsDone(task.id) ? "done" : "blocked");
-      continue;
-    }
-
     const isBlocked = task.depends_on.some((depId) => {
       const dep = byId.get(depId);
       if (!dep) return true;
       return !subtreeIsDone(dep.id);
     });
 
-    availability.set(task.id, isBlocked ? "blocked" : "available");
+    if (isBlocked) {
+      availability.set(task.id, "blocked");
+      continue;
+    }
+
+    if ((children.get(task.id)?.length ?? 0) > 0 && subtreeIsDone(task.id)) {
+      availability.set(task.id, "done");
+      continue;
+    }
+
+    availability.set(task.id, "available");
   }
 
   return availability;
 }
+
+export const computeTaskAvailability = getTaskAvailability;
 
 export function getBlockingDependencies(
   taskId: string,
@@ -201,7 +208,25 @@ export function transitionTask(
   currentStatus: TaskStatus,
   action: TaskAction,
   actor: WorkflowActor,
+  targetStatus?: TaskStatus,
 ): TaskStatus {
+  if (action === "set_status" || (actor === "human" && targetStatus !== undefined)) {
+    if (actor !== "human") {
+      throw new WorkflowRuleError(
+        "HUMAN_OVERRIDE_REQUIRED",
+        "Only human operators can manually override task status.",
+      );
+    }
+    const target = targetStatus;
+    if (!target || !["todo", "in-progress", "to-review", "done"].includes(target)) {
+      throw new WorkflowRuleError(
+        "INVALID_TARGET_STATUS",
+        `Target status "${target}" is invalid for manual status override.`,
+      );
+    }
+    return target;
+  }
+
   if (action === "claim") {
     if (currentStatus !== "todo") {
       throw new WorkflowRuleError(
@@ -235,12 +260,28 @@ export function transitionTask(
     );
   }
 
-  if (currentStatus !== "to-review") {
-    throw new WorkflowRuleError(
-      "TASK_NOT_AWAITING_REVIEW",
-      "Only a task awaiting review can be approved or rejected.",
-    );
+  if (action === "reject") {
+    if (currentStatus !== "to-review" && currentStatus !== "done") {
+      throw new WorkflowRuleError(
+        "TASK_NOT_AWAITING_REVIEW",
+        "Only a task awaiting review or previously completed can be rejected.",
+      );
+    }
+    return "todo";
   }
 
-  return action === "approve" ? "done" : "todo";
+  if (action === "approve") {
+    if (currentStatus !== "to-review") {
+      throw new WorkflowRuleError(
+        "TASK_NOT_AWAITING_REVIEW",
+        "Only a task awaiting review can be approved or rejected.",
+      );
+    }
+    return "done";
+  }
+
+  throw new WorkflowRuleError(
+    "INVALID_ACTION",
+    `Unsupported workflow action: ${action}`,
+  );
 }

@@ -28,7 +28,9 @@ Draft or update foundational steering documents (`product.md`, `tech.md`, `struc
    - `.specflow/steering/product.md`
    - `.specflow/steering/tech.md`
    - `.specflow/steering/structure.md`
-5. Inform the human architect to review and approve the steering documents:
+5. Verify document integrity and frontmatter:
+   `spec-flow doctor`
+6. Inform the human architect to review and approve the steering documents:
    - Autonomous agents cannot mark steering documents as `approved`.
    - The steering gate must be approved by a human before spec execution begins.
    - Run `spec-flow status` to verify approval status.

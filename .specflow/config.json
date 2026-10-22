@@ -1,10 +1,10 @@
 {
   "preferences": {
-    "themeId": "rose",
+    "themeId": "zinc",
     "colorMode": "light",
     "compactMode": false,
     "isInspectorFullWidth": false,
-    "fontId": "jakarta",
-    "editorViewMode": "rendered"
+    "fontId": "jetbrains",
+    "editorViewMode": "split"
   }
 }

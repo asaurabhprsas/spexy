@@ -5,10 +5,12 @@ import os from "node:os";
 import {
   validateTaskGraph,
   getTaskAvailability,
+  computeTaskAvailability,
   getBlockingDependencies,
   transitionTask,
   WorkflowRuleError,
 } from "./dag/workflow";
+import { runHealthCheck, formatHealthReport } from "./health/doctor";
 import {
   parseDocumentFrontmatter,
   serializeDocumentWithFrontmatter,
@@ -114,6 +116,45 @@ describe("@spec-flow/core Test Suite", () => {
       const afterDone = getTaskAvailability(tasks, { foundation: "done", "feature-ui": "todo" });
       expect(afterDone.get("feature-ui")).toBe("available");
     });
+
+    it("does not mark parent tasks blocked just because children are in progress or todo", () => {
+      const tasks = [
+        { ...makeTask("parent"), depends_on: [] },
+        { ...makeTask("child-1"), parent_id: "parent", depends_on: [] },
+        { ...makeTask("child-2"), parent_id: "parent", depends_on: [] },
+      ];
+
+      // Children are todo: parent must NOT be blocked, it should be available
+      const avail1 = computeTaskAvailability(tasks, {
+        parent: "todo",
+        "child-1": "todo",
+        "child-2": "in-progress",
+      });
+      expect(avail1.get("parent")).toBe("available");
+      expect(avail1.get("child-1")).toBe("available");
+      expect(avail1.get("child-2")).toBe("claimed");
+
+      // When all children are done: parent availability becomes done
+      const avail2 = computeTaskAvailability(tasks, {
+        parent: "todo",
+        "child-1": "done",
+        "child-2": "done",
+      });
+      expect(avail2.get("parent")).toBe("done");
+
+      // Parent with unmet prerequisite depends_on: MUST be blocked
+      const tasksWithPrereq = [
+        makeTask("prereq"),
+        { ...makeTask("parent", ["prereq"]) },
+        { ...makeTask("child-1"), parent_id: "parent" },
+      ];
+      const avail3 = computeTaskAvailability(tasksWithPrereq, {
+        prereq: "in-progress",
+        parent: "todo",
+        "child-1": "todo",
+      });
+      expect(avail3.get("parent")).toBe("blocked");
+    });
   });
 
   describe("Two-Tier HITL State Machine", () => {
@@ -129,6 +170,20 @@ describe("@spec-flow/core Test Suite", () => {
 
       // Human rejection
       expect(transitionTask("to-review", "reject", "human")).toBe("todo");
+    });
+
+    it("supports manual human status override and backwards transitions", () => {
+      // Human transitioning backwards: done -> in-progress
+      expect(transitionTask("done", "set_status", "human", "in-progress")).toBe("in-progress");
+      // Human transitioning backwards: done -> todo
+      expect(transitionTask("done", "set_status", "human", "todo")).toBe("todo");
+      // Human transitioning backwards: to-review -> in-progress
+      expect(transitionTask("to-review", "set_status", "human", "in-progress")).toBe("in-progress");
+      // Human rejecting done task back to todo
+      expect(transitionTask("done", "reject", "human")).toBe("todo");
+
+      // Agent cannot perform set_status manual override
+      expect(() => transitionTask("done", "set_status", "agent", "todo")).toThrow(/human/i);
     });
   });
 
@@ -527,6 +582,53 @@ Document body here.`;
         lineNumbers: true,
         autoSave: true,
       });
+    });
+  });
+
+  describe("Workspace Health & Diagnostics Engine (runHealthCheck, formatHealthReport)", () => {
+    it("reports failure when .specflow directory does not exist", () => {
+      const emptyDir = fs.mkdtempSync(path.join(os.tmpdir(), "specflow-empty-"));
+      const report = runHealthCheck(emptyDir);
+      expect(report.valid).toBe(false);
+      expect(report.summary.failed).toBeGreaterThanOrEqual(1);
+      const text = formatHealthReport(report);
+      expect(text).toContain("✖");
+      expect(text).toContain("spec-flow init");
+      fs.rmSync(emptyDir, { recursive: true, force: true });
+    });
+
+    it("reports clean pass for a newly initialized workspace with valid steering and spec", () => {
+      initSpecFlowWorkspace(tmpDir);
+      createSpec(tmpDir, "sample-spec", { force: true, title: "Sample Feature" });
+
+      const report = runHealthCheck(tmpDir);
+      expect(report.valid).toBe(true);
+      expect(report.summary.failed).toBe(0);
+
+      const compact = formatHealthReport(report, { compact: true });
+      expect(compact).toContain("PASS");
+      expect(compact).toContain("steering");
+      expect(compact).toContain("specs");
+    });
+
+    it("detects missing steering documents and corrupted tasks.yaml", () => {
+      initSpecFlowWorkspace(tmpDir);
+      createSpec(tmpDir, "broken-spec", { force: true, title: "Broken Feature" });
+
+      // Remove a steering document
+      fs.unlinkSync(path.join(tmpDir, ".specflow", "steering", "tech.md"));
+
+      // Corrupt tasks.yaml
+      const tasksYamlPath = path.join(tmpDir, ".specflow", "specs", "broken-spec", "tasks.yaml");
+      fs.writeFileSync(tasksYamlPath, "invalid: [broken yaml content", "utf-8");
+
+      const report = runHealthCheck(tmpDir);
+      expect(report.valid).toBe(false);
+      expect(report.summary.failed).toBeGreaterThanOrEqual(2);
+
+      const compact = formatHealthReport(report, { compact: true });
+      expect(compact).toContain("FAIL");
+      expect(compact).toContain("tech.md");
     });
   });
 });
