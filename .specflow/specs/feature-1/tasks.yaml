@@ -20,7 +20,7 @@ groups:
         parent_id: null
         title: Initialize feature 1
         description: Scaffold foundation and setup for feature 1.
-        status: todo
+        status: done
         priority: high
         depends_on: []
         worktree: worktree/1
@@ -32,4 +32,4 @@ groups:
           - REQ-1
         notes:
           security: aa
-          testing: ss
+          testing: Submitted for review
