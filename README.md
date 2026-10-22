@@ -25,7 +25,15 @@ Autonomous AI coding agents (Claude Code, Cursor, Codex, OpenHands) write code f
 
 ## ⚡ Quickstart
 
-### 1. Global Installation & Initialization
+### 1. Install Spexy Agent Skill
+Equip your AI coding agent (Claude Code, Cursor, Antigravity, OpenHands, etc.) with the Spexy SDD skill pack in any workspace:
+```bash
+npx skills add asaurabhprsas/spexy
+# or with pnpm:
+pnpx skills add asaurabhprsas/spexy
+```
+
+### 2. Global Installation & Initialization
 ```bash
 # Clone the repository
 git clone https://github.com/asaurabhprsas/spexy.git && cd spexy
@@ -38,7 +46,7 @@ bun run publish:local
 spexy init
 ```
 
-### 2. Workspace Health Diagnostic
+### 3. Workspace Health Diagnostic
 Run the built-in doctor command to audit specifications, schemas, and DAG graph dependencies:
 ```bash
 spexy doctor
@@ -46,7 +54,7 @@ spexy doctor
 spexy doctor --compact
 ```
 
-### 3. Launch the Interactive Dashboard
+### 4. Launch the Interactive Dashboard
 Launch the real-time web dashboard running locally at `http://127.0.0.1:4200`:
 ```bash
 spexy --dashboard

@@ -4,6 +4,7 @@
 - **Use superpowers for planning & execution.**
 - **Sub-agents parallel execution, test driven development (TDD).**
 - **Only write important top level tests and don't add unnecessary tests for micro things.**
+- **Prefer caveman style output for tokens savings**
 
 ---
 
