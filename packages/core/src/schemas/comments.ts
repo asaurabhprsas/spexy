@@ -20,6 +20,8 @@ export const CommentItemSchema = z.object({
   anchor: CommentAnchorSchema,
   instruction: z.string().min(1),
   resolution_note: z.string().nullable().default(null),
+  resolved_at: z.string().datetime().or(z.string()).optional(),
+  resolved_by: z.string().optional(),
 });
 export type CommentItem = z.infer<typeof CommentItemSchema>;
 
@@ -27,3 +29,8 @@ export const PendingCommentsDocumentSchema = z.object({
   comments: z.array(CommentItemSchema).default([]),
 });
 export type PendingCommentsDocument = z.infer<typeof PendingCommentsDocumentSchema>;
+
+export const CommentHistoryDocumentSchema = z.object({
+  comments: z.array(CommentItemSchema).default([]),
+});
+export type CommentHistoryDocument = z.infer<typeof CommentHistoryDocumentSchema>;

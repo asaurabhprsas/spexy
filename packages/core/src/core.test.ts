@@ -21,6 +21,7 @@ import {
   writeTasksYaml,
   flattenTasks,
   updateTaskInDoc,
+  listSpecFiles,
 } from "./fs/workspace";
 import {
   createSnapshot,
@@ -32,6 +33,9 @@ import {
   listComments,
   resolveComment,
   realignAnchor,
+  deleteComment,
+  updateComment,
+  listCommentHistory,
 } from "./comments/fuzzy-anchor";
 import { acquireTaskLease } from "./git/worktree";
 import { TaskItem } from "./schemas/tasks";
@@ -199,7 +203,7 @@ Document body here.`;
   });
 
   describe("Context-Anchored Comments & Fuzzy Re-alignment", () => {
-    it("adds, lists, and resolves comments", () => {
+    it("adds, lists, and resolves comments with history archiving", () => {
       initSpecFlowWorkspace(tmpDir);
       const comment = addComment(tmpDir, {
         target_file: "specs/demo/requirements.md",
@@ -217,9 +221,60 @@ Document body here.`;
       expect(list.length).toBe(1);
       expect(list[0].id).toBe(comment.id);
 
-      resolveComment(tmpDir, comment.id, "Requirement updated");
+      const resolved = resolveComment(tmpDir, comment.id, "Requirement updated");
+      expect(resolved.status).toBe("addressed");
+      expect(resolved.resolution_note).toBe("Requirement updated");
+      expect(resolved.resolved_by).toBe("human");
+      expect(resolved.resolved_at).toBeDefined();
+
       const after = listComments(tmpDir, { pendingOnly: true });
       expect(after.length).toBe(0);
+
+      // Verify history file was written
+      const history = listCommentHistory(tmpDir);
+      expect(history.length).toBe(1);
+      expect(history[0].id).toBe(comment.id);
+      expect(history[0].resolution_note).toBe("Requirement updated");
+      expect(history[0].resolved_by).toBe("human");
+
+      // Test filtering by target_file
+      const filtered = listCommentHistory(tmpDir, "specs/demo/requirements.md");
+      expect(filtered.length).toBe(1);
+      const none = listCommentHistory(tmpDir, "other.md");
+      expect(none.length).toBe(0);
+    });
+
+    it("deletes and updates pending comments", () => {
+      initSpecFlowWorkspace(tmpDir);
+      const comment = addComment(tmpDir, {
+        target_file: "specs/demo/design.md",
+        author: "human",
+        anchor: {
+          start_line: 5,
+          end_line: 6,
+          anchor_text: "Original architecture",
+          context_before: "",
+        },
+        instruction: "Clarify API gateway",
+      });
+
+      // Update instruction and anchor
+      const updated = updateComment(tmpDir, comment.id, {
+        instruction: "Clarify API gateway and rate limits",
+        anchor: { start_line: 8, end_line: 9 },
+      });
+      expect(updated.instruction).toBe("Clarify API gateway and rate limits");
+      expect(updated.anchor.start_line).toBe(8);
+      expect(updated.anchor.anchor_text).toBe("Original architecture");
+
+      // Delete comment
+      deleteComment(tmpDir, comment.id);
+      const remaining = listComments(tmpDir);
+      expect(remaining.length).toBe(0);
+
+      // Expect throws when not found
+      expect(() => deleteComment(tmpDir, "non-existent")).toThrow(/not found/i);
+      expect(() => updateComment(tmpDir, "non-existent", { instruction: "test" })).toThrow(/not found/i);
     });
 
     it("fuzzy realigns line numbers when content shifts", () => {
@@ -229,6 +284,86 @@ Document body here.`;
       const result = realignAnchor(shifted, "Target anchor line", "Context Before", 3);
       expect(result.matched).toBe(true);
       expect(result.start_line).toBe(5);
+    });
+  });
+
+  describe("Spec Auxiliary Files Discovery (listSpecFiles)", () => {
+    it("discovers requirements, design, tasks, logs, and recursive references/images", () => {
+      initSpecFlowWorkspace(tmpDir);
+      createSpec(tmpDir, "auth-feature", { force: true, title: "Authentication" });
+
+      // Add files in references/ and images/
+      const specDir = path.join(tmpDir, ".specflow", "specs", "auth-feature");
+      fs.writeFileSync(path.join(specDir, "references", "architecture.txt"), "System diagram notes", "utf-8");
+      fs.mkdirSync(path.join(specDir, "references", "nested"), { recursive: true });
+      fs.writeFileSync(path.join(specDir, "references", "nested", "api-contract.json"), "{}", "utf-8");
+      fs.writeFileSync(path.join(specDir, "images", "wireframe.png"), "fake png binary", "utf-8");
+
+      const files = listSpecFiles(tmpDir, "auth-feature");
+      expect(files.length).toBeGreaterThanOrEqual(7);
+
+      const reqFile = files.find((f) => f.kind === "requirements");
+      expect(reqFile).toBeDefined();
+      expect(reqFile?.name).toBe("requirements.md");
+      expect(reqFile?.relativePath).toBe("requirements.md");
+      expect(reqFile?.extension).toBe("md");
+
+      const designFile = files.find((f) => f.kind === "design");
+      expect(designFile).toBeDefined();
+      expect(designFile?.name).toBe("design.md");
+
+      const tasksFile = files.find((f) => f.kind === "tasks");
+      expect(tasksFile).toBeDefined();
+      expect(tasksFile?.name).toBe("tasks.yaml");
+      expect(tasksFile?.extension).toBe("yaml");
+
+      const logFile = files.find((f) => f.kind === "log");
+      expect(logFile).toBeDefined();
+      expect(logFile?.name).toBe("implementation.log");
+
+      const refFile = files.find((f) => f.name === "architecture.txt");
+      expect(refFile).toBeDefined();
+      expect(refFile?.kind).toBe("reference");
+      expect(refFile?.relativePath).toBe("references/architecture.txt");
+
+      const nestedRef = files.find((f) => f.name === "api-contract.json");
+      expect(nestedRef).toBeDefined();
+      expect(nestedRef?.kind).toBe("reference");
+      expect(nestedRef?.relativePath).toBe("references/nested/api-contract.json");
+
+      const imgFile = files.find((f) => f.name === "wireframe.png");
+      expect(imgFile).toBeDefined();
+      expect(imgFile?.kind).toBe("image");
+      expect(imgFile?.relativePath).toBe("images/wireframe.png");
+      expect(imgFile?.extension).toBe("png");
+    });
+  });
+
+  describe("Turnkey Templates & Actionable Agent Prompts", () => {
+    it("scaffolds turnkey templates and actionable agent prompts on workspace init", () => {
+      initSpecFlowWorkspace(tmpDir);
+
+      const sfDir = path.join(tmpDir, ".specflow");
+      // Verify templates exist
+      expect(fs.existsSync(path.join(sfDir, "templates", "steering", "product.template.md"))).toBe(true);
+      expect(fs.existsSync(path.join(sfDir, "templates", "steering", "tech.template.md"))).toBe(true);
+      expect(fs.existsSync(path.join(sfDir, "templates", "steering", "structure.template.md"))).toBe(true);
+      expect(fs.existsSync(path.join(sfDir, "templates", "specs", "requirements.template.md"))).toBe(true);
+      expect(fs.existsSync(path.join(sfDir, "templates", "specs", "design.template.md"))).toBe(true);
+      expect(fs.existsSync(path.join(sfDir, "templates", "specs", "tasks.template.yaml"))).toBe(true);
+
+      // Verify prompts exist
+      expect(fs.existsSync(path.join(sfDir, "prompts", "README.md"))).toBe(true);
+      expect(fs.existsSync(path.join(sfDir, "prompts", "01-create-steering.md"))).toBe(true);
+      expect(fs.existsSync(path.join(sfDir, "prompts", "02-create-spec.md"))).toBe(true);
+      expect(fs.existsSync(path.join(sfDir, "prompts", "03-create-tasks.md"))).toBe(true);
+      expect(fs.existsSync(path.join(sfDir, "prompts", "04-execute-task.md"))).toBe(true);
+      expect(fs.existsSync(path.join(sfDir, "prompts", "05-address-comments.md"))).toBe(true);
+
+      // Verify createSpec creates references and images dirs
+      createSpec(tmpDir, "test-spec", { force: true });
+      expect(fs.existsSync(path.join(sfDir, "specs", "test-spec", "references"))).toBe(true);
+      expect(fs.existsSync(path.join(sfDir, "specs", "test-spec", "images"))).toBe(true);
     });
   });
 

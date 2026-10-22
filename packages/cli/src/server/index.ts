@@ -3,6 +3,7 @@ import path from "node:path";
 import {
   addComment,
   createSpec,
+  deleteComment,
   findProjectRoot,
   flattenTasks,
   getBlockingDependencies,
@@ -10,8 +11,10 @@ import {
   getSteeringStatus,
   getTaskAvailability,
   initSpecFlowWorkspace,
+  listCommentHistory,
   listComments,
   listSnapshots,
+  listSpecFiles,
   listSpecs,
   parseDocumentFrontmatter,
   readConfig,
@@ -20,10 +23,12 @@ import {
   resolveComment,
   restoreSnapshot,
   serializeDocumentWithFrontmatter,
+  SpecFileInfo,
   TaskAction,
   TaskItem,
   TaskStatus,
   transitionTask,
+  updateComment,
   updateSteeringDocument,
   updateTaskInDoc,
   validateTaskGraph,
@@ -40,12 +45,24 @@ export interface ServerOptions {
   projectRoot?: string;
 }
 
+export interface ActivityLogEntry {
+  id: string;
+  timestamp: string;
+  category: "task" | "document" | "comment" | "watcher" | "checkpoint";
+  action: string;
+  actor: string;
+  message: string;
+  details?: Record<string, any>;
+}
+
 export interface ServerInstance {
   server: any;
   port: number;
   host: string;
   url: string;
   broadcast: (event: { type: string; payload: any }) => void;
+  logActivity?: (entry: Omit<ActivityLogEntry, "id" | "timestamp">) => ActivityLogEntry;
+  activityLogs?: ActivityLogEntry[];
   close: () => Promise<void>;
 }
 
@@ -67,6 +84,11 @@ const MIME_TYPES: Record<string, string> = {
   ".woff2": "font/woff2",
   ".ttf": "font/ttf",
   ".txt": "text/plain; charset=utf-8",
+  ".md": "text/markdown; charset=utf-8",
+  ".yaml": "text/yaml; charset=utf-8",
+  ".yml": "text/yaml; charset=utf-8",
+  ".pdf": "application/pdf",
+  ".log": "text/plain; charset=utf-8",
 };
 
 function formatComment(c: any) {
@@ -119,6 +141,8 @@ export function createServer(options: ServerOptions = {}): {
   websocket: any;
   broadcast: (event: { type: string; payload: any }) => void;
   clients: Set<any>;
+  logActivity: (entry: Omit<ActivityLogEntry, "id" | "timestamp">) => ActivityLogEntry;
+  activityLogs: ActivityLogEntry[];
 } {
   const projectRoot = options.projectRoot || findProjectRoot();
   initSpecFlowWorkspace(projectRoot);
@@ -135,6 +159,34 @@ export function createServer(options: ServerOptions = {}): {
         clients.delete(ws);
       }
     }
+  };
+
+  const activityLogs: ActivityLogEntry[] = [];
+
+  const logActivity = (entry: Omit<ActivityLogEntry, "id" | "timestamp">): ActivityLogEntry => {
+    const logEntry: ActivityLogEntry = {
+      ...entry,
+      id: `log-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+      timestamp: new Date().toISOString(),
+    };
+    activityLogs.push(logEntry);
+    if (activityLogs.length > 200) {
+      activityLogs.shift();
+    }
+    broadcast({
+      type: "LOG_EVENT",
+      payload: logEntry,
+    });
+    return logEntry;
+  };
+
+  const addLog = (category: "task" | "document" | "comment" | "watcher" | "checkpoint", actor: string, message: string) => {
+    logActivity({
+      category,
+      action: category,
+      actor,
+      message,
+    });
   };
 
   const handleWsMessage = async (ws: any, rawData: any) => {
@@ -182,6 +234,14 @@ export function createServer(options: ServerOptions = {}): {
           payload: { specId, tasks: flattenTasks(updatedDoc) },
         });
 
+        logActivity({
+          category: "task",
+          action: action as string,
+          actor: actor as string,
+          message: `Task "${taskId}" transitioned via ${action} to ${nextStatus}`,
+          details: { specId, taskId, nextStatus, action, actor, note },
+        });
+
         ws.send(JSON.stringify({
           type: "ACK",
           action: "TASK_TRANSITION",
@@ -208,14 +268,22 @@ export function createServer(options: ServerOptions = {}): {
 
         broadcast({
           type: "COMMENTS_UPDATED",
-          payload: { comments: readPendingCommentsDoc(projectRoot).comments },
+          payload: { comments: readPendingCommentsDoc(projectRoot).comments.map(formatComment) },
+        });
+
+        logActivity({
+          category: "comment",
+          action: "create",
+          actor: payload.author || "human",
+          message: `Created comment on ${payload.target_file}`,
+          details: { commentId: newComment.id, target_file: payload.target_file },
         });
 
         ws.send(JSON.stringify({
           type: "ACK",
           action: "COMMENT_CREATE",
           success: true,
-          payload: { comment: newComment },
+          payload: { comment: formatComment(newComment) },
         }));
         return;
       }
@@ -231,14 +299,22 @@ export function createServer(options: ServerOptions = {}): {
 
         broadcast({
           type: "COMMENTS_UPDATED",
-          payload: { comments: readPendingCommentsDoc(projectRoot).comments },
+          payload: { comments: readPendingCommentsDoc(projectRoot).comments.map(formatComment) },
+        });
+
+        logActivity({
+          category: "comment",
+          action: "resolve",
+          actor: "human",
+          message: `Resolved comment "${commentId}": ${note}`,
+          details: { commentId, note },
         });
 
         ws.send(JSON.stringify({
           type: "ACK",
           action: "COMMENT_RESOLVE",
           success: true,
-          payload: { comment: resolved },
+          payload: { comment: formatComment(resolved) },
         }));
         return;
       }
@@ -325,13 +401,19 @@ export function createServer(options: ServerOptions = {}): {
             reviewQueueCount: toReview,
             openCommentsCount: comments.length,
             taskCounts: { todo, inProgress, toReview, done, blocked },
-            recentActivity: [
-              {
-                id: "init-act",
-                summary: `Workspace active for ${config.project.name}`,
-                createdAt: new Date().toISOString(),
-              },
-            ],
+            recentActivity: activityLogs.length > 0
+              ? activityLogs.slice(-10).reverse().map((l) => ({
+                  id: l.id,
+                  summary: l.message,
+                  createdAt: l.timestamp,
+                }))
+              : [
+                  {
+                    id: "init-act",
+                    summary: `Workspace active for ${config.project.name}`,
+                    createdAt: new Date().toISOString(),
+                  },
+                ],
           });
         }
 
@@ -383,6 +465,14 @@ export function createServer(options: ServerOptions = {}): {
               payload: { file: path.relative(projectRoot, fullPath) },
             });
 
+            logActivity({
+              category: "document",
+              action: "save",
+              actor,
+              message: `Updated document "${rawId}"`,
+              details: { id: rawId, actor },
+            });
+
             const updatedSteering = getSteeringStatus(projectRoot);
             const updatedDoc = updatedSteering.documents.find((d) => d.id === doc.id);
             return json({
@@ -408,6 +498,13 @@ export function createServer(options: ServerOptions = {}): {
               broadcast({
                 type: "DOC_UPDATED",
                 payload: { file: path.relative(projectRoot, fullPath) },
+              });
+              logActivity({
+                category: "document",
+                action: "save",
+                actor,
+                message: `Updated document "${rawId}"`,
+                details: { id: rawId, actor },
               });
               return json({
                 id: rawId,
@@ -450,6 +547,14 @@ export function createServer(options: ServerOptions = {}): {
               payload: { file: path.relative(projectRoot, fullPath) },
             });
 
+            logActivity({
+              category: "document",
+              action: "approve",
+              actor: "human",
+              message: `Approved document "${rawId}"`,
+              details: { id: rawId, actor: "human" },
+            });
+
             return json({
               id: rawId,
               status: "approved",
@@ -476,6 +581,13 @@ export function createServer(options: ServerOptions = {}): {
               broadcast({
                 type: "DOC_UPDATED",
                 payload: { file: path.relative(projectRoot, fullPath) },
+              });
+              logActivity({
+                category: "document",
+                action: "approve",
+                actor: "human",
+                message: `Approved document "${rawId}"`,
+                details: { id: rawId, actor: "human" },
               });
               return json({
                 id: rawId,
@@ -543,6 +655,10 @@ export function createServer(options: ServerOptions = {}): {
             blockers: blockers[t.id] ?? [],
           }));
 
+          if (url.searchParams.get("format") === "array") {
+            return json(enrichedTasks);
+          }
+
           return json({
             tasks: enrichedTasks,
             availability,
@@ -580,6 +696,14 @@ export function createServer(options: ServerOptions = {}): {
 
           await withFileWriteLock(tasksPath, () => {
             writeTasksYaml(projectRoot, specId, updatedDoc);
+          });
+
+          logActivity({
+            category: "task",
+            action: "create",
+            actor: "agent",
+            message: `Created task "${newTask.id}" in spec "${specId}"`,
+            details: { specId, taskId: newTask.id },
           });
 
           broadcast({
@@ -638,12 +762,67 @@ export function createServer(options: ServerOptions = {}): {
             writeTasksYaml(projectRoot, specId, updatedDoc);
           });
 
+          logActivity({
+            category: "task",
+            action,
+            actor,
+            message: `Task "${taskId}" transitioned via ${action} to ${nextStatus}`,
+            details: { specId, taskId, nextStatus, action, actor, note: reqBody.note },
+          });
+
           broadcast({
             type: "TASK_UPDATED",
             payload: { specId, tasks: flattenTasks(updatedDoc) },
           });
 
           return json({ success: true, task: updatedTask });
+        }
+
+        // GET /api/specs/:id/files & GET /api/features/:id/files
+        const specFilesMatch = pathname.match(/^\/api\/(?:specs|features)\/([^/]+)\/files$/);
+        if (specFilesMatch && method === "GET") {
+          const specId = decodeURIComponent(specFilesMatch[1]);
+          try {
+            const files = listSpecFiles(projectRoot, specId);
+            return json({ files });
+          } catch (err: any) {
+            return json({ error: err.message }, 404);
+          }
+        }
+
+        // GET /api/specs/:id/files/:filename+ & GET /api/features/:id/files/:filename+
+        const specFileContentMatch = pathname.match(/^\/api\/(?:specs|features)\/([^/]+)\/files\/(.+)$/);
+        if (specFileContentMatch && (method === "GET" || method === "HEAD")) {
+          const specId = decodeURIComponent(specFileContentMatch[1]);
+          const filename = decodeURIComponent(specFileContentMatch[2]);
+          const specsDir = path.resolve(getSpecflowDir(projectRoot), "specs");
+          const specDir = path.resolve(specsDir, specId);
+          const targetFile = path.resolve(specDir, filename);
+
+          // Path security check: must resolve within .specflow/specs/{specId}
+          if (!targetFile.startsWith(specDir) || !fs.existsSync(targetFile) || !fs.statSync(targetFile).isFile()) {
+            return json({ error: `File not found or access denied: ${filename}` }, 404);
+          }
+
+          const ext = path.extname(targetFile).toLowerCase();
+          const contentType = MIME_TYPES[ext] || "application/octet-stream";
+
+          if (typeof Bun !== "undefined") {
+            return new Response(Bun.file(targetFile), {
+              headers: {
+                "Content-Type": contentType,
+                "Access-Control-Allow-Origin": "*",
+              },
+            });
+          }
+
+          const content = fs.readFileSync(targetFile);
+          return new Response(content, {
+            headers: {
+              "Content-Type": contentType,
+              "Access-Control-Allow-Origin": "*",
+            },
+          });
         }
 
         // Compatibility endpoints for UI: claim, submit, review
@@ -693,6 +872,14 @@ export function createServer(options: ServerOptions = {}): {
 
           await withFileWriteLock(tasksPath, () => {
             writeTasksYaml(projectRoot, specId, updatedDoc);
+          });
+
+          logActivity({
+            category: "task",
+            action,
+            actor,
+            message: `Task "${taskId}" transitioned via ${action} to ${nextStatus}`,
+            details: { specId, taskId, nextStatus, action, actor, note: reqBody.note },
           });
 
           broadcast({
@@ -746,7 +933,22 @@ export function createServer(options: ServerOptions = {}): {
             payload: { comments: readPendingCommentsDoc(projectRoot).comments.map(formatComment) },
           });
 
+          logActivity({
+            category: "comment",
+            action: "create",
+            actor: data.author || "human",
+            message: `Created comment on ${target_file}`,
+            details: { commentId: newComment.id, target_file },
+          });
+
           return json(formatComment(newComment), 201);
+        }
+
+        // GET /api/comments/history
+        if (pathname === "/api/comments/history" && method === "GET") {
+          const target_file = url.searchParams.get("target_file") || undefined;
+          const history = listCommentHistory(projectRoot, target_file);
+          return json(history.map(formatComment));
         }
 
         // POST /api/comments/:id/resolve
@@ -765,12 +967,90 @@ export function createServer(options: ServerOptions = {}): {
             resolved = resolveComment(projectRoot, commentId, note, { purge });
           });
 
+          logActivity({
+            category: "comment",
+            action: "resolve",
+            actor: "human",
+            message: `Resolved comment "${commentId}": ${note}`,
+            details: { commentId, note },
+          });
+
           broadcast({
             type: "COMMENTS_UPDATED",
             payload: { comments: readPendingCommentsDoc(projectRoot).comments.map(formatComment) },
           });
 
           return json({ success: true, comment: formatComment(resolved) });
+        }
+
+        // PUT /api/comments/:id
+        const commentIdParamMatch = pathname.match(/^\/api\/comments\/([^/]+)$/);
+        if (commentIdParamMatch && method === "PUT") {
+          const commentId = decodeURIComponent(commentIdParamMatch[1]);
+          const reqBody = await parseBody(req);
+          const data = reqBody.data || reqBody;
+
+          const updates: any = {};
+          if (data.instruction !== undefined) {
+            updates.instruction = data.instruction;
+          }
+          if (data.anchor !== undefined) {
+            updates.anchor = data.anchor;
+          } else if (data.selectedText !== undefined || data.startLine !== undefined) {
+            updates.anchor = {
+              start_line: Number(data.startLine) || 1,
+              end_line: Number(data.endLine) || 1,
+              anchor_text: data.selectedText || "",
+              context_before: data.contextBefore || "",
+            };
+          }
+
+          const commentsPath = path.join(getSpecflowDir(projectRoot), ".cache", "pending-comments.yaml");
+          let updated: any;
+
+          await withFileWriteLock(commentsPath, () => {
+            updated = updateComment(projectRoot, commentId, updates);
+          });
+
+          logActivity({
+            category: "comment",
+            action: "edit",
+            actor: data.author || "human",
+            message: `Updated comment "${commentId}"`,
+            details: { commentId, updates },
+          });
+
+          broadcast({
+            type: "COMMENTS_UPDATED",
+            payload: { comments: readPendingCommentsDoc(projectRoot).comments.map(formatComment) },
+          });
+
+          return json(formatComment(updated));
+        }
+
+        // DELETE /api/comments/:id
+        if (commentIdParamMatch && method === "DELETE") {
+          const commentId = decodeURIComponent(commentIdParamMatch[1]);
+          const commentsPath = path.join(getSpecflowDir(projectRoot), ".cache", "pending-comments.yaml");
+
+          await withFileWriteLock(commentsPath, () => {
+            deleteComment(projectRoot, commentId);
+          });
+
+          logActivity({
+            category: "comment",
+            action: "delete",
+            actor: "human",
+            message: `Deleted comment "${commentId}"`,
+            details: { commentId },
+          });
+
+          broadcast({
+            type: "COMMENTS_UPDATED",
+            payload: { comments: readPendingCommentsDoc(projectRoot).comments.map(formatComment) },
+          });
+
+          return json({ success: true, id: commentId });
         }
 
         // GET /api/checkpoints
@@ -791,7 +1071,32 @@ export function createServer(options: ServerOptions = {}): {
             payload: { file: result.restoredFile },
           });
 
+          logActivity({
+            category: "checkpoint",
+            action: "restore",
+            actor: "human",
+            message: `Restored snapshot "${snapshotId}" to ${result.restoredFile}`,
+            details: { snapshotId, file: result.restoredFile },
+          });
+
           return json({ success: true, restoredFile: result.restoredFile, entry: result.entry });
+        }
+
+        // GET /api/logs
+        if (pathname === "/api/logs" && method === "GET") {
+          const category = url.searchParams.get("category");
+          const limit = url.searchParams.get("limit");
+          let filtered = [...activityLogs];
+          if (category) {
+            filtered = filtered.filter((l) => l.category === category);
+          }
+          if (limit) {
+            const limNum = parseInt(limit, 10);
+            if (!isNaN(limNum) && limNum > 0) {
+              filtered = filtered.slice(-limNum);
+            }
+          }
+          return json({ logs: filtered });
         }
 
         // GET /api/documents (Dashboard document list compatibility)
@@ -839,6 +1144,18 @@ export function createServer(options: ServerOptions = {}): {
                 updatedAt: new Date().toISOString(),
               });
             }
+            if (fs.existsSync(path.join(specDir, "tasks.yaml"))) {
+              docs.push({
+                id: `${s.id}:tasks`,
+                kind: "tasks",
+                title: `${s.name} - Tasks`,
+                path: path.relative(projectRoot, path.join(specDir, "tasks.yaml")),
+                status: s.status,
+                approvedBy: null,
+                revision: 1,
+                updatedAt: new Date().toISOString(),
+              });
+            }
           }
 
           return json(docs);
@@ -870,21 +1187,33 @@ export function createServer(options: ServerOptions = {}): {
           // Spec doc?
           if (docId.includes(":")) {
             const [specId, kind] = docId.split(":");
-            const filename = kind === "requirements" ? "requirements.md" : "design.md";
+            const filename = kind === "requirements" ? "requirements.md" : kind === "design" ? "design.md" : "tasks.yaml";
             const fullPath = path.join(getSpecflowDir(projectRoot), "specs", specId, filename);
             if (fs.existsSync(fullPath)) {
               const raw = fs.readFileSync(fullPath, "utf-8");
-              const { frontmatter } = parseDocumentFrontmatter(raw);
+              let status = "in-progress";
+              let approved_by = null;
+              let updated_at = new Date().toISOString();
+              try {
+                const parsed = parseDocumentFrontmatter(raw);
+                if (parsed.frontmatter) {
+                  status = parsed.frontmatter.status || status;
+                  approved_by = parsed.frontmatter.approved_by || null;
+                  updated_at = parsed.frontmatter.updated_at || updated_at;
+                }
+              } catch {
+                // Not frontmatter markdown
+              }
               return json({
                 id: docId,
                 kind,
                 title: `${specId} ${kind}`,
                 path: path.relative(projectRoot, fullPath),
-                status: frontmatter.status,
-                approvedBy: frontmatter.approved_by,
+                status,
+                approvedBy: approved_by,
                 revision: 1,
                 content: raw,
-                updatedAt: frontmatter.updated_at,
+                updatedAt: updated_at,
               });
             }
           }
@@ -966,6 +1295,8 @@ export function createServer(options: ServerOptions = {}): {
     websocket,
     broadcast,
     clients,
+    logActivity,
+    activityLogs,
   };
 }
 
@@ -989,7 +1320,7 @@ export function startServer(
   const port = options.port ?? config.server?.port ?? 4200;
   const host = options.host ?? config.server?.host ?? "127.0.0.1";
 
-  const { fetch, websocket, broadcast, clients } = createServer({
+  const { fetch, websocket, broadcast, clients, logActivity, activityLogs } = createServer({
     ...options,
     projectRoot,
     port,
@@ -997,7 +1328,7 @@ export function startServer(
   });
 
   // Start chokidar file watcher
-  const watcherHandle: WatcherHandle = startWatcher(projectRoot, broadcast);
+  const watcherHandle: WatcherHandle = startWatcher(projectRoot, broadcast, logActivity);
 
   let bunServer: any = null;
 
@@ -1021,6 +1352,8 @@ export function startServer(
     host,
     url,
     broadcast,
+    logActivity,
+    activityLogs,
     close: async () => {
       await watcherHandle.close();
       for (const client of clients) {

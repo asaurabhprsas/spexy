@@ -435,5 +435,234 @@ describe("Track B: Fastify/Bun WebSocket Server & File Watcher", () => {
     const html = await pageRes.text();
     expect(html.toLowerCase()).toContain("<!doctype html>");
   });
+
+  it("PUT /api/comments/:id updates comment and DELETE /api/comments/:id deletes it", async () => {
+    // 1. Create a comment
+    const createRes = await fetch(`${baseUrl}/api/comments`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        target_file: "product.md",
+        instruction: "Initial comment instruction",
+        anchor: {
+          start_line: 5,
+          end_line: 6,
+          anchor_text: "Target product statement",
+        },
+      }),
+    });
+    expect(createRes.status).toBe(201);
+    const created: any = await createRes.json();
+    const commentId = created.id;
+    expect(created.instruction).toBe("Initial comment instruction");
+
+    // 2. PUT /api/comments/:id to update instruction
+    const updateRes = await fetch(`${baseUrl}/api/comments/${commentId}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        instruction: "Updated instruction via PUT",
+        anchor: {
+          start_line: 10,
+          end_line: 12,
+          anchor_text: "Updated statement",
+        },
+      }),
+    });
+    expect(updateRes.status).toBe(200);
+    const updated: any = await updateRes.json();
+    expect(updated.id).toBe(commentId);
+    expect(updated.instruction).toBe("Updated instruction via PUT");
+    expect(updated.startLine).toBe(10);
+    expect(updated.endLine).toBe(12);
+
+    // Verify it is updated in GET /api/comments
+    const listRes = await fetch(`${baseUrl}/api/comments`);
+    const listData: any = await listRes.json();
+    const found = listData.find((c: any) => c.id === commentId);
+    expect(found).toBeDefined();
+    expect(found.instruction).toBe("Updated instruction via PUT");
+
+    // 3. DELETE /api/comments/:id
+    const deleteRes = await fetch(`${baseUrl}/api/comments/${commentId}`, {
+      method: "DELETE",
+    });
+    expect(deleteRes.status).toBe(200);
+    const deleteData: any = await deleteRes.json();
+    expect(deleteData).toEqual({ success: true, id: commentId });
+
+    // Verify it is removed from GET /api/comments
+    const afterDeleteRes = await fetch(`${baseUrl}/api/comments`);
+    const afterDeleteData: any = await afterDeleteRes.json();
+    expect(afterDeleteData.some((c: any) => c.id === commentId)).toBe(false);
+  });
+
+  it("GET /api/comments/history returns resolved comments", async () => {
+    // 1. Create a comment
+    const createRes = await fetch(`${baseUrl}/api/comments`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        target_file: "history-target.md",
+        instruction: "Needs historical tracking",
+        anchor: {
+          start_line: 1,
+          end_line: 2,
+          anchor_text: "Historical line",
+        },
+      }),
+    });
+    const created: any = await createRes.json();
+    const commentId = created.id;
+
+    // 2. Resolve comment
+    const resolveRes = await fetch(`${baseUrl}/api/comments/${commentId}/resolve`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        note: "Addressed in commit abc1234",
+      }),
+    });
+    expect(resolveRes.status).toBe(200);
+
+    // 3. GET /api/comments/history
+    const historyRes = await fetch(`${baseUrl}/api/comments/history`);
+    expect(historyRes.status).toBe(200);
+    const history: any = await historyRes.json();
+    expect(Array.isArray(history)).toBe(true);
+    const found = history.find((c: any) => c.id === commentId);
+    expect(found).toBeDefined();
+    expect(found.status).toBe("resolved");
+    expect(found.resolutionNote).toBe("Addressed in commit abc1234");
+
+    // 4. Test target_file filter
+    const filteredRes = await fetch(`${baseUrl}/api/comments/history?target_file=history-target.md`);
+    const filtered: any = await filteredRes.json();
+    expect(filtered.some((c: any) => c.id === commentId)).toBe(true);
+
+    const nonExistentRes = await fetch(`${baseUrl}/api/comments/history?target_file=nonexistent.md`);
+    const nonExistent: any = await nonExistentRes.json();
+    expect(nonExistent.length).toBe(0);
+  });
+
+  it("GET /api/specs/:id/files lists files and serves raw file content with security checks", async () => {
+    // 1. GET /api/specs/auth-system/files
+    const filesRes = await fetch(`${baseUrl}/api/specs/auth-system/files`);
+    expect(filesRes.status).toBe(200);
+    const body: any = await filesRes.json();
+    expect(body).toHaveProperty("files");
+    expect(Array.isArray(body.files)).toBe(true);
+    expect(body.files.some((f: any) => f.name === "requirements.md")).toBe(true);
+    expect(body.files.some((f: any) => f.name === "tasks.yaml")).toBe(true);
+
+    // 2. Add an extra file in references/
+    const specDir = path.join(tmpDir, ".specflow", "specs", "auth-system");
+    const refDir = path.join(specDir, "references");
+    fs.mkdirSync(refDir, { recursive: true });
+    fs.writeFileSync(path.join(refDir, "architecture.md"), "# Architecture Reference\nContent", "utf-8");
+
+    const recheckRes = await fetch(`${baseUrl}/api/specs/auth-system/files`);
+    const recheckBody: any = await recheckRes.json();
+    expect(recheckBody.files.some((f: any) => f.name === "architecture.md")).toBe(true);
+
+    // 3. Serve file content via GET /api/specs/:id/files/:filename+
+    const serveRes = await fetch(`${baseUrl}/api/specs/auth-system/files/references/architecture.md`);
+    expect(serveRes.status).toBe(200);
+    const contentType = serveRes.headers.get("Content-Type");
+    expect(contentType).toContain("text/markdown");
+    const content = await serveRes.text();
+    expect(content).toContain("# Architecture Reference");
+
+    // 4. Security check: path traversal attempts must return 404
+    const traversalRes = await fetch(`${baseUrl}/api/specs/auth-system/files/../../config.yaml`);
+    expect(traversalRes.status).toBe(404);
+  });
+
+  it("GET /api/specs/:id/tasks supports format=array normalization", async () => {
+    // Create a valid spec for this test
+    await fetch(`${baseUrl}/api/specs`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: "norm-spec", title: "Normalization Spec", force: true }),
+    });
+
+    // Default format
+    const defaultRes = await fetch(`${baseUrl}/api/specs/norm-spec/tasks`);
+    expect(defaultRes.status).toBe(200);
+    const defaultBody: any = await defaultRes.json();
+    expect(defaultBody).toHaveProperty("tasks");
+    expect(Array.isArray(defaultBody.tasks)).toBe(true);
+
+    // format=array
+    const arrayRes = await fetch(`${baseUrl}/api/specs/norm-spec/tasks?format=array`);
+    expect(arrayRes.status).toBe(200);
+    const arrayBody: any = await arrayRes.json();
+    expect(Array.isArray(arrayBody)).toBe(true);
+    expect(arrayBody.length).toBe(defaultBody.tasks.length);
+  });
+
+  it("GET /api/logs and WebSocket LOG_EVENT broadcasting", async () => {
+    const wsUrl = `ws://127.0.0.1:${testPort}/ws`;
+    const ws = new WebSocket(wsUrl);
+
+    await new Promise<void>((resolve, reject) => {
+      ws.onopen = () => resolve();
+      ws.onerror = (e) => reject(e);
+      setTimeout(() => reject(new Error("WS connection timeout")), 2000);
+    });
+
+    const receivedEvents: any[] = [];
+    ws.onmessage = (event) => {
+      receivedEvents.push(JSON.parse(String(event.data)));
+    };
+
+    // Trigger comment creation (should emit LOG_EVENT)
+    await fetch(`${baseUrl}/api/comments`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        target_file: "log-test.md",
+        instruction: "Testing activity log generation",
+      }),
+    });
+
+    // Wait for LOG_EVENT on WebSocket
+    let foundLogEvent = false;
+    for (let i = 0; i < 20; i++) {
+      await new Promise((r) => setTimeout(r, 50));
+      if (receivedEvents.some((e) => e.type === "LOG_EVENT" && e.payload?.category === "comment")) {
+        foundLogEvent = true;
+        break;
+      }
+    }
+    expect(foundLogEvent).toBe(true);
+    ws.close();
+
+    // Verify GET /api/logs
+    const logsRes = await fetch(`${baseUrl}/api/logs`);
+    expect(logsRes.status).toBe(200);
+    const logsBody: any = await logsRes.json();
+    expect(logsBody).toHaveProperty("logs");
+    expect(Array.isArray(logsBody.logs)).toBe(true);
+    expect(logsBody.logs.length).toBeGreaterThan(0);
+
+    const commentLog = logsBody.logs.find((l: any) => l.category === "comment");
+    expect(commentLog).toBeDefined();
+    expect(commentLog).toHaveProperty("id");
+    expect(commentLog).toHaveProperty("timestamp");
+    expect(commentLog).toHaveProperty("action");
+    expect(commentLog).toHaveProperty("actor");
+    expect(commentLog).toHaveProperty("message");
+
+    // Verify filtering by category
+    const filteredRes = await fetch(`${baseUrl}/api/logs?category=comment`);
+    const filteredBody: any = await filteredRes.json();
+    expect(filteredBody.logs.every((l: any) => l.category === "comment")).toBe(true);
+
+    // Verify limit parameter
+    const limitedRes = await fetch(`${baseUrl}/api/logs?limit=1`);
+    const limitedBody: any = await limitedRes.json();
+    expect(limitedBody.logs.length).toBe(1);
+  });
 });
 

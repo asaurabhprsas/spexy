@@ -13,6 +13,14 @@ import {
 
 export type BroadcastFn = (event: { type: string; payload: any }) => void;
 
+export type WatcherLogFn = (entry: {
+  category: "task" | "document" | "comment" | "watcher" | "checkpoint";
+  action: string;
+  actor: string;
+  message: string;
+  details?: Record<string, any>;
+}) => void;
+
 const writeLocks = new Map<string, number>();
 
 /**
@@ -57,6 +65,7 @@ export interface WatcherHandle {
 export function startWatcher(
   projectRoot: string,
   broadcast: BroadcastFn,
+  onLog?: WatcherLogFn,
 ): WatcherHandle {
   const specflowDir = path.join(projectRoot, SPECFLOW_DIR);
   if (!fs.existsSync(specflowDir)) {
@@ -103,6 +112,16 @@ export function startWatcher(
           type: "TASK_UPDATED",
           payload: { specId, tasks },
         });
+
+        if (onLog) {
+          onLog({
+            category: "watcher",
+            action: "change",
+            actor: "watcher",
+            message: `Detected external change in tasks for spec ${specId}`,
+            details: { file: path.relative(projectRoot, filePath), specId },
+          });
+        }
       } catch (err: any) {
         console.warn(`[Watcher] Corrupted tasks.yaml at ${filePath}:`, err.message);
         broadcast({
@@ -112,6 +131,19 @@ export function startWatcher(
             error: err.message,
           },
         });
+
+        if (onLog) {
+          onLog({
+            category: "watcher",
+            action: "corrupted",
+            actor: "watcher",
+            message: `Corrupted file detected: ${path.relative(projectRoot, filePath)}`,
+            details: {
+              file: path.relative(projectRoot, filePath),
+              error: err.message,
+            },
+          });
+        }
       }
       return;
     }
@@ -124,6 +156,16 @@ export function startWatcher(
           file: path.relative(projectRoot, filePath),
         },
       });
+
+      if (onLog) {
+        onLog({
+          category: "watcher",
+          action: "change",
+          actor: "watcher",
+          message: `Detected external change in document: ${path.relative(projectRoot, filePath)}`,
+          details: { file: path.relative(projectRoot, filePath) },
+        });
+      }
       return;
     }
 
@@ -137,6 +179,16 @@ export function startWatcher(
             comments: commentsDoc.comments,
           },
         });
+
+        if (onLog) {
+          onLog({
+            category: "watcher",
+            action: "change",
+            actor: "watcher",
+            message: `Detected external change in pending comments`,
+            details: { file: path.relative(projectRoot, filePath) },
+          });
+        }
       } catch (err: any) {
         console.warn(`[Watcher] Error reading comments:`, err.message);
       }
@@ -151,6 +203,16 @@ export function startWatcher(
           type: "CONFIG_UPDATED",
           payload: { config },
         });
+
+        if (onLog) {
+          onLog({
+            category: "watcher",
+            action: "change",
+            actor: "watcher",
+            message: `Detected external change in config.yaml`,
+            details: { file: path.relative(projectRoot, filePath) },
+          });
+        }
       } catch (err: any) {
         console.warn(`[Watcher] Error reading config:`, err.message);
       }

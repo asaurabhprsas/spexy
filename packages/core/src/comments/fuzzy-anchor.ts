@@ -3,6 +3,9 @@ import path from "node:path";
 import YAML from "yaml";
 import { getSpecflowDir } from "../fs/workspace";
 import {
+  CommentAnchor,
+  CommentHistoryDocument,
+  CommentHistoryDocumentSchema,
   CommentItem,
   PendingCommentsDocument,
   PendingCommentsDocumentSchema,
@@ -10,6 +13,34 @@ import {
 
 function getCommentsFilePath(projectRoot: string): string {
   return path.join(getSpecflowDir(projectRoot), ".cache", "pending-comments.yaml");
+}
+
+function getHistoryFilePath(projectRoot: string): string {
+  return path.join(getSpecflowDir(projectRoot), ".cache", "history", "comments-history.yaml");
+}
+
+export function readCommentHistoryDoc(projectRoot: string): CommentHistoryDocument {
+  const filePath = getHistoryFilePath(projectRoot);
+  if (!fs.existsSync(filePath)) {
+    return { comments: [] };
+  }
+  try {
+    const raw = fs.readFileSync(filePath, "utf-8");
+    const parsed = YAML.parse(raw);
+    const validated = CommentHistoryDocumentSchema.safeParse(parsed);
+    return validated.success ? validated.data : { comments: [] };
+  } catch {
+    return { comments: [] };
+  }
+}
+
+export function writeCommentHistoryDoc(
+  projectRoot: string,
+  doc: CommentHistoryDocument,
+): void {
+  const filePath = getHistoryFilePath(projectRoot);
+  fs.mkdirSync(path.dirname(filePath), { recursive: true });
+  fs.writeFileSync(filePath, YAML.stringify(doc), "utf-8");
 }
 
 export function readPendingCommentsDoc(projectRoot: string): PendingCommentsDocument {
@@ -73,6 +104,45 @@ export function addComment(
   return newComment;
 }
 
+export function deleteComment(projectRoot: string, commentId: string): void {
+  const doc = readPendingCommentsDoc(projectRoot);
+  const idx = doc.comments.findIndex((c) => c.id === commentId);
+
+  if (idx === -1) {
+    throw new Error(`Comment not found: "${commentId}"`);
+  }
+
+  doc.comments.splice(idx, 1);
+  writePendingCommentsDoc(projectRoot, doc);
+}
+
+export function updateComment(
+  projectRoot: string,
+  commentId: string,
+  updates: { instruction?: string; anchor?: Partial<CommentAnchor> },
+): CommentItem {
+  const doc = readPendingCommentsDoc(projectRoot);
+  const idx = doc.comments.findIndex((c) => c.id === commentId);
+
+  if (idx === -1) {
+    throw new Error(`Comment not found: "${commentId}"`);
+  }
+
+  const comment = doc.comments[idx];
+  if (updates.instruction !== undefined) {
+    comment.instruction = updates.instruction;
+  }
+  if (updates.anchor) {
+    comment.anchor = {
+      ...comment.anchor,
+      ...updates.anchor,
+    };
+  }
+
+  writePendingCommentsDoc(projectRoot, doc);
+  return comment;
+}
+
 export function resolveComment(
   projectRoot: string,
   commentId: string,
@@ -89,6 +159,13 @@ export function resolveComment(
   const comment = doc.comments[idx];
   comment.status = "addressed";
   comment.resolution_note = note;
+  comment.resolved_at = new Date().toISOString();
+  comment.resolved_by = "human";
+
+  // Append resolved comment into .specflow/.cache/history/comments-history.yaml
+  const historyDoc = readCommentHistoryDoc(projectRoot);
+  historyDoc.comments.push({ ...comment });
+  writeCommentHistoryDoc(projectRoot, historyDoc);
 
   if (options?.purge !== false) {
     // PRD FR-4: Resolved comments are pruned from pending-comments.yaml, leaving repository clean
@@ -97,6 +174,17 @@ export function resolveComment(
 
   writePendingCommentsDoc(projectRoot, doc);
   return comment;
+}
+
+export function listCommentHistory(
+  projectRoot: string,
+  target_file?: string,
+): CommentItem[] {
+  const historyDoc = readCommentHistoryDoc(projectRoot);
+  if (!target_file) {
+    return historyDoc.comments;
+  }
+  return historyDoc.comments.filter((c) => c.target_file === target_file);
 }
 
 export interface RealignedAnchor {

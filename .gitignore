@@ -7,6 +7,7 @@ out-tsc
 *.tsbuildinfo
 .expo
 .expo-shared
+__TEMP__
 
 # dependencies
 node_modules

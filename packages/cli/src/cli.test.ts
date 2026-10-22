@@ -159,6 +159,47 @@ describe("@spec-flow/cli Comprehensive Test Suite", () => {
     // comment list --pending should be empty
     const pendingOutput = runCli(["comment", "list", "--pending"]);
     expect(pendingOutput).toContain("No pending comments found");
+
+    // comment history should show resolved comment
+    const historyOutput = runCli(["comment", "history"]);
+    expect(historyOutput).toContain("cmt-test-1");
+    expect(historyOutput).toContain("Header updated");
+
+    const historyJson = JSON.parse(runCli(["comment", "history", "--json"]));
+    expect(historyJson.length).toBe(1);
+    expect(historyJson[0].id).toBe("cmt-test-1");
+
+    // Add a second comment to test edit and delete
+    const comment2 = `comments:
+  - id: cmt-test-2
+    target_file: docs/PROGRESS.md
+    status: pending
+    author: human
+    created_at: "${new Date().toISOString()}"
+    anchor:
+      start_line: 1
+      end_line: 2
+      anchor_text: "# Progress"
+      context_before: ""
+    instruction: "Old instruction"
+    resolution_note: null
+`;
+    fs.writeFileSync(commentsPath, comment2, "utf-8");
+
+    // comment edit
+    const editOutput = runCli(["comment", "edit", "cmt-test-2", "--instruction", "Updated instruction text"]);
+    expect(editOutput).toContain("updated");
+    expect(editOutput).toContain("Updated instruction text");
+
+    const listAfterEdit = runCli(["comment", "list"]);
+    expect(listAfterEdit).toContain("Updated instruction text");
+
+    // comment delete
+    const deleteOutput = runCli(["comment", "delete", "cmt-test-2"]);
+    expect(deleteOutput).toContain("deleted");
+
+    const listAfterDelete = runCli(["comment", "list", "--pending"]);
+    expect(listAfterDelete).toContain("No pending comments found");
   });
 
   it("lists and restores snapshots", () => {

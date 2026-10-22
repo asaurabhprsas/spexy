@@ -18,6 +18,9 @@ import {
   transitionTask,
   listComments,
   resolveComment,
+  deleteComment,
+  updateComment,
+  listCommentHistory,
   listSnapshots,
   restoreSnapshot,
   acquireTaskLease,
@@ -532,6 +535,80 @@ commentCmd
       console.log(`  • Resolution Note: ${note}`);
     } catch (err: any) {
       console.error(`Error resolving comment "${id}": ${err.message}`);
+      process.exit(1);
+    }
+  });
+
+commentCmd
+  .command("delete <id>")
+  .description("Delete a pending comment")
+  .action((id) => {
+    try {
+      const projectRoot = getRoot();
+      deleteComment(projectRoot, id);
+      console.log(`✓ Comment "${id}" deleted.`);
+    } catch (err: any) {
+      console.error(`Error deleting comment "${id}": ${err.message}`);
+      process.exit(1);
+    }
+  });
+
+commentCmd
+  .command("edit <id>")
+  .description("Edit an existing pending comment instruction")
+  .requiredOption("--instruction <text>", "Updated comment instruction")
+  .action((id, options) => {
+    try {
+      const projectRoot = getRoot();
+      const updated = updateComment(projectRoot, id, { instruction: options.instruction });
+      console.log(`✓ Comment "${id}" updated.`);
+      console.log(`  • Instruction: ${updated.instruction}`);
+    } catch (err: any) {
+      console.error(`Error updating comment "${id}": ${err.message}`);
+      process.exit(1);
+    }
+  });
+
+commentCmd
+  .command("history")
+  .description("List resolved comment history")
+  .option("--file <file>", "Filter history by target file")
+  .option("--json", "Output history as JSON")
+  .action((options) => {
+    try {
+      const projectRoot = getRoot();
+      const history = listCommentHistory(projectRoot, options.file);
+
+      if (options.json) {
+        console.log(JSON.stringify(history, null, 2));
+        return;
+      }
+
+      if (history.length === 0) {
+        console.log(options.file ? `No comment history for file: ${options.file}` : `No comment history found.`);
+        return;
+      }
+
+      console.log(
+        `ID`.padEnd(14) +
+          `RESOLVED_AT`.padEnd(25) +
+          `AUTHOR`.padEnd(10) +
+          `FILE`.padEnd(30) +
+          `RESOLUTION NOTE`,
+      );
+      console.log(`-`.repeat(100));
+      for (const c of history) {
+        const resolvedAt = (c.resolved_at || c.created_at || "").slice(0, 19).padEnd(25);
+        console.log(
+          c.id.padEnd(14) +
+            resolvedAt +
+            c.author.padEnd(10) +
+            c.target_file.slice(0, 28).padEnd(30) +
+            (c.resolution_note || "-"),
+        );
+      }
+    } catch (err: any) {
+      console.error(`Error listing comment history: ${err.message}`);
       process.exit(1);
     }
   });

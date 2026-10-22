@@ -25,6 +25,12 @@ import {
   TerminalSquare,
   Wifi,
   WifiOff,
+  FileCode,
+  Image as ImageIcon,
+  Paperclip,
+  Eye,
+  X,
+  FileCheck2,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -36,6 +42,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { useWorkflowUiStore } from '@/store/ui';
 import { useWebSocketSync } from '@/hooks/useWebSocketSync';
 import { DocumentInspector } from '@/components/inspector/DocumentInspector';
+import { LiveLogsDrawer } from '@/components/logs/LiveLogsDrawer';
 import { HierarchicalTaskList } from '@/components/list/HierarchicalTaskList';
 import { TaskDagViewer } from '@/components/graph/TaskDagViewer';
 import { KanbanBoard } from '@/components/kanban/KanbanBoard';
@@ -86,6 +93,8 @@ function Shell({ children }: { children: ReactNode }) {
     query: { queryKey: getHealthCheckQueryKey(), refetchInterval: 45_000 },
   });
   const { isConnected, status: wsStatus } = useWebSocketSync();
+  const [isLogsDrawerOpen, setIsLogsDrawerOpen] = useState(false);
+  const [logsCount, setLogsCount] = useState(0);
 
   const project = dashboard.data?.projectName ?? 'Workspace';
 
@@ -113,6 +122,26 @@ function Shell({ children }: { children: ReactNode }) {
               )}
               {isConnected ? 'live ws' : wsStatus}
             </span>
+
+            {/* Live Logs Trigger Button */}
+            <button
+              type="button"
+              onClick={() => setIsLogsDrawerOpen(!isLogsDrawerOpen)}
+              className="rounded-full border border-white/15 bg-white/[.08] hover:bg-white/[.15] px-2.5 py-1 font-mono text-[10px] text-white/90 inline-flex items-center gap-1.5 transition-colors cursor-pointer"
+              title="Open Live Activity Logs"
+            >
+              <span className="relative flex size-2">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full size-2 bg-emerald-500"></span>
+              </span>
+              <TerminalSquare size={11} className="text-primary" />
+              <span>Live Logs</span>
+              {logsCount > 0 && (
+                <span className="bg-primary/30 text-white px-1.5 rounded-full text-[9px] font-bold">
+                  {logsCount}
+                </span>
+              )}
+            </button>
           </div>
         </div>
 
@@ -135,6 +164,15 @@ function Shell({ children }: { children: ReactNode }) {
             icon={<ListTodo size={16} />}
             label="Tasks"
           />
+          <button
+            type="button"
+            onClick={() => setIsLogsDrawerOpen(true)}
+            className="flex min-w-fit items-center gap-3 rounded-lg px-3 py-2.5 text-[13px] font-medium text-white/60 hover:bg-white/[.06] hover:text-white/90 transition-colors md:w-full cursor-pointer"
+          >
+            <Activity size={16} className="text-emerald-400" />
+            <span>Live Activity</span>
+            <span className="ml-auto inline-flex size-2 rounded-full bg-emerald-400 animate-pulse" />
+          </button>
         </nav>
 
         <div className="hidden flex-1 md:block" />
@@ -153,6 +191,13 @@ function Shell({ children }: { children: ReactNode }) {
       <main className="min-w-0 flex-1 px-4 pb-12 pt-5 sm:px-7 md:ml-[252px] md:px-10 md:pt-9 xl:px-14">
         <div className="mx-auto max-w-[1360px]">{children}</div>
       </main>
+
+      {/* Live Activity Logs Drawer */}
+      <LiveLogsDrawer
+        open={isLogsDrawerOpen}
+        onClose={() => setIsLogsDrawerOpen(false)}
+        onLogsCountChange={setLogsCount}
+      />
     </div>
   );
 }
@@ -276,10 +321,256 @@ function StatusPill({ value }: { value: string }) {
   );
 }
 
+interface AuxFile {
+  name: string;
+  path: string;
+  kind: 'reference' | 'image' | 'core' | 'other';
+  size: number;
+  ext: string;
+}
+
+function SpecAuxiliaryFiles({
+  specId,
+  onPreview,
+}: {
+  specId: string;
+  onPreview: (file: AuxFile) => void;
+}) {
+  const [files, setFiles] = useState<AuxFile[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch(`/api/specs/${encodeURIComponent(specId)}/files`)
+      .then((res) => (res.ok ? res.json() : []))
+      .then((data) => {
+        if (!cancelled && Array.isArray(data)) {
+          // Exclude core docs from auxiliary list
+          setFiles(data.filter((f: AuxFile) => f.kind !== 'core'));
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setFiles([]);
+      })
+      .finally(() => {
+        if (!cancelled) setIsLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [specId]);
+
+  const references = files.filter((f) => f.kind === 'reference');
+  const images = files.filter((f) => f.kind === 'image');
+
+  if (isLoading) {
+    return (
+      <div className="py-2 text-[11px] text-muted-foreground font-mono animate-pulse">
+        Checking for auxiliary assets…
+      </div>
+    );
+  }
+
+  if (files.length === 0) {
+    return (
+      <div className="rounded-lg border border-dashed border-border/70 p-3 text-center">
+        <p className="text-[11px] text-muted-foreground mb-0">
+          No auxiliary files found in <code>specs/{specId}/references/</code> or <code>images/</code>
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-3">
+      {references.length > 0 && (
+        <div>
+          <div className="text-[10px] font-mono uppercase tracking-wider text-muted-foreground mb-1.5 flex items-center gap-1.5">
+            <Paperclip size={11} />
+            References & Research ({references.length})
+          </div>
+          <div className="grid gap-1.5 sm:grid-cols-2">
+            {references.map((f) => (
+              <button
+                key={f.path}
+                type="button"
+                onClick={() => onPreview(f)}
+                className="flex items-center justify-between p-2 rounded-md bg-secondary/50 hover:bg-secondary border border-border/50 text-left transition-colors group cursor-pointer"
+              >
+                <div className="flex items-center gap-2 min-w-0">
+                  <FileText size={13} className="text-primary shrink-0" />
+                  <span className="text-xs truncate font-medium group-hover:text-primary transition-colors">
+                    {f.name}
+                  </span>
+                </div>
+                <span className="text-[10px] font-mono text-muted-foreground shrink-0 ml-2">
+                  {Math.round(f.size / 1024)} KB
+                </span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {images.length > 0 && (
+        <div>
+          <div className="text-[10px] font-mono uppercase tracking-wider text-muted-foreground mb-1.5 flex items-center gap-1.5">
+            <ImageIcon size={11} />
+            Visuals & Diagrams ({images.length})
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
+            {images.map((img) => (
+              <button
+                key={img.path}
+                type="button"
+                onClick={() => onPreview(img)}
+                className="group relative flex flex-col items-center justify-center p-2 rounded-lg border border-border/70 bg-card/60 hover:border-primary/50 transition-all text-center cursor-pointer overflow-hidden"
+              >
+                <div className="size-16 rounded bg-muted/40 flex items-center justify-center mb-1.5 overflow-hidden">
+                  <img
+                    src={`/${img.path}`}
+                    alt={img.name}
+                    className="size-full object-cover group-hover:scale-105 transition-transform"
+                    onError={(e) => {
+                      (e.currentTarget as HTMLElement).style.display = 'none';
+                    }}
+                  />
+                  <ImageIcon size={20} className="text-muted-foreground/60" />
+                </div>
+                <span className="text-[11px] truncate w-full font-mono text-muted-foreground group-hover:text-foreground">
+                  {img.name}
+                </span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function DashboardSpecCard({
+  feature: f,
+  onOpenDoc,
+  onPreviewAuxFile,
+}: {
+  feature: Feature;
+  onOpenDoc: (docId: string) => void;
+  onPreviewAuxFile: (file: AuxFile) => void;
+}) {
+  const [, setLocation] = useLocation();
+  const total = f.taskCount || 0;
+  const completed = f.completedTaskCount || 0;
+  const progressPercent = total > 0 ? Math.round((completed / total) * 100) : 0;
+
+  return (
+    <Surface className="p-5 sm:p-6 space-y-5 hover:border-primary/30 transition-colors">
+      {/* Header */}
+      <div className="flex flex-wrap items-start justify-between gap-3 border-b border-border/70 pb-4">
+        <div>
+          <div className="flex items-center gap-2 mb-1.5">
+            <h3 className="font-serif text-lg font-semibold tracking-tight mb-0">{f.name}</h3>
+            <span className="font-mono text-[10px] bg-muted px-2 py-0.5 rounded border border-border/60 text-muted-foreground">
+              {f.id}
+            </span>
+            <StatusPill value={f.status} />
+          </div>
+          {f.description && (
+            <p className="text-xs text-muted-foreground max-w-2xl leading-relaxed mb-0">
+              {f.description}
+            </p>
+          )}
+        </div>
+
+        <Button
+          size="sm"
+          onClick={() => setLocation(`/features/${f.id}`)}
+          className="gap-1.5"
+          data-testid={`button-open-tasks-${f.id}`}
+        >
+          <ListTodo size={14} />
+          Open Tasks Board
+          <ArrowRight size={13} />
+        </Button>
+      </div>
+
+      {/* Task Progress Bar */}
+      <div>
+        <div className="flex items-center justify-between text-xs mb-1.5">
+          <span className="font-mono text-[11px] text-muted-foreground uppercase tracking-wider">
+            Execution Progress
+          </span>
+          <span className="font-mono text-[11px] font-semibold">
+            {completed} / {total} tasks ({progressPercent}%)
+          </span>
+        </div>
+        <div className="h-2 w-full bg-secondary rounded-full overflow-hidden">
+          <div
+            className="h-full bg-emerald-500 rounded-full transition-all duration-300"
+            style={{ width: `${progressPercent}%` }}
+          />
+        </div>
+      </div>
+
+      {/* Core Specification Documents Quick Links */}
+      <div>
+        <div className="text-[10px] font-mono uppercase tracking-wider text-muted-foreground mb-2 flex items-center gap-1.5">
+          <FileCheck2 size={12} className="text-primary" />
+          Core Specification Documents (Click to Inspect)
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={() => onOpenDoc(`${f.id}:requirements`)}
+            className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg border border-border bg-card hover:bg-accent hover:border-primary/40 text-xs font-mono transition-colors group cursor-pointer"
+            title="Open requirements.md in Document Inspector"
+          >
+            <FileText size={13} className="text-sky-500" />
+            <span>requirements.md</span>
+            <Eye size={12} className="text-muted-foreground group-hover:text-foreground opacity-60 group-hover:opacity-100" />
+          </button>
+
+          <button
+            type="button"
+            onClick={() => onOpenDoc(`${f.id}:design`)}
+            className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg border border-border bg-card hover:bg-accent hover:border-primary/40 text-xs font-mono transition-colors group cursor-pointer"
+            title="Open design.md in Document Inspector"
+          >
+            <BookOpen size={13} className="text-purple-500" />
+            <span>design.md</span>
+            <Eye size={12} className="text-muted-foreground group-hover:text-foreground opacity-60 group-hover:opacity-100" />
+          </button>
+
+          <button
+            type="button"
+            onClick={() => onOpenDoc(`${f.id}:tasks`)}
+            className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg border border-border bg-card hover:bg-accent hover:border-primary/40 text-xs font-mono transition-colors group cursor-pointer"
+            title="Open tasks.yaml in Document Inspector"
+          >
+            <FileCode size={13} className="text-emerald-500" />
+            <span>tasks.yaml</span>
+            <Eye size={12} className="text-muted-foreground group-hover:text-foreground opacity-60 group-hover:opacity-100" />
+          </button>
+        </div>
+      </div>
+
+      {/* Auxiliary Files & References */}
+      <div className="border-t border-border/60 pt-4">
+        <SpecAuxiliaryFiles specId={f.id} onPreview={onPreviewAuxFile} />
+      </div>
+    </Surface>
+  );
+}
+
 function Dashboard() {
   const q = useGetDashboard();
+  const features = useListFeatures({ query: { queryKey: getListFeaturesQueryKey() } });
   const comments = useListComments({ query: { queryKey: getListCommentsQueryKey() } });
   const [, setLocation] = useLocation();
+
+  // Overlay states for inspecting docs or previewing auxiliary files from Dashboard
+  const [inspectingDocId, setInspectingDocId] = useState<string | null>(null);
+  const [previewAuxFile, setPreviewAuxFile] = useState<AuxFile | null>(null);
 
   if (q.isLoading)
     return (
@@ -438,6 +729,55 @@ function Dashboard() {
         </Surface>
       </div>
 
+      {/* Dedicated Specifications & Features Section */}
+      <div className="mt-8 space-y-4">
+        <div className="flex flex-wrap items-end justify-between gap-3 border-b border-border/80 pb-3">
+          <div>
+            <div className="font-mono text-[9px] uppercase tracking-[.18em] text-muted-foreground">
+              Living Specifications
+            </div>
+            <h2 className="mb-0 mt-1 font-serif text-2xl font-semibold tracking-tight">
+              Specifications & Features
+            </h2>
+          </div>
+          <Button
+            size="sm"
+            onClick={() => setLocation('/features')}
+            variant="outline"
+            className="gap-1.5"
+          >
+            <Layers3 size={14} />
+            Manage all specs
+          </Button>
+        </div>
+
+        {features.isLoading ? (
+          <LoadingRows />
+        ) : (features.data ?? []).length === 0 ? (
+          <Surface className="p-8 text-center">
+            <Layers3 className="size-10 mx-auto mb-2 text-muted-foreground opacity-40" />
+            <h3 className="text-sm font-semibold">No specifications created yet</h3>
+            <p className="text-xs text-muted-foreground mt-1 mb-4">
+              Add your first feature specification to generate requirements, design, and executable tasks.
+            </p>
+            <Button size="sm" onClick={() => setLocation('/features')}>
+              Create specification
+            </Button>
+          </Surface>
+        ) : (
+          <div className="grid gap-5">
+            {features.data?.map((f: Feature) => (
+              <DashboardSpecCard
+                key={f.id}
+                feature={f}
+                onOpenDoc={(docId) => setInspectingDocId(docId)}
+                onPreviewAuxFile={(file) => setPreviewAuxFile(file)}
+              />
+            ))}
+          </div>
+        )}
+      </div>
+
       <div className="mt-6 grid gap-4 sm:grid-cols-2">
         <button
           onClick={() => setLocation('/features')}
@@ -471,6 +811,75 @@ function Dashboard() {
           <ChevronRight size={16} className="text-muted-foreground group-hover:text-primary" />
         </button>
       </div>
+
+      {/* Modal Inspector Overlay for Dashboard quick links */}
+      {inspectingDocId && (
+        <div className="fixed inset-0 z-50 bg-background/80 backdrop-blur-md flex items-center justify-center p-3 sm:p-6 animate-in fade-in duration-200">
+          <div className="w-full max-w-6xl h-[90vh]">
+            <DocumentInspector
+              documentId={inspectingDocId}
+              onClose={() => setInspectingDocId(null)}
+            />
+          </div>
+        </div>
+      )}
+
+      {/* Auxiliary File Preview Modal */}
+      {previewAuxFile && (
+        <div
+          className="fixed inset-0 z-50 bg-background/80 backdrop-blur-md flex items-center justify-center p-4 animate-in fade-in duration-200"
+          onClick={() => setPreviewAuxFile(null)}
+        >
+          <div
+            className="w-full max-w-2xl bg-card border border-border rounded-xl p-5 shadow-2xl space-y-4"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between border-b border-border/70 pb-3">
+              <div className="flex items-center gap-2">
+                {previewAuxFile.kind === 'image' ? (
+                  <ImageIcon size={16} className="text-primary" />
+                ) : (
+                  <FileText size={16} className="text-primary" />
+                )}
+                <span className="font-semibold text-sm">{previewAuxFile.name}</span>
+                <span className="font-mono text-[10px] text-muted-foreground">
+                  ({Math.round(previewAuxFile.size / 1024)} KB)
+                </span>
+              </div>
+              <Button size="sm" variant="ghost" onClick={() => setPreviewAuxFile(null)} className="h-7 w-7 p-0">
+                <X size={15} />
+              </Button>
+            </div>
+
+            <div className="max-h-[60vh] overflow-auto flex items-center justify-center bg-muted/20 rounded-lg p-3">
+              {previewAuxFile.kind === 'image' ? (
+                <img
+                  src={`/${previewAuxFile.path}`}
+                  alt={previewAuxFile.name}
+                  className="max-h-[55vh] object-contain rounded"
+                  onError={(e) => {
+                    (e.currentTarget as HTMLElement).style.display = 'none';
+                  }}
+                />
+              ) : (
+                <div className="text-xs font-mono space-y-2 text-left w-full p-2">
+                  <p className="text-muted-foreground">File Path: {previewAuxFile.path}</p>
+                  <p className="text-muted-foreground">Category: {previewAuxFile.kind} ({previewAuxFile.ext})</p>
+                  <p className="text-xs text-foreground/80">
+                    This auxiliary reference file is linked to the specification workspace.
+                  </p>
+                </div>
+              )}
+            </div>
+
+            <div className="flex justify-end pt-1">
+              <Button size="sm" variant="outline" onClick={() => setPreviewAuxFile(null)}>
+                Close Preview
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -863,7 +1272,12 @@ function FeatureTasksPage() {
     review.mutate({ featureId, taskId: task.id, data: { decision: 'reject', note: n } }, { onSuccess: refresh });
   };
 
-  const taskList = tasksQuery.data ?? [];
+  const rawTasks = tasksQuery.data;
+  const taskList: Task[] = Array.isArray(rawTasks)
+    ? rawTasks
+    : Array.isArray((rawTasks as any)?.tasks)
+    ? (rawTasks as any).tasks
+    : [];
 
   return (
     <div className="space-y-6">

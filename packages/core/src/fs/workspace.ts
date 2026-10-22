@@ -243,6 +243,8 @@ export function createSpec(
   }
 
   fs.mkdirSync(specDir, { recursive: true });
+  fs.mkdirSync(path.join(specDir, "references"), { recursive: true });
+  fs.mkdirSync(path.join(specDir, "images"), { recursive: true });
 
   const now = new Date().toISOString();
   const title = options?.title || specId.replace(/-/g, " ");
@@ -325,6 +327,73 @@ Define interfaces, types, and data models.
   fs.writeFileSync(path.join(specDir, "implementation.log"), `# Implementation Log: ${specId}\n\n- ${now}: Spec created.\n`, "utf-8");
 }
 
+export type SpecFileKind =
+  | "requirements"
+  | "design"
+  | "tasks"
+  | "reference"
+  | "image"
+  | "log"
+  | "other";
+
+export interface SpecFileInfo {
+  name: string;
+  relativePath: string;
+  kind: SpecFileKind;
+  sizeBytes: number;
+  extension: string;
+  updatedAt: string;
+}
+
+export function listSpecFiles(projectRoot: string, specId: string): SpecFileInfo[] {
+  const specDir = path.join(getSpecflowDir(projectRoot), "specs", specId);
+  if (!fs.existsSync(specDir)) {
+    return [];
+  }
+
+  const results: SpecFileInfo[] = [];
+
+  function scanDir(dir: string, baseDir: string, forcedKind?: SpecFileKind) {
+    if (!fs.existsSync(dir)) return;
+    const entries = fs.readdirSync(dir, { withFileTypes: true });
+    for (const entry of entries) {
+      const fullPath = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        let childKind = forcedKind;
+        if (!childKind) {
+          if (entry.name === "references") childKind = "reference";
+          else if (entry.name === "images") childKind = "image";
+          else childKind = "other";
+        }
+        scanDir(fullPath, baseDir, childKind);
+      } else if (entry.isFile()) {
+        const rel = path.relative(baseDir, fullPath).split(path.sep).join("/");
+        let kind: SpecFileKind = forcedKind || "other";
+        if (!forcedKind) {
+          if (entry.name === "requirements.md") kind = "requirements";
+          else if (entry.name === "design.md") kind = "design";
+          else if (entry.name === "tasks.yaml") kind = "tasks";
+          else if (entry.name === "implementation.log") kind = "log";
+        }
+        const stat = fs.statSync(fullPath);
+        const ext = path.extname(entry.name).replace(/^\./, "").toLowerCase();
+        results.push({
+          name: entry.name,
+          relativePath: rel,
+          kind,
+          sizeBytes: stat.size,
+          extension: ext,
+          updatedAt: stat.mtime.toISOString(),
+        });
+      }
+    }
+  }
+
+  scanDir(specDir, specDir);
+  results.sort((a, b) => a.relativePath.localeCompare(b.relativePath));
+  return results;
+}
+
 export function readTasksYaml(projectRoot: string, specId: string): TasksDocument {
   const tasksPath = path.join(getSpecflowDir(projectRoot), "specs", specId, "tasks.yaml");
   if (!fs.existsSync(tasksPath)) {
@@ -403,8 +472,11 @@ export function initSpecFlowWorkspace(projectRoot: string): void {
 
   fs.mkdirSync(path.join(sfDir, "steering"), { recursive: true });
   fs.mkdirSync(path.join(sfDir, "specs"), { recursive: true });
-  fs.mkdirSync(path.join(sfDir, "templates"), { recursive: true });
+  fs.mkdirSync(path.join(sfDir, "templates", "steering"), { recursive: true });
+  fs.mkdirSync(path.join(sfDir, "templates", "specs"), { recursive: true });
+  fs.mkdirSync(path.join(sfDir, "prompts"), { recursive: true });
   fs.mkdirSync(path.join(sfDir, ".cache", "checkpoints"), { recursive: true });
+  fs.mkdirSync(path.join(sfDir, ".cache", "history"), { recursive: true });
   fs.mkdirSync(docsDir, { recursive: true });
 
   const now = new Date().toISOString();
@@ -439,6 +511,8 @@ This directory is managed by **Spec-Flow**, the local-first Spec-Driven Developm
 ## Structure
 - \`steering/\`: Foundational documents (product, tech, structure). Must be approved by a human before spec execution.
 - \`specs/\`: Feature specifications containing requirements, design, tasks, and audit logs.
+- \`templates/\`: Turnkey templates for steering, specifications, and tasks.
+- \`prompts/\`: Actionable guidance prompts for autonomous AI agents.
 - \`.cache/\`: Ephemeral local state, review comments, and rolling checkpoints.
 `,
       "utf-8",
@@ -458,7 +532,398 @@ High-level cross-spec roadmap and development milestones.
     );
   }
 
-  // 6. Steering docs
+  // 6. Turnkey Templates in .specflow/templates/
+  const templates: { subpath: string; content: string }[] = [
+    {
+      subpath: path.join("steering", "product.template.md"),
+      content: `---
+status: draft
+updated_at: 2026-01-01T00:00:00.000Z
+approved_by: null
+---
+
+# Product Vision & Strategy: [Project Name]
+
+## 1. Vision & Executive Summary
+Brief high-level description of what this product accomplishes and the core problem it solves.
+
+## 2. Target Users & Personas
+- **Primary Persona**: Description, workflows, core pain points.
+- **Secondary Persona**: Supporting roles and administrative users.
+
+## 3. Core Features & Capabilities
+- **Feature Area 1**: Detailed capabilities and desired outcomes.
+- **Feature Area 2**: Automation, integrations, or workflows.
+
+## 4. Product Principles & Success Metrics
+- **Principle 1**: Usability, performance, or reliability standard.
+- **Key Metrics (KPIs)**: Quantifiable metrics for product validation.
+`,
+    },
+    {
+      subpath: path.join("steering", "tech.template.md"),
+      content: `---
+status: draft
+updated_at: 2026-01-01T00:00:00.000Z
+approved_by: null
+---
+
+# Technical Architecture & Constraints: [Project Name]
+
+## 1. Technology Stack
+- **Runtime & Language**: e.g., Bun / Node.js, TypeScript.
+- **Frameworks & Libraries**: Key dependencies and UI/backend frameworks.
+- **Persistence & Storage**: Database, caching, or file formats.
+
+## 2. Architecture & Design Patterns
+- Component architecture, layering, and service boundaries.
+- Error handling, validation schemas (e.g., Zod), and state management.
+
+## 3. Security, Quality & Coding Standards
+- Security policies, input sanitization, and authentication.
+- Testing expectations: Unit test coverage, integration tests, type safety.
+
+## 4. Non-Negotiable Rules & Constraints
+- Constraints that autonomous agents and human developers must obey.
+`,
+    },
+    {
+      subpath: path.join("steering", "structure.template.md"),
+      content: `---
+status: draft
+updated_at: 2026-01-01T00:00:00.000Z
+approved_by: null
+---
+
+# Project Structure & Conventions: [Project Name]
+
+## 1. Workspace Layout
+- \`packages/\`: Monorepo packages and libraries.
+- \`apps/\`: Application entrypoints.
+- \`.specflow/\`: Spec-Driven Development steering, specs, and cache.
+- \`docs/\`: Long-term human documentation.
+
+## 2. Naming & File Conventions
+- File naming: kebab-case for filenames, PascalCase for classes/types.
+- Exports: explicit index.ts exports and barrel conventions.
+
+## 3. Branching & Worktree Strategy
+- Branch naming: \`feature/<spec-id>/<task-id>\` or \`spec/<spec-id>\`.
+- Git worktree guidelines for isolated agent execution.
+`,
+    },
+    {
+      subpath: path.join("specs", "requirements.template.md"),
+      content: `---
+status: draft
+updated_at: 2026-01-01T00:00:00.000Z
+approved_by: null
+---
+
+# Requirements: [Feature Title]
+
+## 1. User Story & Problem Statement
+As a [user role], I want to [goal] so that [benefit].
+
+## 2. Functional Requirements & Acceptance Criteria
+- **REQ-1**: [Core functional requirement]
+  - Acceptance Criteria: Given X, when Y, then Z.
+- **REQ-2**: [Additional functional capability]
+  - Acceptance Criteria: Validation and expected response.
+
+## 3. Non-Functional Requirements
+- **Performance**: Response times, throughput, and resource limits.
+- **Security**: Access controls, encryption, and auditability.
+- **Reliability & Resilience**: Fallback behavior, retry policies, and error handling.
+`,
+    },
+    {
+      subpath: path.join("specs", "design.template.md"),
+      content: `---
+status: draft
+updated_at: 2026-01-01T00:00:00.000Z
+approved_by: null
+---
+
+# Technical Design: [Feature Title]
+
+## 1. System Architecture
+Overview of components, module interactions, and sequence flow for this feature.
+
+## 2. Data Models & Schemas
+Define TypeScript interfaces, Zod schemas, or database entities.
+
+## 3. Integration Points & API Contracts
+Endpoints, events, or inter-package API contracts.
+
+## 4. Edge Cases & Error Handling
+Specific failure modes, boundary conditions, and mitigation strategies.
+`,
+    },
+    {
+      subpath: path.join("specs", "tasks.template.yaml"),
+      content: `version: "1.0"
+feature: "feature-name"
+status: "in-progress"
+dependency_graph:
+  parallel_tracks:
+    - track: "Track A"
+      sequence: ["1", "2"]
+  cross_dependencies: []
+notes:
+  security:
+    - "Validate all input parameters"
+  testing:
+    - "Achieve 100% test pass rate"
+groups:
+  - id: "foundation"
+    name: "Foundation & Schemas"
+    tasks:
+      - id: "1"
+        parent_id: null
+        title: "Define Schemas and Interfaces"
+        description: "Scaffold core data models and validation schemas."
+        status: "todo"
+        priority: "high"
+        depends_on: []
+        worktree: null
+        branch: null
+        locked_at: null
+        files: []
+        leverage: ""
+        requirements_ref: ["REQ-1"]
+        notes:
+          security: null
+          testing: null
+      - id: "2"
+        parent_id: null
+        title: "Implement Domain Logic"
+        description: "Implement service methods and business rules."
+        status: "todo"
+        priority: "high"
+        depends_on: ["1"]
+        worktree: null
+        branch: null
+        locked_at: null
+        files: []
+        leverage: ""
+        requirements_ref: ["REQ-1"]
+        notes:
+          security: null
+          testing: null
+`,
+    },
+  ];
+
+  for (const tpl of templates) {
+    const tplPath = path.join(sfDir, "templates", tpl.subpath);
+    if (!fs.existsSync(tplPath)) {
+      fs.writeFileSync(tplPath, tpl.content, "utf-8");
+    }
+  }
+
+  // 7. Actionable Prompts in .specflow/prompts/
+  const prompts: { filename: string; content: string }[] = [
+    {
+      filename: "README.md",
+      content: `# Spec-Flow Actionable Agent Prompts
+
+This directory contains standardized, actionable prompt guides for AI agents collaborating on Spec-Flow projects.
+Each prompt guides the agent through an SDD stage using Spec-Flow templates and CLI commands.
+
+## Workflow Prompts Index
+- \`01-create-steering.md\`: Drafting foundational steering docs (product, tech, structure).
+- \`02-create-spec.md\`: Creating feature specifications (requirements, design, auxiliary files).
+- \`03-create-tasks.md\`: Decomposing specifications into DAG-validated tasks.yaml.
+- \`04-execute-task.md\`: Claiming tasks, implementing, testing, and submitting with HITL gating.
+- \`05-address-comments.md\`: Inspecting, addressing, and resolving human review comments.
+
+## Core Rules for Agents
+1. **Steering-First**: Steering documents must be approved by a human before specs execute.
+2. **DAG Integrity**: Every task prerequisite must be declared; circular dependencies are rejected.
+3. **HITL Two-Tier Gate**: Agents submit tasks to \`to-review\`; only human reviewers approve to \`done\`.
+4. **History Preservation**: Resolved comments are automatically archived in \`.specflow/.cache/history/\`.
+`,
+    },
+    {
+      filename: "01-create-steering.md",
+      content: `# Agent Prompt: 01 - Create Steering Documents
+
+You are an expert software architect assisting with project bootstrapping using Spec-Flow.
+
+## Goal
+Draft or update foundational steering documents (\`product.md\`, \`tech.md\`, \`structure.md\`) in \`.specflow/steering/\`.
+
+## Prerequisites
+- Spec-Flow workspace initialized (\`spec-flow init\`).
+- Read-only review of existing repository context.
+
+## Instructions
+1. Inspect current steering status:
+   \`spec-flow status\`
+2. Refer to the turnkey templates in \`.specflow/templates/steering/\`:
+   - \`product.template.md\`: Product vision, target users, features, principles, metrics.
+   - \`tech.template.md\`: Technology stack, patterns, security, and quality constraints.
+   - \`structure.template.md\`: Monorepo structure, naming conventions, branching rules.
+3. Keep YAML frontmatter intact:
+   \`\`\`yaml
+   ---
+   status: draft
+   updated_at: <ISO-DATE>
+   approved_by: null
+   ---
+   \`\`\`
+4. Write documents into:
+   - \`.specflow/steering/product.md\`
+   - \`.specflow/steering/tech.md\`
+   - \`.specflow/steering/structure.md\`
+5. Inform the human architect to review and approve the steering documents:
+   - Autonomous agents cannot mark steering documents as \`approved\`.
+   - The steering gate must be approved by a human before spec execution begins.
+   - Run \`spec-flow status\` to verify approval status.
+`,
+    },
+    {
+      filename: "02-create-spec.md",
+      content: `# Agent Prompt: 02 - Create Feature Specification
+
+You are an expert engineer creating a new feature specification in Spec-Flow.
+
+## Goal
+Scaffold and author \`requirements.md\` and \`design.md\` for a new feature.
+
+## Prerequisites
+- Steering documents approved by a human reviewer (\`spec-flow status\`).
+
+## Instructions
+1. Verify steering approval status:
+   \`spec-flow status\`
+   (If unapproved, request human approval before proceeding or pass \`--force\` if explicitly permitted).
+2. Scaffold the new spec directory:
+   \`spec-flow spec create <spec-id> --title "<Feature Title>"\`
+   This generates:
+   - \`.specflow/specs/<spec-id>/requirements.md\`
+   - \`.specflow/specs/<spec-id>/design.md\`
+   - \`.specflow/specs/<spec-id>/tasks.yaml\`
+   - \`.specflow/specs/<spec-id>/references/\`
+   - \`.specflow/specs/<spec-id>/images/\`
+3. Reference templates in \`.specflow/templates/specs/\`:
+   - \`requirements.template.md\`: User story, functional requirements with acceptance criteria, and non-functional requirements.
+   - \`design.template.md\`: Architecture, components, interfaces, data models, integration contracts, and error handling.
+4. Author \`requirements.md\` and \`design.md\` thoroughly:
+   - Ensure every requirement has a distinct tag (\`REQ-1\`, \`REQ-2\`).
+   - Define exact schemas, boundary conditions, and test assertions.
+5. Place auxiliary artifacts (diagrams, API contracts) into \`references/\` or \`images/\`.
+6. Confirm spec file discovery:
+   Review discovered files with \`listSpecFiles\` or the dashboard file tree.
+`,
+    },
+    {
+      filename: "03-create-tasks.md",
+      content: `# Agent Prompt: 03 - Create Task Decomposition
+
+You are an expert software engineer breaking down a feature specification into executable tasks.
+
+## Goal
+Generate a valid, DAG-enforced \`tasks.yaml\` in \`.specflow/specs/<spec-id>/tasks.yaml\`.
+
+## Prerequisites
+- Completed \`requirements.md\` and \`design.md\` for the target spec.
+
+## Instructions
+1. Analyze \`.specflow/specs/<spec-id>/requirements.md\` and \`design.md\`.
+2. Reference the template in \`.specflow/templates/specs/tasks.template.yaml\`.
+3. Organize tasks into sequential phases (Foundation, Implementation, Integration, Verification).
+4. Each task item must define:
+   - \`id\`: Unique alphanumeric ID (e.g., "1", "2", "3").
+   - \`title\` & \`description\`: Concrete, actionable goals and deliverables.
+   - \`status\`: Always start with \`"todo"\`.
+   - \`priority\`: \`"high"\` | \`"medium"\` | \`"low"\`.
+   - \`depends_on\`: Array of explicit task IDs that must complete first.
+   - \`requirements_ref\`: Array of referenced requirement IDs (e.g., \`["REQ-1"]\`).
+   - \`files\`: Expected target files to create or modify.
+5. Group independent tracks under \`dependency_graph.parallel_tracks\`.
+6. Validate the task graph:
+   \`spec-flow task list <spec-id>\`
+   Verify that no cycles exist and all dependencies resolve cleanly.
+`,
+    },
+    {
+      filename: "04-execute-task.md",
+      content: `# Agent Prompt: 04 - Execute Task
+
+You are an autonomous coding agent executing assigned tasks in Spec-Flow.
+
+## Goal
+Claim an available task, implement code and tests, and submit it for human review.
+
+## Prerequisites
+- Task dependencies are satisfied (\`status: done\`).
+
+## Instructions
+1. Inspect available tasks whose dependencies are resolved:
+   \`spec-flow task list <spec-id> --available\`
+2. Claim the target task:
+   \`spec-flow task start <task-id>\`
+   This sets status to \`in-progress\` and records the agent lease.
+3. Review steering principles and requirements referenced in the task.
+4. Implement the changes in the designated files:
+   - Write clean, modular TypeScript code conforming to tech guidelines.
+   - Preserve comments, existing contracts, and error handling patterns.
+5. Write and execute comprehensive unit and integration tests:
+   \`bun test\`
+   \`bun run typecheck\`
+   Ensure 100% test pass rate before submission.
+6. Submit the task for human verification (HITL Gate):
+   \`spec-flow task complete <task-id> --note "Implemented feature with tests passing."\`
+   Note: Autonomous agents are strictly forbidden from setting status to \`done\`.
+7. Check for human feedback comments:
+   \`spec-flow comment list --pending\`
+`,
+    },
+    {
+      filename: "05-address-comments.md",
+      content: `# Agent Prompt: 05 - Address Review Comments
+
+You are an autonomous coding agent addressing human feedback and comments.
+
+## Goal
+Review pending anchored comments, apply fixes, and resolve comments with history archiving.
+
+## Prerequisites
+- Pending review comments exist in the workspace.
+
+## Instructions
+1. List pending comments across the project:
+   \`spec-flow comment list --pending\`
+   Or output as JSON for parsing:
+   \`spec-flow comment list --pending --json\`
+2. For each comment:
+   - Note \`id\`, \`target_file\`, line anchors, and the \`instruction\`.
+   - Inspect the anchored lines in \`target_file\`.
+   - Make the requested corrections in code or documentation.
+   - Verify changes with test suite:
+     \`bun test\`
+     \`bun run typecheck\`
+3. Resolve the comment:
+   \`spec-flow comment resolve <comment-id> --note "Addressed feedback and updated tests."\`
+   This automatically archives the comment to history and prunes it from pending.
+4. Verify all comments are cleared:
+   \`spec-flow comment list --pending\`
+5. Check resolved history if needed:
+   \`spec-flow comment history --file <target_file>\`
+`,
+    },
+  ];
+
+  for (const pr of prompts) {
+    const prPath = path.join(sfDir, "prompts", pr.filename);
+    if (!fs.existsSync(prPath)) {
+      fs.writeFileSync(prPath, pr.content, "utf-8");
+    }
+  }
+
+  // 8. Steering docs
   const steeringDocs = [
     {
       file: "product.md",

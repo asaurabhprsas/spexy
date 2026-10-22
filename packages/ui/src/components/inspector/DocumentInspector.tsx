@@ -22,16 +22,24 @@ import {
   Check,
   X,
   Sparkles,
-  ChevronRight,
   Loader2,
   Clock,
   ShieldCheck,
+  Maximize2,
+  Minimize2,
+  Code2,
+  Eye,
+  Columns2,
+  Pencil,
+  Trash2,
+  History,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Textarea } from '@/components/ui/textarea';
 import { Input } from '@/components/ui/input';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { MarkdownRenderer } from './MarkdownRenderer';
 
 interface DocumentInspectorProps {
   documentId: string;
@@ -61,6 +69,16 @@ export function DocumentInspector({ documentId, onClose }: DocumentInspectorProp
   const [isAddingComment, setIsAddingComment] = useState(false);
   const [activeHighlightLine, setActiveHighlightLine] = useState<number | null>(null);
 
+  // New UI controls state
+  const [viewMode, setViewMode] = useState<'source' | 'preview' | 'split'>('source');
+  const [isExpanded, setIsExpanded] = useState(false);
+  const [commentDrawerTab, setCommentDrawerTab] = useState<'active' | 'history'>('active');
+  const [editingCommentId, setEditingCommentId] = useState<string | null>(null);
+  const [editInstruction, setEditInstruction] = useState('');
+  const [isUpdatingComment, setIsUpdatingComment] = useState(false);
+  const [historyComments, setHistoryComments] = useState<Comment[]>([]);
+  const [isLoadingHistory, setIsLoadingHistory] = useState(false);
+
   // Floating button state for text selection
   const [floatingButtonPos, setFloatingButtonPos] = useState<{ top: number; left: number } | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -74,6 +92,17 @@ export function DocumentInspector({ documentId, onClose }: DocumentInspectorProp
     }
   }, [doc?.id, doc?.revision, doc?.content]);
 
+  // Handle Escape key to exit expand mode
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && isExpanded) {
+        setIsExpanded(false);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isExpanded]);
+
   // Comments for this document
   const docComments = useMemo(() => {
     return (commentsQuery.data ?? []).filter((c: Comment) => c.documentId === documentId);
@@ -83,9 +112,41 @@ export function DocumentInspector({ documentId, onClose }: DocumentInspectorProp
     return docComments.filter((c: Comment) => c.status !== 'resolved');
   }, [docComments]);
 
+  // Load history comments when tab is 'history'
+  useEffect(() => {
+    if (commentDrawerTab !== 'history') return;
+    let cancelled = false;
+    setIsLoadingHistory(true);
+    fetch(`/api/comments/history?target_file=${encodeURIComponent(documentId)}`)
+      .then((res) => (res.ok ? res.json() : []))
+      .then((data: any) => {
+        if (!cancelled) {
+          const list: Comment[] = Array.isArray(data) ? data : [];
+          const localResolved = docComments.filter((c: Comment) => c.status === 'resolved');
+          const merged = [...list];
+          for (const lr of localResolved) {
+            if (!merged.some((m) => m.id === lr.id)) {
+              merged.push(lr);
+            }
+          }
+          setHistoryComments(merged);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setHistoryComments(docComments.filter((c: Comment) => c.status === 'resolved'));
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setIsLoadingHistory(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [commentDrawerTab, documentId, docComments]);
+
   const canApprove = useMemo(() => {
     if (!doc) return false;
-    // Enabled when unresolved comments === 0 and document is not already approved
     return doc.status !== 'approved' && unresolvedComments.length === 0;
   }, [doc, unresolvedComments]);
 
@@ -122,12 +183,10 @@ export function DocumentInspector({ documentId, onClose }: DocumentInspectorProp
     setStartLine(calculatedStartLine);
     setEndLine(calculatedEndLine);
 
-    // Approximate positioning inside textarea container
     const textareaRect = textarea.getBoundingClientRect();
     const containerRect = containerRef.current?.getBoundingClientRect();
 
     if (containerRect) {
-      // Position floating button above selection or near top-right of textarea
       setFloatingButtonPos({
         top: Math.max(10, textareaRect.top - containerRect.top + 20),
         left: Math.min(containerRect.width - 220, textareaRect.width / 2),
@@ -138,6 +197,7 @@ export function DocumentInspector({ documentId, onClose }: DocumentInspectorProp
   const handleOpenCommentForm = () => {
     setIsAddingComment(true);
     setIsCommentDrawerOpen(true);
+    setCommentDrawerTab('active');
     setFloatingButtonPos(null);
   };
 
@@ -208,6 +268,41 @@ export function DocumentInspector({ documentId, onClose }: DocumentInspectorProp
     );
   };
 
+  const handleUpdateComment = async (commentId: string) => {
+    if (!editInstruction.trim()) return;
+    setIsUpdatingComment(true);
+    try {
+      const res = await fetch(`/api/comments/${commentId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ instruction: editInstruction }),
+      });
+      if (res.ok) {
+        setEditingCommentId(null);
+        invalidateAll();
+      }
+    } finally {
+      setIsUpdatingComment(false);
+    }
+  };
+
+  const handleDeleteComment = async (commentId: string) => {
+    if (!window.confirm('Delete this review comment?')) return;
+    try {
+      const res = await fetch(`/api/comments/${commentId}`, {
+        method: 'DELETE',
+      });
+      if (res.ok) {
+        invalidateAll();
+        if (commentDrawerTab === 'history') {
+          setHistoryComments((prev) => prev.filter((c) => c.id !== commentId));
+        }
+      }
+    } catch {
+      // Ignore
+    }
+  };
+
   const getStatusBadgeVariant = (status: string) => {
     switch (status) {
       case 'approved':
@@ -243,10 +338,14 @@ export function DocumentInspector({ documentId, onClose }: DocumentInspectorProp
     );
   }
 
+  const containerClasses = isExpanded
+    ? 'fixed inset-0 z-50 bg-background/95 backdrop-blur-md flex flex-col p-4 sm:p-6 transition-all duration-200 shadow-2xl'
+    : 'relative flex flex-col h-[calc(100vh-140px)] rounded-xl border border-border/80 bg-card overflow-hidden shadow-sm';
+
   return (
-    <div ref={containerRef} className="relative flex flex-col h-[calc(100vh-140px)] rounded-xl border border-border/80 bg-card overflow-hidden shadow-sm">
+    <div ref={containerRef} className={containerClasses}>
       {/* Top Header Bar */}
-      <header className="flex flex-wrap items-center justify-between gap-3 border-b border-border/70 px-5 py-3.5 bg-background/50 backdrop-blur-sm">
+      <header className="flex flex-wrap items-center justify-between gap-3 border-b border-border/70 px-5 py-3.5 bg-background/50 backdrop-blur-sm shrink-0">
         <div className="flex items-center gap-3 min-w-0">
           <span className="grid size-9 place-items-center rounded-lg bg-primary/10 text-primary">
             <FileText size={18} />
@@ -266,7 +365,47 @@ export function DocumentInspector({ documentId, onClose }: DocumentInspectorProp
         </div>
 
         {/* Action Controls */}
-        <div className="flex items-center gap-2.5">
+        <div className="flex items-center gap-2">
+          {/* Segmented Mode Control: Source | Preview | Split */}
+          <div className="flex items-center gap-1 bg-muted/60 p-0.5 rounded-lg border border-border/60">
+            <button
+              type="button"
+              onClick={() => setViewMode('source')}
+              className={`px-2 py-1 rounded text-xs font-medium flex items-center gap-1.5 transition-colors ${
+                viewMode === 'source'
+                  ? 'bg-background text-foreground shadow-xs font-semibold'
+                  : 'text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              <Code2 size={13} />
+              <span className="hidden sm:inline">Source</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setViewMode('preview')}
+              className={`px-2 py-1 rounded text-xs font-medium flex items-center gap-1.5 transition-colors ${
+                viewMode === 'preview'
+                  ? 'bg-background text-foreground shadow-xs font-semibold'
+                  : 'text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              <Eye size={13} />
+              <span className="hidden sm:inline">Preview</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setViewMode('split')}
+              className={`px-2 py-1 rounded text-xs font-medium flex items-center gap-1.5 transition-colors ${
+                viewMode === 'split'
+                  ? 'bg-background text-foreground shadow-xs font-semibold'
+                  : 'text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              <Columns2 size={13} />
+              <span className="hidden sm:inline">Split</span>
+            </button>
+          </div>
+
           <Tooltip>
             <TooltipTrigger asChild>
               <span>
@@ -282,7 +421,7 @@ export function DocumentInspector({ documentId, onClose }: DocumentInspectorProp
                   ) : (
                     <ShieldCheck size={14} />
                   )}
-                  Approve Document
+                  <span className="hidden sm:inline">Approve Document</span>
                 </Button>
               </span>
             </TooltipTrigger>
@@ -304,27 +443,39 @@ export function DocumentInspector({ documentId, onClose }: DocumentInspectorProp
             className="gap-1.5"
           >
             <MessageSquarePlus size={14} />
-            Comments
-            <Badge variant="secondary" className="ml-1 h-5 px-1.5 text-[10px]">
-              {docComments.length}
+            <span className="hidden sm:inline">Comments</span>
+            <Badge variant="secondary" className="ml-0.5 h-5 px-1.5 text-[10px]">
+              {unresolvedComments.length}
             </Badge>
           </Button>
 
+          {/* Expand / Maximize Toggle */}
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={() => setIsExpanded(!isExpanded)}
+            className="h-8 w-8 p-0 text-muted-foreground hover:text-foreground"
+            title={isExpanded ? 'Collapse to standard view (Esc)' : 'Maximize to full width overlay'}
+          >
+            {isExpanded ? <Minimize2 size={15} /> : <Maximize2 size={15} />}
+          </Button>
+
           {onClose && (
-            <Button size="sm" variant="ghost" onClick={onClose} aria-label="Close Inspector">
+            <Button size="sm" variant="ghost" onClick={onClose} aria-label="Close Inspector" className="h-8 w-8 p-0">
               <X size={16} />
             </Button>
           )}
         </div>
       </header>
 
-      {/* Split-pane Body */}
-      <div className="relative flex-1 flex overflow-hidden">
-        {/* Left Pane: Document View & Editor */}
-        <div className="flex-1 flex flex-col min-w-0 h-full border-r border-border/70">
+      {/* Main Body */}
+      <div className="relative flex-1 flex overflow-hidden min-h-0">
+        {/* Document Pane */}
+        <div className="flex-1 flex flex-col min-w-0 h-full border-r border-border/70 overflow-hidden">
           <form onSubmit={handleSaveDocument} className="flex-1 flex flex-col min-h-0">
-            <div className="flex items-center justify-between px-4 py-2 bg-muted/30 border-b border-border/60 text-[11px] text-muted-foreground font-mono">
-              <div className="flex items-center gap-2">
+            {/* Toolbar status */}
+            <div className="flex items-center justify-between px-4 py-2 bg-muted/30 border-b border-border/60 text-[11px] text-muted-foreground font-mono shrink-0">
+              <div className="flex items-center gap-2 truncate">
                 <span>Select text anywhere to anchor AI review</span>
                 {doc.approvedBy && (
                   <span className="text-emerald-600 dark:text-emerald-400 font-sans">
@@ -332,16 +483,17 @@ export function DocumentInspector({ documentId, onClose }: DocumentInspectorProp
                   </span>
                 )}
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 shrink-0">
                 <span>Lines: {content.split('\n').length}</span>
                 <span>•</span>
                 <span>{content.length} chars</span>
               </div>
             </div>
 
-            <div className="relative flex-1 min-h-0 overflow-auto p-4 bg-background/50">
+            {/* Document Content View Modes */}
+            <div className="relative flex-1 min-h-0 overflow-hidden bg-background/50 flex">
               {/* Floating "Add Comment for AI" button on text selection */}
-              {floatingButtonPos && (
+              {floatingButtonPos && (viewMode === 'source' || viewMode === 'split') && (
                 <div
                   style={{
                     position: 'absolute',
@@ -363,20 +515,32 @@ export function DocumentInspector({ documentId, onClose }: DocumentInspectorProp
                 </div>
               )}
 
-              <Textarea
-                ref={textareaRef}
-                value={content}
-                onChange={(e) => setContent(e.target.value)}
-                onSelect={handleTextSelect}
-                onKeyUp={handleTextSelect}
-                onMouseUp={handleTextSelect}
-                placeholder="Document content..."
-                className="w-full h-full min-h-[450px] font-mono text-xs leading-relaxed resize-none border-0 bg-transparent p-0 focus-visible:ring-0 focus-visible:outline-none"
-              />
+              {/* Source View */}
+              {(viewMode === 'source' || viewMode === 'split') && (
+                <div className={`${viewMode === 'split' ? 'w-1/2 border-r border-border/70' : 'w-full'} h-full overflow-auto p-4`}>
+                  <Textarea
+                    ref={textareaRef}
+                    value={content}
+                    onChange={(e) => setContent(e.target.value)}
+                    onSelect={handleTextSelect}
+                    onKeyUp={handleTextSelect}
+                    onMouseUp={handleTextSelect}
+                    placeholder="Document content..."
+                    className="w-full h-full min-h-[450px] font-mono text-xs leading-relaxed resize-none border-0 bg-transparent p-0 focus-visible:ring-0 focus-visible:outline-none"
+                  />
+                </div>
+              )}
+
+              {/* Preview View */}
+              {(viewMode === 'preview' || viewMode === 'split') && (
+                <div className={`${viewMode === 'split' ? 'w-1/2' : 'w-full'} h-full overflow-y-auto p-6 bg-card/40`}>
+                  <MarkdownRenderer content={content} />
+                </div>
+              )}
             </div>
 
             {/* Bottom Editor Bar */}
-            <div className="flex items-center justify-between border-t border-border/70 px-4 py-2.5 bg-muted/20">
+            <div className="flex items-center justify-between border-t border-border/70 px-4 py-2.5 bg-muted/20 shrink-0">
               <div className="text-xs text-muted-foreground">
                 {content !== doc.content ? (
                   <span className="text-amber-600 dark:text-amber-400 font-medium">Unsaved changes</span>
@@ -399,43 +563,64 @@ export function DocumentInspector({ documentId, onClose }: DocumentInspectorProp
 
         {/* Right Pane: Anchored Comments Drawer */}
         {isCommentDrawerOpen && (
-          <aside className="w-80 sm:w-96 flex flex-col h-full bg-card/60 backdrop-blur-md overflow-hidden animate-in slide-in-from-right duration-200">
-            {/* Drawer Header */}
-            <div className="flex items-center justify-between border-b border-border/70 px-4 py-3 bg-muted/30">
-              <div className="flex items-center gap-2">
-                <span className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
-                  Anchored Review ({docComments.length})
-                </span>
-                {unresolvedComments.length > 0 && (
-                  <Badge variant="destructive" className="h-4 px-1.5 text-[9px]">
-                    {unresolvedComments.length} open
-                  </Badge>
-                )}
-              </div>
-              <div className="flex items-center gap-1">
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  className="h-7 text-xs gap-1"
-                  onClick={() => setIsAddingComment(!isAddingComment)}
-                >
-                  <MessageSquarePlus size={13} />
-                  New
-                </Button>
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  className="h-7 w-7 p-0"
-                  onClick={() => setIsCommentDrawerOpen(false)}
-                >
-                  <X size={14} />
-                </Button>
+          <aside className="w-80 sm:w-96 flex flex-col h-full bg-card/60 backdrop-blur-md overflow-hidden animate-in slide-in-from-right duration-200 border-l border-border/60">
+            {/* Drawer Header with Active vs Resolved History Tabs */}
+            <div className="border-b border-border/70 px-4 py-3 bg-muted/30 shrink-0 space-y-2">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-1.5 bg-muted/80 p-0.5 rounded-lg border border-border/60">
+                  <button
+                    type="button"
+                    onClick={() => setCommentDrawerTab('active')}
+                    className={`px-2.5 py-1 rounded text-[11px] font-mono transition-colors ${
+                      commentDrawerTab === 'active'
+                        ? 'bg-background text-foreground font-semibold shadow-xs'
+                        : 'text-muted-foreground hover:text-foreground'
+                    }`}
+                  >
+                    Active ({unresolvedComments.length})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setCommentDrawerTab('history')}
+                    className={`px-2.5 py-1 rounded text-[11px] font-mono transition-colors flex items-center gap-1 ${
+                      commentDrawerTab === 'history'
+                        ? 'bg-background text-foreground font-semibold shadow-xs'
+                        : 'text-muted-foreground hover:text-foreground'
+                    }`}
+                  >
+                    <History size={11} />
+                    Resolved History
+                  </button>
+                </div>
+
+                <div className="flex items-center gap-1">
+                  {commentDrawerTab === 'active' && (
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-7 text-xs gap-1"
+                      onClick={() => setIsAddingComment(!isAddingComment)}
+                    >
+                      <MessageSquarePlus size={13} />
+                      New
+                    </Button>
+                  )}
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="h-7 w-7 p-0"
+                    onClick={() => setIsCommentDrawerOpen(false)}
+                    title="Close Comments Drawer"
+                  >
+                    <X size={14} />
+                  </Button>
+                </div>
               </div>
             </div>
 
-            {/* New Comment Composer Form */}
-            {isAddingComment && (
-              <div className="p-4 border-b border-border/70 bg-accent/20 animate-in fade-in duration-150">
+            {/* New Comment Composer Form (Active Tab Only) */}
+            {commentDrawerTab === 'active' && isAddingComment && (
+              <div className="p-4 border-b border-border/70 bg-accent/20 animate-in fade-in duration-150 shrink-0">
                 <div className="flex items-center justify-between mb-2">
                   <span className="text-xs font-semibold flex items-center gap-1.5">
                     <Sparkles size={13} className="text-primary" />
@@ -520,83 +705,220 @@ export function DocumentInspector({ documentId, onClose }: DocumentInspectorProp
               </div>
             )}
 
-            {/* Comment List */}
-            <div className="flex-1 overflow-y-auto divide-y divide-border/60">
-              {docComments.length === 0 ? (
-                <div className="flex flex-col items-center justify-center p-8 text-center text-muted-foreground">
-                  <MessageSquarePlus className="h-8 w-8 mb-2 opacity-40" />
-                  <p className="text-xs font-medium">No anchored comments</p>
-                  <p className="text-[11px] mt-1 text-muted-foreground/80">
-                    Select text in the editor to leave contextual instructions for agents.
-                  </p>
-                </div>
-              ) : (
-                docComments.map((comment: Comment) => (
-                  <article
-                    key={comment.id}
-                    onClick={() => setActiveHighlightLine(comment.startLine)}
-                    className={`p-4 transition-colors hover:bg-muted/40 cursor-pointer ${
-                      activeHighlightLine === comment.startLine ? 'bg-primary/5 border-l-2 border-primary' : ''
-                    }`}
-                  >
-                    <div className="flex items-center justify-between gap-2 mb-2">
-                      <Badge variant="outline" className="font-mono text-[10px] bg-background">
-                        L{comment.startLine}
-                        {comment.endLine !== comment.startLine && `–${comment.endLine}`}
-                      </Badge>
-                      <Badge
-                        variant="secondary"
-                        className={`text-[9px] uppercase font-mono ${
-                          comment.status === 'resolved'
-                            ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-400'
-                            : 'bg-amber-500/15 text-amber-700 dark:text-amber-400'
-                        }`}
-                      >
-                        {comment.status}
-                      </Badge>
-                    </div>
-
-                    {/* Quoted Excerpt */}
-                    <blockquote className="mb-2 border-l-2 border-primary/40 pl-2.5 font-mono text-[11px] text-muted-foreground line-clamp-2 bg-muted/20 py-1 rounded-r">
-                      "{comment.selectedText}"
-                    </blockquote>
-
-                    {/* Instruction */}
-                    <p className="text-xs leading-relaxed text-foreground font-medium mb-2.5">
-                      {comment.instruction}
+            {/* Comment List: Active Tab */}
+            {commentDrawerTab === 'active' && (
+              <div className="flex-1 overflow-y-auto divide-y divide-border/60">
+                {docComments.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center p-8 text-center text-muted-foreground">
+                    <MessageSquarePlus className="h-8 w-8 mb-2 opacity-40" />
+                    <p className="text-xs font-medium">No anchored comments</p>
+                    <p className="text-[11px] mt-1 text-muted-foreground/80">
+                      Select text in the editor to leave contextual instructions for agents.
                     </p>
+                  </div>
+                ) : (
+                  docComments.map((comment: Comment) => (
+                    <article
+                      key={comment.id}
+                      onClick={() => setActiveHighlightLine(comment.startLine)}
+                      className={`p-4 transition-colors hover:bg-muted/40 cursor-pointer ${
+                        activeHighlightLine === comment.startLine ? 'bg-primary/5 border-l-2 border-primary' : ''
+                      }`}
+                    >
+                      <div className="flex items-center justify-between gap-2 mb-2">
+                        <Badge variant="outline" className="font-mono text-[10px] bg-background">
+                          L{comment.startLine}
+                          {comment.endLine !== comment.startLine && `–${comment.endLine}`}
+                        </Badge>
+                        <Badge
+                          variant="secondary"
+                          className={`text-[9px] uppercase font-mono ${
+                            comment.status === 'resolved'
+                              ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-400'
+                              : 'bg-amber-500/15 text-amber-700 dark:text-amber-400'
+                          }`}
+                        >
+                          {comment.status}
+                        </Badge>
+                      </div>
 
-                    {comment.resolutionNote && (
-                      <p className="text-[11px] text-muted-foreground bg-muted/40 p-2 rounded mb-2 font-mono">
-                        Resolution: {comment.resolutionNote}
+                      {/* Quoted Excerpt */}
+                      <blockquote className="mb-2 border-l-2 border-primary/40 pl-2.5 font-mono text-[11px] text-muted-foreground line-clamp-2 bg-muted/20 py-1 rounded-r">
+                        "{comment.selectedText}"
+                      </blockquote>
+
+                      {/* Instruction or Inline Edit Mode */}
+                      {editingCommentId === comment.id ? (
+                        <form
+                          onSubmit={(e) => {
+                            e.preventDefault();
+                            void handleUpdateComment(comment.id);
+                          }}
+                          onClick={(e) => e.stopPropagation()}
+                          className="space-y-2 mb-2.5"
+                        >
+                          <Textarea
+                            value={editInstruction}
+                            onChange={(e) => setEditInstruction(e.target.value)}
+                            className="text-xs font-sans min-h-[64px]"
+                            placeholder="Modify instruction..."
+                            autoFocus
+                          />
+                          <div className="flex items-center justify-end gap-1.5">
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="ghost"
+                              className="h-6 px-2 text-xs"
+                              onClick={() => setEditingCommentId(null)}
+                            >
+                              Cancel
+                            </Button>
+                            <Button
+                              type="submit"
+                              size="sm"
+                              className="h-6 px-2 text-xs gap-1"
+                              disabled={!editInstruction.trim() || isUpdatingComment}
+                            >
+                              {isUpdatingComment ? <Loader2 size={11} className="animate-spin" /> : <Save size={11} />}
+                              Save
+                            </Button>
+                          </div>
+                        </form>
+                      ) : (
+                        <p className="text-xs leading-relaxed text-foreground font-medium mb-2.5">
+                          {comment.instruction}
+                        </p>
+                      )}
+
+                      {comment.resolutionNote && (
+                        <p className="text-[11px] text-muted-foreground bg-muted/40 p-2 rounded mb-2 font-mono">
+                          Resolution: {comment.resolutionNote}
+                        </p>
+                      )}
+
+                      <div className="flex items-center justify-between pt-1 text-[10px] text-muted-foreground">
+                        <span className="flex items-center gap-1">
+                          <Clock size={11} />
+                          {new Date(comment.createdAt).toLocaleDateString()}
+                        </span>
+
+                        <div className="flex items-center gap-1">
+                          {comment.status !== 'resolved' && (
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="h-6 w-6 p-0 text-muted-foreground hover:text-foreground"
+                              title="Edit instruction"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setEditingCommentId(comment.id);
+                                setEditInstruction(comment.instruction);
+                              }}
+                            >
+                              <Pencil size={11} />
+                            </Button>
+                          )}
+
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="h-6 w-6 p-0 text-muted-foreground hover:text-destructive"
+                            title="Delete comment"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              void handleDeleteComment(comment.id);
+                            }}
+                          >
+                            <Trash2 size={11} />
+                          </Button>
+
+                          {comment.status !== 'resolved' && (
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="h-6 px-2 text-[11px] text-emerald-600 hover:text-emerald-700 hover:bg-emerald-500/10 gap-1"
+                              disabled={resolveCommentMutation.isPending}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleResolveComment(comment.id);
+                              }}
+                            >
+                              <CheckCircle2 size={12} />
+                              Resolve
+                            </Button>
+                          )}
+                        </div>
+                      </div>
+                    </article>
+                  ))
+                )}
+              </div>
+            )}
+
+            {/* Comment List: Resolved History Tab */}
+            {commentDrawerTab === 'history' && (
+              <div className="flex-1 overflow-y-auto divide-y divide-border/60">
+                {isLoadingHistory ? (
+                  <div className="flex h-36 items-center justify-center space-x-2 text-muted-foreground text-xs">
+                    <Loader2 className="h-4 w-4 animate-spin text-primary" />
+                    <span>Loading resolved history...</span>
+                  </div>
+                ) : historyComments.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center p-8 text-center text-muted-foreground">
+                    <CheckCircle2 className="h-8 w-8 mb-2 opacity-40 text-emerald-500" />
+                    <p className="text-xs font-medium">No resolved comments</p>
+                    <p className="text-[11px] mt-1 text-muted-foreground/80">
+                      Comments that have been resolved and purged from active review appear here.
+                    </p>
+                  </div>
+                ) : (
+                  historyComments.map((comment: Comment) => (
+                    <article key={comment.id} className="p-4 transition-colors hover:bg-muted/40">
+                      <div className="flex items-center justify-between gap-2 mb-2">
+                        <Badge variant="outline" className="font-mono text-[10px] bg-background">
+                          L{comment.startLine}
+                          {comment.endLine !== comment.startLine && `–${comment.endLine}`}
+                        </Badge>
+                        <Badge variant="secondary" className="text-[9px] uppercase font-mono bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 gap-1">
+                          <CheckCircle2 size={10} />
+                          RESOLVED
+                        </Badge>
+                      </div>
+
+                      <blockquote className="mb-2 border-l-2 border-emerald-500/40 pl-2.5 font-mono text-[11px] text-muted-foreground line-clamp-2 bg-muted/20 py-1 rounded-r">
+                        "{comment.selectedText}"
+                      </blockquote>
+
+                      <p className="text-xs leading-relaxed text-foreground/90 font-medium mb-2">
+                        {comment.instruction}
                       </p>
-                    )}
 
-                    <div className="flex items-center justify-between pt-1 text-[10px] text-muted-foreground">
-                      <span className="flex items-center gap-1">
-                        <Clock size={11} />
-                        {new Date(comment.createdAt).toLocaleDateString()}
-                      </span>
-                      {comment.status !== 'resolved' && (
+                      <div className="text-[11px] text-emerald-700 dark:text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 p-2 rounded mb-2 font-mono">
+                        <span className="font-semibold block mb-0.5">Resolution Note:</span>
+                        {comment.resolutionNote || 'Verified and addressed'}
+                      </div>
+
+                      <div className="flex items-center justify-between pt-1 text-[10px] text-muted-foreground">
+                        <span className="flex items-center gap-1 font-mono">
+                          <Clock size={11} />
+                          {new Date(comment.createdAt).toLocaleDateString()}
+                        </span>
                         <Button
                           size="sm"
                           variant="ghost"
-                          className="h-6 px-2 text-[11px] text-emerald-600 hover:text-emerald-700 hover:bg-emerald-500/10 gap-1"
-                          disabled={resolveCommentMutation.isPending}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleResolveComment(comment.id);
-                          }}
+                          className="h-6 w-6 p-0 text-muted-foreground hover:text-destructive"
+                          title="Delete history record"
+                          onClick={() => void handleDeleteComment(comment.id)}
                         >
-                          <CheckCircle2 size={12} />
-                          Resolve
+                          <Trash2 size={11} />
                         </Button>
-                      )}
-                    </div>
-                  </article>
-                ))
-              )}
-            </div>
+                      </div>
+                    </article>
+                  ))
+                )}
+              </div>
+            )}
           </aside>
         )}
       </div>
