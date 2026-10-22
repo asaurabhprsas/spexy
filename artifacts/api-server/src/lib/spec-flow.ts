@@ -27,9 +27,9 @@ import {
   transitionTask,
   validateTaskGraph,
   WorkflowRuleError,
-} from "@workspace/spec-flow-core";
+} from "@workspace/spexy-core";
 import { logger } from "./logger";
-import { SpecFlowError } from "./spec-flow-errors";
+import { SpexyError } from "./spexy-errors";
 
 const REQUIRED_STEERING_IDS = [
   "steering-product",
@@ -86,7 +86,7 @@ function translateWorkflowError(error: unknown): never {
       error.code === "AGENT_ACTION_REQUIRED"
         ? 403
         : 409;
-    throw new SpecFlowError(statusCode, error.code, error.message);
+    throw new SpexyError(statusCode, error.code, error.message);
   }
   throw error;
 }
@@ -109,7 +109,7 @@ async function requireSteeringApproved(): Promise<void> {
     (id) => statusById.get(id) !== "approved",
   );
   if (missing.length > 0) {
-    throw new SpecFlowError(
+    throw new SpexyError(
       409,
       "STEERING_GATE_BLOCKED",
       `Approve all required steering documents before creating feature work: ${missing.join(", ")}.`,
@@ -129,7 +129,7 @@ async function requireFeatureDocsApproved(featureId: string): Promise<void> {
     (doc) => doc.kind === "design" && doc.status === "approved",
   );
   if (!approvedRequirements || !approvedDesign) {
-    throw new SpecFlowError(
+    throw new SpexyError(
       409,
       "FEATURE_DOCUMENTS_NOT_APPROVED",
       "Approve the requirements and design documents before starting or creating feature tasks.",
@@ -151,7 +151,7 @@ function mapTasks(tasks: Task[]) {
     definitions = validateTaskGraph(tasks.map(asTaskDefinition));
   } catch (error) {
     if (error instanceof WorkflowRuleError) {
-      throw new SpecFlowError(409, error.code, error.message);
+      throw new SpexyError(409, error.code, error.message);
     }
     throw error;
   }
@@ -257,7 +257,7 @@ function mapActivity(activity: Activity) {
 export async function ensureWorkspaceSeeded(): Promise<void> {
   await db
     .insert(projectsTable)
-    .values({ id: "default", name: "Spec-Flow Workspace" })
+    .values({ id: "default", name: "Spexy Workspace" })
     .onConflictDoNothing();
 
   for (const document of STARTER_DOCUMENTS) {
@@ -272,7 +272,7 @@ export async function ensureWorkspaceSeeded(): Promise<void> {
     .from(activityTable)
     .limit(1);
   if (!existingActivity) {
-    await recordActivity("Spec-Flow workspace initialized");
+    await recordActivity("Spexy workspace initialized");
   }
 }
 
@@ -326,7 +326,7 @@ export async function getDashboardData() {
   }
 
   return {
-    projectName: project?.name ?? "Spec-Flow Workspace",
+    projectName: project?.name ?? "Spexy Workspace",
     steeringApproved,
     steeringApprovedCount,
     steeringTotal: REQUIRED_STEERING_IDS.length,
@@ -367,7 +367,7 @@ export async function updateWorkspaceDocument(
     .limit(1);
   if (!existing) return null;
   if (existing.revision !== expectedRevision) {
-    throw new SpecFlowError(
+    throw new SpexyError(
       409,
       "STALE_REVISION",
       "This document changed since it was opened. Refresh it before saving.",
@@ -391,7 +391,7 @@ export async function updateWorkspaceDocument(
     )
     .returning();
   if (!updated) {
-    throw new SpecFlowError(
+    throw new SpexyError(
       409,
       "STALE_REVISION",
       "This document changed while saving. Refresh it before retrying.",
@@ -409,7 +409,7 @@ export async function approveWorkspaceDocument(documentId: string) {
     .limit(1);
   if (!existing) return null;
   if (existing.status !== "in-review") {
-    throw new SpecFlowError(
+    throw new SpexyError(
       409,
       "DOCUMENT_NOT_IN_REVIEW",
       "Save the document to submit it for review before approving it.",
@@ -427,7 +427,7 @@ export async function approveWorkspaceDocument(documentId: string) {
     )
     .limit(1);
   if (openComment) {
-    throw new SpecFlowError(
+    throw new SpexyError(
       409,
       "OPEN_COMMENTS",
       "Resolve or re-anchor all open comments before approving this document.",
@@ -450,7 +450,7 @@ export async function approveWorkspaceDocument(documentId: string) {
     )
     .returning();
   if (!approved) {
-    throw new SpecFlowError(
+    throw new SpexyError(
       409,
       "STALE_REVISION",
       "This document changed before approval. Refresh and review it again.",
@@ -489,7 +489,7 @@ export async function createFeature(input: {
       .onConflictDoNothing()
       .returning();
     if (!created) {
-      throw new SpecFlowError(
+      throw new SpexyError(
         409,
         "FEATURE_ID_EXISTS",
         `Feature "${input.id}" already exists.`,
@@ -573,7 +573,7 @@ export async function createFeatureTask(
       .onConflictDoNothing()
       .returning();
     if (!task) {
-      throw new SpecFlowError(
+      throw new SpexyError(
         409,
         "TASK_ID_EXISTS",
         `Task ID "${input.id}" already exists in this feature.`,
@@ -628,7 +628,7 @@ export async function claimFeatureTask(
       )
       .returning();
     if (!renewed) {
-      throw new SpecFlowError(
+      throw new SpexyError(
         409,
         "LEASE_CONFLICT",
         "This task changed while its lease was being renewed. Refresh the task list.",
@@ -681,7 +681,7 @@ export async function claimFeatureTask(
       target.claimedBy === input.actor &&
       target.worktree === input.worktree)
   ) {
-    throw new SpecFlowError(
+    throw new SpexyError(
       409,
       "TASK_BLOCKED_OR_CLAIMED",
       targetView?.availability === "blocked"
@@ -716,7 +716,7 @@ export async function claimFeatureTask(
     )
     .returning();
   if (!claimed) {
-    throw new SpecFlowError(
+    throw new SpexyError(
       409,
       "LEASE_CONFLICT",
       "Another agent claimed this task first. Refresh the task list.",
@@ -745,7 +745,7 @@ export async function submitFeatureTask(
     .limit(1);
   if (!task) return null;
   if (task.leaseExpiresAt && task.leaseExpiresAt < new Date()) {
-    throw new SpecFlowError(
+    throw new SpexyError(
       409,
       "LEASE_EXPIRED",
       "The task lease expired. Claim it again before submitting.",
@@ -775,7 +775,7 @@ export async function submitFeatureTask(
     )
     .returning();
   if (!updated) {
-    throw new SpecFlowError(
+    throw new SpexyError(
       409,
       "STALE_TASK",
       "This task changed while it was being submitted. Refresh before retrying.",
@@ -793,7 +793,7 @@ export async function reviewFeatureTask(
   input: { decision: "approve" | "reject"; note?: string },
 ) {
   if (input.decision === "reject" && !input.note?.trim()) {
-    throw new SpecFlowError(
+    throw new SpexyError(
       400,
       "REJECTION_NOTE_REQUIRED",
       "Add a short reason when rejecting a task.",
@@ -844,7 +844,7 @@ export async function reviewFeatureTask(
     )
     .returning();
   if (!updated) {
-    throw new SpecFlowError(
+    throw new SpexyError(
       409,
       "STALE_TASK",
       "This task changed during review. Refresh and review it again.",
@@ -902,14 +902,14 @@ export async function createReviewComment(input: {
     .limit(1);
   if (!document) return null;
   if (input.endLine < input.startLine) {
-    throw new SpecFlowError(
+    throw new SpexyError(
       400,
       "INVALID_COMMENT_RANGE",
       "The selected line range is invalid.",
     );
   }
   if (!document.content.includes(input.selectedText)) {
-    throw new SpecFlowError(
+    throw new SpexyError(
       400,
       "COMMENT_ANCHOR_NOT_FOUND",
       "The selected text is no longer present in the document.",
@@ -931,7 +931,7 @@ export async function resolveReviewComment(commentId: string) {
     .limit(1);
   if (!existing) return null;
   if (existing.status === "resolved") {
-    throw new SpecFlowError(
+    throw new SpexyError(
       409,
       "COMMENT_ALREADY_RESOLVED",
       "This comment has already been resolved.",

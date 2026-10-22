@@ -7,6 +7,7 @@ out-tsc
 *.tsbuildinfo
 .expo
 .expo-shared
+__TEMP__
 
 # dependencies
 node_modules
@@ -47,3 +48,7 @@ Thumbs.db
 # Replit
 .cache/
 .local/
+
+# Build artifacts
+packages/cli/static/
+

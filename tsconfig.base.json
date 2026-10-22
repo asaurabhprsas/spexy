@@ -1,6 +1,6 @@
 {
   "compilerOptions": {
-    "incremental": true,
+    "incremental": false,
     "isolatedModules": true,
     "lib": ["es2022"],
     "module": "esnext",
@@ -20,7 +20,7 @@
     "alwaysStrict": true,
     "skipLibCheck": true,
     "target": "es2022",
-    "types": [],
+    "types": ["node", "bun-types"],
     "customConditions": ["workspace"]
   }
 }

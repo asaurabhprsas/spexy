@@ -2,7 +2,7 @@ import express, { type Express } from "express";
 import pinoHttp from "pino-http";
 import router from "./routes";
 import { logger } from "./lib/logger";
-import { SpecFlowError } from "./lib/spec-flow-errors";
+import { SpexyError } from "./lib/spexy-errors";
 
 const app: Express = express();
 
@@ -36,7 +36,7 @@ app.use(
     res: express.Response,
     _next: express.NextFunction,
   ) => {
-    if (error instanceof SpecFlowError) {
+    if (error instanceof SpexyError) {
       res.status(error.statusCode).json({
         error: error.message,
         code: error.code,

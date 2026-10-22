@@ -26,7 +26,7 @@ import {
   listFeatures,
   reviewFeatureTask,
   submitFeatureTask,
-} from "../lib/spec-flow";
+} from "../lib/spexy";
 
 const router: IRouter = Router();
 

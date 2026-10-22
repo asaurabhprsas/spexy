@@ -1,27 +1,30 @@
 {
-  "name": "workspace",
-  "version": "0.0.0",
+  "name": "spexy",
+  "version": "0.1.0",
   "license": "MIT",
   "scripts": {
-    "preinstall": "sh -c 'rm -f package-lock.json yarn.lock; case \"$npm_config_user_agent\" in pnpm/*) ;; *) echo \"Use pnpm instead\" >&2; exit 1 ;; esac'",
-    "build": "pnpm run typecheck && turbo run build",
-    "typecheck:libs": "tsc --build",
-    "typecheck": "pnpm run typecheck:libs && turbo run typecheck --filter=\"./artifacts/**\" --filter=\"./scripts\"",
-    "test": "turbo run test",
+    "build": "pnpm --filter @workspace/spexy build",
+    "typecheck": "tsc --noEmit && tsc -p packages/ui/tsconfig.json --noEmit",
+    "publish:local": "bun run ./scripts/publish-local.ts",
+    "local:publish": "bun run ./scripts/publish-local.ts",
+    "test": "bun test",
     "lint": "oxlint .",
     "format": "oxfmt .",
     "format:check": "oxfmt --check ."
   },
   "private": true,
-  "dependencies": {
-    "@replit/connectors-sdk": "^0.4.3"
-  },
   "devDependencies": {
+    "@types/node": "catalog:",
+    "bun-types": "^1.4.3",
     "oxfmt": "^0.74.0",
     "oxlint": "^1.89.0",
     "prettier": "^3.9.6",
     "turbo": "^2.11.10",
-    "typescript": "~5.9.3",
+    "typescript": "^7.0.2",
     "vitest": "^5.0.5"
-  }
+  },
+  "workspaces": [
+    "packages/*",
+    "skills/*"
+  ]
 }

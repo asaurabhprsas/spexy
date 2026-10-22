@@ -1,6 +1,6 @@
 import app from "./app";
 import { logger } from "./lib/logger";
-import { ensureWorkspaceSeeded } from "./lib/spec-flow";
+import { ensureWorkspaceSeeded } from "./lib/spexy";
 
 const rawPort = process.env["PORT"];
 
@@ -28,6 +28,6 @@ async function start(): Promise<void> {
 }
 
 start().catch((err: unknown) => {
-  logger.error({ err }, "Failed to initialize Spec-Flow API");
+  logger.error({ err }, "Failed to initialize Spexy API");
   process.exit(1);
 });

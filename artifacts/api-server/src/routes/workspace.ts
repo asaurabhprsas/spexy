@@ -16,8 +16,8 @@ import {
   getWorkspaceDocument,
   listWorkspaceDocuments,
   updateWorkspaceDocument,
-} from "../lib/spec-flow";
-import { SpecFlowError } from "../lib/spec-flow-errors";
+} from "../lib/spexy";
+import { SpexyError } from "../lib/spexy-errors";
 
 const router: IRouter = Router();
 
@@ -115,7 +115,7 @@ router.use(
     },
     next: (error?: unknown) => void,
   ) => {
-    if (!(error instanceof SpecFlowError)) {
+    if (!(error instanceof SpexyError)) {
       next(error);
       return;
     }

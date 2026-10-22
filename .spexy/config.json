@@ -1,0 +1,10 @@
+{
+  "preferences": {
+    "themeId": "default",
+    "colorMode": "dark",
+    "compactMode": false,
+    "isInspectorFullWidth": true,
+    "fontId": "jetbrains",
+    "editorViewMode": "rendered"
+  }
+}
