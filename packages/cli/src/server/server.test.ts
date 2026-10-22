@@ -726,5 +726,185 @@ describe("Track B: Fastify/Bun WebSocket Server & File Watcher", () => {
       note: undefined,
     });
   });
+
+  it("GET /api/tasks and GET /api/specs/all/tasks return all tasks across active specs", async () => {
+    // 1. GET /api/tasks returns object with tasks and total
+    const res = await fetch(`${baseUrl}/api/tasks`);
+    expect(res.status).toBe(200);
+    const body: any = await res.json();
+    expect(body).toHaveProperty("tasks");
+    expect(body).toHaveProperty("total");
+    expect(Array.isArray(body.tasks)).toBe(true);
+    expect(body.total).toBe(body.tasks.length);
+    expect(body.tasks.length).toBeGreaterThan(0);
+    // Task has spec_id, availability, and blockers
+    const task = body.tasks[0];
+    expect(task).toHaveProperty("spec_id");
+    expect(task).toHaveProperty("availability");
+    expect(task).toHaveProperty("blockers");
+
+    // 2. GET /api/specs/all/tasks?format=array returns array of tasks
+    const arrayRes = await fetch(`${baseUrl}/api/specs/all/tasks?format=array`);
+    expect(arrayRes.status).toBe(200);
+    const arrayBody: any = await arrayRes.json();
+    expect(Array.isArray(arrayBody)).toBe(true);
+    expect(arrayBody.length).toBe(body.total);
+    expect(arrayBody[0]).toHaveProperty("spec_id");
+  });
+
+  it("POST /api/tasks/:taskId/transition transitions task located across specs", async () => {
+    // Create a valid spec for global tasks
+    await fetch(`${baseUrl}/api/specs`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: "global-spec", title: "Global Spec", force: true }),
+    });
+
+    const taskRes = await fetch(`${baseUrl}/api/specs/global-spec/tasks`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        id: "global-task-1",
+        title: "Global Task 1",
+      }),
+    });
+    expect(taskRes.status).toBe(201);
+
+    // Transition via POST /api/tasks/:taskId/transition
+    const transitionRes = await fetch(`${baseUrl}/api/tasks/global-task-1/transition`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        action: "claim",
+        actor: "agent",
+      }),
+    });
+    expect(transitionRes.status).toBe(200);
+    const transitionBody: any = await transitionRes.json();
+    expect(transitionBody.success).toBe(true);
+    expect(transitionBody.task.status).toBe("in-progress");
+
+    // Transition via POST /api/specs/all/tasks/:taskId/transition
+    const submitRes = await fetch(`${baseUrl}/api/specs/all/tasks/global-task-1/transition`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        action: "submit",
+        actor: "agent",
+        note: "Submitted via global endpoint",
+      }),
+    });
+    expect(submitRes.status).toBe(200);
+    const submitBody: any = await submitRes.json();
+    expect(submitBody.success).toBe(true);
+    expect(submitBody.task.status).toBe("to-review");
+  });
+
+  it("GET /api/specs/nonexistent-spec/files returns 200 with empty array", async () => {
+    const res = await fetch(`${baseUrl}/api/specs/nonexistent-spec/files`);
+    expect(res.status).toBe(200);
+    const body: any = await res.json();
+    expect(body).toEqual({ files: [] });
+  });
+
+  it("GET /api/comments/history supports normalized target_file matching", async () => {
+    // 1. Create and resolve a comment on .specflow/steering/tech.md
+    const createRes = await fetch(`${baseUrl}/api/comments`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        target_file: ".specflow/steering/tech.md",
+        anchor: {
+          start_line: 1,
+          end_line: 2,
+          anchor_text: "Tech Stack",
+        },
+        instruction: "Clarify database selection.",
+      }),
+    });
+    expect(createRes.status).toBe(201);
+    const comment: any = await createRes.json();
+
+    const resolveRes = await fetch(`${baseUrl}/api/comments/${comment.id}/resolve`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ note: "Chose SQLite/libsql" }),
+    });
+    expect(resolveRes.status).toBe(200);
+
+    // 2. Query with normalized variants: "steering/tech.md", ".specflow/steering/tech.md", or "documentId=steering/tech.md"
+    const res1 = await fetch(`${baseUrl}/api/comments/history?target_file=steering/tech.md`);
+    expect(res1.status).toBe(200);
+    const history1: any = await res1.json();
+    expect(history1.some((c: any) => c.id === comment.id)).toBe(true);
+
+    const res2 = await fetch(`${baseUrl}/api/comments/history?documentId=.specflow/steering/tech.md`);
+    expect(res2.status).toBe(200);
+    const history2: any = await res2.json();
+    expect(history2.some((c: any) => c.id === comment.id)).toBe(true);
+  });
+
+  it("broadcasts SPEC_FILES_UPDATED when file in references or images is created or deleted", async () => {
+    const wsUrl = `ws://127.0.0.1:${testPort}/ws`;
+    const ws = new WebSocket(wsUrl);
+
+    await new Promise<void>((resolve, reject) => {
+      ws.onopen = () => resolve();
+      ws.onerror = (e) => reject(e);
+      setTimeout(() => reject(new Error("WS connection timeout")), 2000);
+    });
+
+    const received: any[] = [];
+    ws.onmessage = (event) => {
+      received.push(JSON.parse(String(event.data)));
+    };
+
+    // 1. Create file in references
+    const specDir = path.join(tmpDir, ".specflow", "specs", "auth-system");
+    const refDir = path.join(specDir, "references");
+    fs.mkdirSync(refDir, { recursive: true });
+    const testDoc = path.join(refDir, "spec-file-test.txt");
+    fs.writeFileSync(testDoc, "Auxiliary content", "utf-8");
+
+    // Wait for SPEC_FILES_UPDATED
+    let addMatched = false;
+    for (let i = 0; i < 20; i++) {
+      await new Promise((r) => setTimeout(r, 100));
+      if (
+        received.some(
+          (e) =>
+            e.type === "SPEC_FILES_UPDATED" &&
+            e.payload?.specId === "auth-system" &&
+            e.payload?.file?.includes("spec-file-test.txt"),
+        )
+      ) {
+        addMatched = true;
+        break;
+      }
+    }
+    expect(addMatched).toBe(true);
+
+    // 2. Delete file in references
+    fs.unlinkSync(testDoc);
+
+    let unlinkMatched = false;
+    for (let i = 0; i < 20; i++) {
+      await new Promise((r) => setTimeout(r, 100));
+      if (
+        received.some(
+          (e) =>
+            e.type === "SPEC_FILES_UPDATED" &&
+            e.payload?.specId === "auth-system" &&
+            e.payload?.file?.includes("spec-file-test.txt"),
+        )
+      ) {
+        unlinkMatched = true;
+        break;
+      }
+    }
+    expect(unlinkMatched).toBe(true);
+
+    ws.close();
+  });
 });
 

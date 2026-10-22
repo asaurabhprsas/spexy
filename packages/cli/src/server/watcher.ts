@@ -83,7 +83,16 @@ export function startWatcher(
     persistent: true,
   });
 
-  const handleFileChange = (filePath: string) => {
+  const getSpecIdFromPath = (filePath: string): string | null => {
+    const relToSpecflow = path.relative(specflowDir, filePath);
+    const parts = relToSpecflow.split(/[/\\]/);
+    if (parts[0] === "specs" && parts.length >= 3 && parts[1]) {
+      return parts[1];
+    }
+    return null;
+  };
+
+  const handleFileChange = (filePath: string, eventType: "add" | "change" = "change") => {
     if (isFileWriteLocked(filePath)) {
       return;
     }
@@ -146,6 +155,25 @@ export function startWatcher(
         }
       }
       return;
+    }
+
+    // Spec files update (references, images, documents, auxiliary files)
+    const specId = getSpecIdFromPath(filePath);
+    if (specId) {
+      broadcast({
+        type: "SPEC_FILES_UPDATED",
+        payload: { specId, file: path.relative(projectRoot, filePath) },
+      });
+
+      if (onLog && eventType === "add") {
+        onLog({
+          category: "watcher",
+          action: "add",
+          actor: "watcher",
+          message: `Spec file added: ${path.relative(projectRoot, filePath)} in spec "${specId}"`,
+          details: { file: path.relative(projectRoot, filePath), specId, event: "add" },
+        });
+      }
     }
 
     // 2. steering or spec markdown changed
@@ -220,8 +248,33 @@ export function startWatcher(
     }
   };
 
-  watcher.on("add", handleFileChange);
-  watcher.on("change", handleFileChange);
+  const handleFileRemove = (filePath: string) => {
+    if (isFileWriteLocked(filePath)) {
+      return;
+    }
+
+    const specId = getSpecIdFromPath(filePath);
+    if (specId) {
+      broadcast({
+        type: "SPEC_FILES_UPDATED",
+        payload: { specId, file: path.relative(projectRoot, filePath) },
+      });
+
+      if (onLog) {
+        onLog({
+          category: "watcher",
+          action: "unlink",
+          actor: "watcher",
+          message: `Spec file removed: ${path.relative(projectRoot, filePath)} in spec "${specId}"`,
+          details: { file: path.relative(projectRoot, filePath), specId, event: "unlink" },
+        });
+      }
+    }
+  };
+
+  watcher.on("add", (filePath) => handleFileChange(filePath, "add"));
+  watcher.on("change", (filePath) => handleFileChange(filePath, "change"));
+  watcher.on("unlink", handleFileRemove);
 
   return {
     watcher,

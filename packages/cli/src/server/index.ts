@@ -27,6 +27,7 @@ import {
   TaskAction,
   TaskItem,
   TaskStatus,
+  TasksDocument,
   transitionTask,
   updateComment,
   updateSteeringDocument,
@@ -134,6 +135,29 @@ async function parseBody(req: Request): Promise<any> {
   } catch {
     return {};
   }
+}
+
+export function findTaskAcrossSpecs(projectRoot: string, taskId: string): {
+  specId: string;
+  tasksDoc: TasksDocument;
+  task: TaskItem;
+  specDir: string;
+} {
+  const specs = listSpecs(projectRoot);
+  for (const spec of specs) {
+    try {
+      const tasksDoc = readTasksYaml(projectRoot, spec.id);
+      const tasks = flattenTasks(tasksDoc);
+      const found = tasks.find((t) => t.id === taskId);
+      if (found) {
+        const specDir = path.join(getSpecflowDir(projectRoot), "specs", spec.id);
+        return { specId: spec.id, tasksDoc, task: found, specDir };
+      }
+    } catch {
+      // ignore specs without valid tasks.yaml
+    }
+  }
+  throw new Error(`Task "${taskId}" not found in any active spec.`);
 }
 
 export function createServer(options: ServerOptions = {}): {
@@ -630,6 +654,129 @@ export function createServer(options: ServerOptions = {}): {
           return json({ success: true, id: specId, title }, 201);
         }
 
+        // GET /api/tasks & GET /api/specs/all/tasks & GET /api/features/all/tasks
+        if (
+          (pathname === "/api/tasks" ||
+            pathname === "/api/specs/all/tasks" ||
+            pathname === "/api/features/all/tasks") &&
+          method === "GET"
+        ) {
+          const allTasks: any[] = [];
+          const specs = listSpecs(projectRoot);
+          for (const spec of specs) {
+            try {
+              const doc = readTasksYaml(projectRoot, spec.id);
+              const tasks = flattenTasks(doc);
+              validateTaskGraph(tasks);
+
+              const statuses: Record<string, TaskStatus> = {};
+              for (const t of tasks) statuses[t.id] = t.status;
+
+              const availabilityMap = getTaskAvailability(tasks, statuses);
+              const blockers: Record<string, string[]> = {};
+              for (const t of tasks) {
+                blockers[t.id] = getBlockingDependencies(t.id, tasks, statuses);
+              }
+
+              for (const t of tasks) {
+                allTasks.push({
+                  ...t,
+                  spec_id: spec.id,
+                  specId: spec.id,
+                  availability: availabilityMap.get(t.id) ?? t.status,
+                  blockers: blockers[t.id] ?? [],
+                });
+              }
+            } catch {
+              // Ignore specs without tasks or invalid tasks.yaml
+            }
+          }
+
+          if (url.searchParams.get("format") === "array") {
+            return json(allTasks);
+          }
+
+          return json({
+            tasks: allTasks,
+            total: allTasks.length,
+          });
+        }
+
+        // POST /api/tasks/:taskId/transition & POST /api/specs/all/tasks/:taskId/transition & POST /api/features/all/tasks/:taskId/transition
+        const globalTaskTransitionMatch = pathname.match(
+          /^\/api\/(?:tasks|(?:specs|features)\/all\/tasks)\/([^/]+)\/transition$/,
+        );
+        if (globalTaskTransitionMatch && method === "POST") {
+          const taskId = decodeURIComponent(globalTaskTransitionMatch[1]);
+          const reqBody = await parseBody(req);
+
+          const action = reqBody.action as TaskAction;
+          if (!action) {
+            return json({ error: "Missing required 'action'" }, 400);
+          }
+
+          let actor = reqBody.actor as WorkflowActor;
+          if (!actor) {
+            actor = action === "approve" || action === "reject" ? "human" : "agent";
+          }
+
+          let taskLocation: { specId: string; tasksDoc: TasksDocument; task: TaskItem; specDir: string };
+          try {
+            taskLocation = findTaskAcrossSpecs(projectRoot, taskId);
+          } catch (err: any) {
+            return json({ error: err.message }, 404);
+          }
+
+          const { specId, tasksDoc: doc, task: target } = taskLocation;
+
+          const nextStatus = transitionTask(target.status, action, actor);
+          const updatedTask: TaskItem = { ...target, status: nextStatus };
+
+          if (action === "claim") {
+            updatedTask.worktree = reqBody.worktree || target.worktree;
+            updatedTask.branch = reqBody.branch || target.branch;
+            updatedTask.locked_at = new Date().toISOString();
+          } else if (action === "submit") {
+            if (reqBody.note) {
+              updatedTask.notes = { ...target.notes, testing: reqBody.note };
+            }
+          } else if (action === "reject") {
+            if (reqBody.note) {
+              updatedTask.notes = { ...target.notes, security: reqBody.note };
+            }
+          }
+
+          const updatedDoc = updateTaskInDoc(doc, updatedTask);
+          const tasksPath = path.join(getSpecflowDir(projectRoot), "specs", specId, "tasks.yaml");
+
+          await withFileWriteLock(tasksPath, () => {
+            writeTasksYaml(projectRoot, specId, updatedDoc);
+          });
+
+          logActivity({
+            category: "task",
+            action,
+            actor,
+            message: `Task "${target.title}" (${taskId}) in spec "${specId}" transitioned to ${nextStatus}`,
+            details: {
+              specId,
+              taskId,
+              taskTitle: target.title,
+              fromStatus: target.status,
+              toStatus: nextStatus,
+              actor,
+              note: reqBody.note,
+            },
+          });
+
+          broadcast({
+            type: "TASK_UPDATED",
+            payload: { specId, tasks: flattenTasks(updatedDoc) },
+          });
+
+          return json({ success: true, task: updatedTask });
+        }
+
         // GET /api/specs/:id/tasks & GET /api/features/:id/tasks
         const specTasksMatch = pathname.match(/^\/api\/(?:specs|features)\/([^/]+)\/tasks$/);
         if (specTasksMatch && method === "GET") {
@@ -792,9 +939,9 @@ export function createServer(options: ServerOptions = {}): {
           const specId = decodeURIComponent(specFilesMatch[1]);
           try {
             const files = listSpecFiles(projectRoot, specId);
-            return json({ files });
-          } catch (err: any) {
-            return json({ error: err.message }, 404);
+            return json({ files: files || [] });
+          } catch {
+            return json({ files: [] }, 200);
           }
         }
 
@@ -962,7 +1109,7 @@ export function createServer(options: ServerOptions = {}): {
 
         // GET /api/comments/history
         if (pathname === "/api/comments/history" && method === "GET") {
-          const target_file = url.searchParams.get("target_file") || undefined;
+          const target_file = url.searchParams.get("target_file") || url.searchParams.get("documentId") || undefined;
           const history = listCommentHistory(projectRoot, target_file);
           return json(history.map(formatComment));
         }

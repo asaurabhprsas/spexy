@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, type FormEvent } from 'react';
 import { useQueryClient, useQuery } from '@tanstack/react-query';
-import { Link, useLocation } from 'wouter';
+import { Link, useLocation, useSearch } from 'wouter';
 import {
   useListFeatures,
   getListFeaturesQueryKey,
@@ -44,6 +44,7 @@ import { Label } from '@/components/ui/label';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
+import { useWorkflowUiStore } from '@/store/ui';
 import { DocumentInspector } from '@/components/inspector/DocumentInspector';
 import { MarkdownRenderer } from '@/components/inspector/MarkdownRenderer';
 
@@ -81,18 +82,32 @@ export function SpecificationsHub() {
   const [selectedReferenceFile, setSelectedReferenceFile] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
 
+  const searchString = useSearch();
+  const isInspectorFullWidth = useWorkflowUiStore((state) => state.isInspectorFullWidth);
   const features = featuresQuery.data ?? [];
 
-  // Parse URL search param `?spec=<spec-id>`
-  const searchParams = new URLSearchParams(window.location.search);
-  const specParam = searchParams.get('spec');
+  // Parse URL search param `?spec=<spec-id>` reactively with useSearch
+  const specParam = useMemo(() => {
+    const params = new URLSearchParams(searchString);
+    return params.get('spec');
+  }, [searchString]);
 
-  const selectedSpecId = useMemo(() => {
+  // Maintain local state selectedSpecId initialized from query param or first feature
+  const [selectedSpecId, setSelectedSpecId] = useState<string | null>(() => {
+    const params = new URLSearchParams(typeof window !== 'undefined' ? window.location.search : '');
+    return params.get('spec') || null;
+  });
+
+  // Keep selectedSpecId synced when specParam in searchString changes or features arrive
+  useEffect(() => {
     if (specParam && features.some((f: Feature) => f.id === specParam)) {
-      return specParam;
+      setSelectedSpecId(specParam);
+    } else if (!selectedSpecId && features.length > 0) {
+      setSelectedSpecId(features[0].id);
+    } else if (selectedSpecId && !features.some((f: Feature) => f.id === selectedSpecId) && features.length > 0) {
+      setSelectedSpecId(features[0].id);
     }
-    return features[0]?.id || null;
-  }, [specParam, features]);
+  }, [specParam, features, selectedSpecId]);
 
   const selectedSpec = useMemo(() => {
     return features.find((f: Feature) => f.id === selectedSpecId) || null;
@@ -160,6 +175,7 @@ export function SpecificationsHub() {
   );
 
   const handleSelectSpec = (specId: string) => {
+    setSelectedSpecId(specId);
     setLocation(`/specs?spec=${encodeURIComponent(specId)}`);
     setSelectedReferenceFile(null);
   };
@@ -379,76 +395,78 @@ export function SpecificationsHub() {
           </div>
         </div>
       ) : (
-        <div className="grid gap-6 lg:grid-cols-[320px_minmax(0,1fr)]">
+        <div className={isInspectorFullWidth ? 'block w-full' : 'grid gap-6 lg:grid-cols-[320px_minmax(0,1fr)]'}>
           {/* Specifications Sidebar List */}
-          <div className="space-y-3">
-            <div className="relative">
-              <Search size={14} className="absolute left-3 top-2.5 text-muted-foreground" />
-              <Input
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Search specifications..."
-                className="pl-9 h-9 text-xs"
-              />
-            </div>
+          {!isInspectorFullWidth && (
+            <div className="space-y-3">
+              <div className="relative">
+                <Search size={14} className="absolute left-3 top-2.5 text-muted-foreground" />
+                <Input
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder="Search specifications..."
+                  className="pl-9 h-9 text-xs"
+                />
+              </div>
 
-            <div className="rounded-xl border border-border/80 bg-card/90 overflow-hidden shadow-xs divide-y divide-border/60 max-h-[calc(100vh-250px)] overflow-y-auto">
-              {filteredFeatures.map((f: Feature) => {
-                const isSelected = f.id === selectedSpecId;
-                const progressPct =
-                  f.taskCount > 0 ? Math.round((f.completedTaskCount / f.taskCount) * 100) : 0;
+              <div className="rounded-xl border border-border/80 bg-card/90 overflow-hidden shadow-xs divide-y divide-border/60 max-h-[calc(100vh-250px)] overflow-y-auto">
+                {filteredFeatures.map((f: Feature) => {
+                  const isSelected = f.id === selectedSpecId;
+                  const progressPct =
+                    f.taskCount > 0 ? Math.round((f.completedTaskCount / f.taskCount) * 100) : 0;
 
-                return (
-                  <button
-                    key={f.id}
-                    onClick={() => handleSelectSpec(f.id)}
-                    className={cx(
-                      'block w-full p-4 text-left transition hover:bg-secondary/40 cursor-pointer',
-                      isSelected && 'bg-accent/40 border-l-2 border-primary'
-                    )}
-                  >
-                    <div className="flex items-center justify-between gap-2 mb-1">
-                      <span className="font-serif text-sm font-semibold truncate text-foreground">
-                        {f.name}
-                      </span>
-                      <Badge
-                        variant="outline"
-                        className={`font-mono text-[9px] uppercase tracking-wider ${
-                          f.status === 'completed'
-                            ? 'bg-emerald-500/10 text-emerald-600 border-emerald-500/30'
-                            : f.status === 'in-progress'
-                            ? 'bg-sky-500/10 text-sky-600 border-sky-500/30'
-                            : 'bg-muted text-muted-foreground'
-                        }`}
-                      >
-                        {f.status}
-                      </Badge>
-                    </div>
-
-                    <div className="font-mono text-[10px] text-muted-foreground truncate mb-2">
-                      {f.id}
-                    </div>
-
-                    {/* Progress Bar */}
-                    <div className="space-y-1">
-                      <div className="flex items-center justify-between text-[10px] font-mono text-muted-foreground">
-                        <span>
-                          {f.completedTaskCount}/{f.taskCount} tasks
+                  return (
+                    <button
+                      key={f.id}
+                      onClick={() => handleSelectSpec(f.id)}
+                      className={cx(
+                        'block w-full p-4 text-left transition hover:bg-secondary/40 cursor-pointer',
+                        isSelected && 'bg-accent/40 border-l-2 border-primary'
+                      )}
+                    >
+                      <div className="flex items-center justify-between gap-2 mb-1">
+                        <span className="font-serif text-sm font-semibold truncate text-foreground">
+                          {f.name}
                         </span>
-                        <span>{progressPct}%</span>
+                        <Badge
+                          variant="outline"
+                          className={`font-mono text-[9px] uppercase tracking-wider ${
+                            f.status === 'completed'
+                              ? 'bg-emerald-500/10 text-emerald-600 border-emerald-500/30'
+                              : f.status === 'in-progress'
+                              ? 'bg-sky-500/10 text-sky-600 border-sky-500/30'
+                              : 'bg-muted text-muted-foreground'
+                          }`}
+                        >
+                          {f.status}
+                        </Badge>
                       </div>
-                      <div className="h-1.5 w-full bg-muted rounded-full overflow-hidden">
-                        <div
-                          className="h-full bg-primary transition-all duration-300"
-                          style={{ width: `${progressPct}%` }}
-                        />
+
+                      <div className="font-mono text-[10px] text-muted-foreground truncate mb-2">
+                        {f.id}
                       </div>
-                    </div>
-                  </button>
-                );
-              })}
+
+                      {/* Progress Bar */}
+                      <div className="space-y-1">
+                        <div className="flex items-center justify-between text-[10px] font-mono text-muted-foreground">
+                          <span>
+                            {f.completedTaskCount}/{f.taskCount} tasks
+                          </span>
+                          <span>{progressPct}%</span>
+                        </div>
+                        <div className="h-1.5 w-full bg-muted rounded-full overflow-hidden">
+                          <div
+                            className="h-full bg-primary transition-all duration-300"
+                            style={{ width: `${progressPct}%` }}
+                          />
+                        </div>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
             </div>
-          </div>
+          )}
 
           {/* Specification Detail & Documents Tabs */}
           {selectedSpec ? (
@@ -532,7 +550,10 @@ export function SpecificationsHub() {
                 {/* 1. REQUIREMENTS TAB */}
                 <TabsContent value="requirements" className="m-0 focus-visible:outline-none">
                   {requirementsDoc ? (
-                    <DocumentInspector documentId={requirementsDoc.id} />
+                    <DocumentInspector
+                      key={requirementsDoc.id || `req-${selectedSpecId}`}
+                      documentId={requirementsDoc.id}
+                    />
                   ) : (
                     <div className="rounded-xl border border-dashed border-border/80 bg-card/50 p-8 text-center text-xs text-muted-foreground">
                       <FileCheck2 size={24} className="mx-auto mb-2 text-primary opacity-60" />
@@ -545,7 +566,10 @@ export function SpecificationsHub() {
                 {/* 2. DESIGN TAB */}
                 <TabsContent value="design" className="m-0 focus-visible:outline-none">
                   {designDoc ? (
-                    <DocumentInspector documentId={designDoc.id} />
+                    <DocumentInspector
+                      key={designDoc.id || `des-${selectedSpecId}`}
+                      documentId={designDoc.id}
+                    />
                   ) : (
                     <div className="rounded-xl border border-dashed border-border/80 bg-card/50 p-8 text-center text-xs text-muted-foreground">
                       <FileText size={24} className="mx-auto mb-2 text-primary opacity-60" />

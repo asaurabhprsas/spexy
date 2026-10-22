@@ -39,6 +39,7 @@ import { Badge } from '@/components/ui/badge';
 import { Textarea } from '@/components/ui/textarea';
 import { Input } from '@/components/ui/input';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { useWorkflowUiStore } from '@/store/ui';
 import { MarkdownRenderer } from './MarkdownRenderer';
 
 interface DocumentInspectorProps {
@@ -69,9 +70,10 @@ export function DocumentInspector({ documentId, onClose }: DocumentInspectorProp
   const [isAddingComment, setIsAddingComment] = useState(false);
   const [activeHighlightLine, setActiveHighlightLine] = useState<number | null>(null);
 
-  // New UI controls state
+  // UI controls state
   const [viewMode, setViewMode] = useState<'source' | 'preview' | 'split'>('source');
-  const [isExpanded, setIsExpanded] = useState(false);
+  const isInspectorFullWidth = useWorkflowUiStore((state) => state.isInspectorFullWidth);
+  const setInspectorFullWidth = useWorkflowUiStore((state) => state.setInspectorFullWidth);
   const [commentDrawerTab, setCommentDrawerTab] = useState<'active' | 'history'>('active');
   const [editingCommentId, setEditingCommentId] = useState<string | null>(null);
   const [editInstruction, setEditInstruction] = useState('');
@@ -85,8 +87,11 @@ export function DocumentInspector({ documentId, onClose }: DocumentInspectorProp
   const contentContainerRef = useRef<HTMLDivElement>(null);
   const previewRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const gutterRef = useRef<HTMLDivElement>(null);
 
   const doc = docQuery.data;
+
+  const lineCount = useMemo(() => Math.max(1, content.split('\n').length), [content]);
 
   useEffect(() => {
     if (doc?.content !== undefined) {
@@ -97,13 +102,20 @@ export function DocumentInspector({ documentId, onClose }: DocumentInspectorProp
   // Handle Escape key to exit expand mode
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && isExpanded) {
-        setIsExpanded(false);
+      if (e.key === 'Escape' && isInspectorFullWidth) {
+        setInspectorFullWidth(false);
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isExpanded]);
+  }, [isInspectorFullWidth, setInspectorFullWidth]);
+
+  // Reset full width state on unmount
+  useEffect(() => {
+    return () => {
+      setInspectorFullWidth(false);
+    };
+  }, [setInspectorFullWidth]);
 
   // Comments for this document
   const docComments = useMemo(() => {
@@ -190,10 +202,18 @@ export function DocumentInspector({ documentId, onClose }: DocumentInspectorProp
     const containerRect = container?.getBoundingClientRect();
 
     if (containerRect) {
+      const lineHeight = 19; // px per line
+      const lineTop = (calculatedStartLine - 1) * lineHeight - textarea.scrollTop;
       setFloatingButtonPos({
-        top: Math.max(10, textareaRect.top - containerRect.top + 20),
-        left: Math.min(containerRect.width - 220, textareaRect.width / 2),
+        top: Math.max(10, Math.min(textarea.clientHeight - 40, lineTop + 24)),
+        left: Math.min(containerRect.width - 220, Math.max(10, 80)),
       });
+    }
+  };
+
+  const handleTextareaScroll = (e: React.UIEvent<HTMLTextAreaElement>) => {
+    if (gutterRef.current) {
+      gutterRef.current.scrollTop = e.currentTarget.scrollTop;
     }
   };
 
@@ -251,8 +271,8 @@ export function DocumentInspector({ documentId, onClose }: DocumentInspectorProp
     setFloatingButtonPos(null);
   };
 
-  const handleSaveDocument = (e: FormEvent) => {
-    e.preventDefault();
+  const handleSaveDocument = (e?: FormEvent) => {
+    if (e?.preventDefault) e.preventDefault();
     if (!doc) return;
     updateMutation.mutate(
       {
@@ -388,14 +408,14 @@ export function DocumentInspector({ documentId, onClose }: DocumentInspectorProp
     );
   }
 
-  const containerClasses = isExpanded
-    ? 'fixed inset-0 z-50 bg-background/95 backdrop-blur-md flex flex-col p-4 sm:p-6 transition-all duration-200 shadow-2xl'
-    : 'relative flex flex-col h-[calc(100vh-140px)] rounded-xl border border-border/80 bg-card overflow-hidden shadow-sm';
+  const containerClasses = isInspectorFullWidth
+    ? 'relative flex flex-col h-[calc(100vh-100px)] w-full rounded-xl border border-border/80 bg-card overflow-hidden shadow-md transition-all duration-200'
+    : 'relative flex flex-col h-[calc(100vh-140px)] rounded-xl border border-border/80 bg-card overflow-hidden shadow-sm transition-all duration-200';
 
   return (
     <div ref={containerRef} className={containerClasses}>
       {/* Top Header Bar */}
-      <header className="flex flex-wrap items-center justify-between gap-3 border-b border-border/70 px-5 py-3.5 bg-background/50 backdrop-blur-sm shrink-0">
+      <header className="flex flex-wrap items-center justify-between gap-3 border-b border-border/70 px-5 py-3 bg-background/50 backdrop-blur-sm shrink-0">
         <div className="flex items-center gap-3 min-w-0">
           <span className="grid size-9 place-items-center rounded-lg bg-primary/10 text-primary">
             <FileText size={18} />
@@ -416,6 +436,28 @@ export function DocumentInspector({ documentId, onClose }: DocumentInspectorProp
 
         {/* Action Controls */}
         <div className="flex items-center gap-2">
+          {/* Save Button with Unsaved Indicator (Header Toolbar) */}
+          <div className="flex items-center gap-2">
+            {content !== doc.content && (
+              <span className="hidden md:inline-flex items-center gap-1.5 text-xs text-amber-600 dark:text-amber-400 font-medium">
+                <span className="size-2 rounded-full bg-amber-500 animate-pulse" />
+                Unsaved changes
+              </span>
+            )}
+            <Button
+              type="button"
+              size="sm"
+              variant={content !== doc.content ? "default" : "outline"}
+              disabled={content === doc.content || updateMutation.isPending}
+              onClick={() => handleSaveDocument()}
+              className="gap-1.5 h-8 text-xs font-semibold shadow-xs"
+              data-testid="button-save-document"
+            >
+              {updateMutation.isPending ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />}
+              <span>Save Document</span>
+            </Button>
+          </div>
+
           {/* Segmented Mode Control: Source | Preview | Split */}
           <div className="flex items-center gap-1 bg-muted/60 p-0.5 rounded-lg border border-border/60">
             <button
@@ -503,11 +545,11 @@ export function DocumentInspector({ documentId, onClose }: DocumentInspectorProp
           <Button
             size="sm"
             variant="ghost"
-            onClick={() => setIsExpanded(!isExpanded)}
+            onClick={() => setInspectorFullWidth(!isInspectorFullWidth)}
             className="h-8 w-8 p-0 text-muted-foreground hover:text-foreground"
-            title={isExpanded ? 'Collapse to standard view (Esc)' : 'Maximize to full width overlay'}
+            title={isInspectorFullWidth ? 'Collapse full width view (Esc)' : 'Expand in-place to full width'}
           >
-            {isExpanded ? <Minimize2 size={15} /> : <Maximize2 size={15} />}
+            {isInspectorFullWidth ? <Minimize2 size={15} /> : <Maximize2 size={15} />}
           </Button>
 
           {onClose && (
@@ -534,7 +576,7 @@ export function DocumentInspector({ documentId, onClose }: DocumentInspectorProp
                 )}
               </div>
               <div className="flex items-center gap-2 shrink-0">
-                <span>Lines: {content.split('\n').length}</span>
+                <span>Lines: {lineCount}</span>
                 <span>•</span>
                 <span>{content.length} chars</span>
               </div>
@@ -565,19 +607,51 @@ export function DocumentInspector({ documentId, onClose }: DocumentInspectorProp
                 </div>
               )}
 
-              {/* Source View */}
+              {/* Source View with Line Numbers Gutter */}
               {(viewMode === 'source' || viewMode === 'split') && (
-                <div className={`${viewMode === 'split' ? 'w-1/2 border-r border-border/70' : 'w-full'} h-full overflow-auto p-4`}>
-                  <Textarea
-                    ref={textareaRef}
-                    value={content}
-                    onChange={(e) => setContent(e.target.value)}
-                    onSelect={handleTextSelect}
-                    onKeyUp={handleTextSelect}
-                    onMouseUp={handleTextSelect}
-                    placeholder="Document content..."
-                    className="w-full h-full min-h-[450px] font-mono text-xs leading-relaxed resize-none border-0 bg-transparent p-0 focus-visible:ring-0 focus-visible:outline-none"
-                  />
+                <div
+                  className={`${
+                    viewMode === 'split' ? 'w-1/2 border-r border-border/70' : 'w-full'
+                  } h-full flex overflow-hidden bg-background/50`}
+                >
+                  {/* Line Numbers Gutter */}
+                  <div
+                    ref={gutterRef}
+                    className="w-10 sm:w-12 select-none border-r border-border/50 py-4 pr-3 text-right font-mono text-xs leading-relaxed text-muted-foreground/40 shrink-0 overflow-hidden"
+                    aria-hidden="true"
+                  >
+                    {Array.from({ length: lineCount }, (_, i) => {
+                      const lineNum = i + 1;
+                      const isHighlighted = activeHighlightLine === lineNum;
+                      return (
+                        <div
+                          key={lineNum}
+                          className={
+                            isHighlighted
+                              ? 'text-primary font-bold bg-primary/10 -mr-3 pr-3 rounded-l'
+                              : ''
+                          }
+                        >
+                          {lineNum}
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  {/* Textarea Editor */}
+                  <div className="flex-1 h-full overflow-hidden p-4">
+                    <Textarea
+                      ref={textareaRef}
+                      value={content}
+                      onChange={(e) => setContent(e.target.value)}
+                      onScroll={handleTextareaScroll}
+                      onSelect={handleTextSelect}
+                      onKeyUp={handleTextSelect}
+                      onMouseUp={handleTextSelect}
+                      placeholder="Document content..."
+                      className="w-full h-full min-h-[450px] font-mono text-xs leading-relaxed resize-none border-0 bg-transparent p-0 focus-visible:ring-0 focus-visible:outline-none whitespace-pre"
+                    />
+                  </div>
                 </div>
               )}
 
@@ -593,24 +667,23 @@ export function DocumentInspector({ documentId, onClose }: DocumentInspectorProp
               )}
             </div>
 
-            {/* Bottom Editor Bar */}
-            <div className="flex items-center justify-between border-t border-border/70 px-4 py-2.5 bg-muted/20 shrink-0">
-              <div className="text-xs text-muted-foreground">
+            {/* Bottom Status Bar */}
+            <div className="flex items-center justify-between border-t border-border/70 px-4 py-2 bg-muted/20 text-xs text-muted-foreground font-mono shrink-0">
+              <div>
                 {content !== doc.content ? (
-                  <span className="text-amber-600 dark:text-amber-400 font-medium">Unsaved changes</span>
+                  <span className="text-amber-600 dark:text-amber-400 font-medium font-sans flex items-center gap-1.5">
+                    <span className="size-1.5 rounded-full bg-amber-500 animate-pulse" />
+                    Unsaved changes (press Save Document above)
+                  </span>
                 ) : (
                   <span>All changes saved (r{doc.revision})</span>
                 )}
               </div>
-              <Button
-                type="submit"
-                size="sm"
-                disabled={content === doc.content || updateMutation.isPending}
-                className="gap-1.5"
-              >
-                {updateMutation.isPending ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />}
-                Save Document
-              </Button>
+              <div className="flex items-center gap-2 text-[11px]">
+                <span>{lineCount} lines</span>
+                <span>•</span>
+                <span>{content.length} chars</span>
+              </div>
             </div>
           </form>
         </div>
@@ -934,10 +1007,15 @@ export function DocumentInspector({ documentId, onClose }: DocumentInspectorProp
                           L{comment.startLine}
                           {comment.endLine !== comment.startLine && `–${comment.endLine}`}
                         </Badge>
-                        <Badge variant="secondary" className="text-[9px] uppercase font-mono bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 gap-1">
-                          <CheckCircle2 size={10} />
-                          RESOLVED
-                        </Badge>
+                        <div className="flex items-center gap-1.5">
+                          <Badge variant="outline" className="text-[9px] font-mono bg-primary/10 text-primary border-primary/20">
+                            By: {(comment as any).resolvedBy || (comment as any).resolved_by || (comment as any).author || 'Human'}
+                          </Badge>
+                          <Badge variant="secondary" className="text-[9px] uppercase font-mono bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 gap-1">
+                            <CheckCircle2 size={10} />
+                            RESOLVED
+                          </Badge>
+                        </div>
                       </div>
 
                       <blockquote className="mb-2 border-l-2 border-emerald-500/40 pl-2.5 font-mono text-[11px] text-muted-foreground line-clamp-2 bg-muted/20 py-1 rounded-r">
@@ -950,13 +1028,13 @@ export function DocumentInspector({ documentId, onClose }: DocumentInspectorProp
 
                       <div className="text-[11px] text-emerald-700 dark:text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 p-2 rounded mb-2 font-mono">
                         <span className="font-semibold block mb-0.5">Resolution Note:</span>
-                        {comment.resolutionNote || 'Verified and addressed'}
+                        {comment.resolutionNote || (comment as any).resolution_note || 'Verified and addressed'}
                       </div>
 
                       <div className="flex items-center justify-between pt-1 text-[10px] text-muted-foreground">
                         <span className="flex items-center gap-1 font-mono">
                           <Clock size={11} />
-                          {new Date(comment.createdAt).toLocaleDateString()}
+                          Resolved: {(comment as any).resolvedAt || (comment as any).resolved_at ? new Date((comment as any).resolvedAt || (comment as any).resolved_at).toLocaleString() : new Date(comment.createdAt).toLocaleDateString()}
                         </span>
                         <Button
                           size="sm"

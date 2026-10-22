@@ -109,6 +109,18 @@ export function useWebSocketSync() {
               break;
             }
 
+            case 'SPEC_FILES_UPDATED': {
+              const specId = data.payload?.specId || data.featureId;
+              if (specId) {
+                void queryClient.invalidateQueries({ queryKey: ['spec-files', specId] });
+              } else {
+                void queryClient.invalidateQueries({ queryKey: ['spec-files'] });
+              }
+              void queryClient.invalidateQueries({ queryKey: ['spec-file-content'] });
+              void queryClient.invalidateQueries({ queryKey: getListDocumentsQueryKey() });
+              break;
+            }
+
             case 'FILE_CORRUPTED': {
               toast({
                 title: 'File Corrupted Warning',

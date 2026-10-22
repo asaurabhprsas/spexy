@@ -97,6 +97,7 @@ const dateLabel = (value: string) =>
 function Shell({ children }: { children: ReactNode }) {
   const [location] = useLocation();
   const filter = useWorkflowUiStore((state) => state.documentFilter);
+  const isInspectorFullWidth = useWorkflowUiStore((state) => state.isInspectorFullWidth);
   const dashboard = useGetDashboard();
   const health = useHealthCheck({
     query: { queryKey: getHealthCheckQueryKey(), refetchInterval: 45_000 },
@@ -292,11 +293,14 @@ function Shell({ children }: { children: ReactNode }) {
 
       <main
         className={cx(
-          'min-w-0 flex-1 px-4 pb-12 pt-5 sm:px-7 md:px-10 md:pt-9 xl:px-14 transition-all duration-300',
-          isSidebarCollapsed ? 'md:ml-16' : 'md:ml-[252px]'
+          'min-w-0 flex-1 pb-12 pt-5 transition-all duration-300',
+          isSidebarCollapsed ? 'md:ml-16' : 'md:ml-[252px]',
+          isInspectorFullWidth ? 'px-3 sm:px-5 md:px-6 md:pt-6' : 'px-4 sm:px-7 md:px-10 md:pt-9 xl:px-14'
         )}
       >
-        <div className="mx-auto max-w-[1360px]">{children}</div>
+        <div className={cx('mx-auto transition-all duration-200', isInspectorFullWidth ? 'max-w-none w-full' : 'max-w-[1360px]')}>
+          {children}
+        </div>
       </main>
 
       {/* Live Activity Logs Drawer */}

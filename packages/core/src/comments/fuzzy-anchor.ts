@@ -184,7 +184,14 @@ export function listCommentHistory(
   if (!target_file) {
     return historyDoc.comments;
   }
-  return historyDoc.comments.filter((c) => c.target_file === target_file);
+  const norm = (s: string) => s.replace(/^\.?\/?\.specflow\//, "").replace(/^\.?\//, "").replace(/:/g, "/");
+  const targetNorm = norm(target_file);
+  return historyDoc.comments.filter((c) => {
+    if (!target_file) return true;
+    if (c.target_file === target_file) return true;
+    const cNorm = norm(c.target_file);
+    return cNorm === targetNorm || cNorm.endsWith(targetNorm) || targetNorm.endsWith(cNorm);
+  });
 }
 
 export interface RealignedAnchor {

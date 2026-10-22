@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { useQueryClient } from '@tanstack/react-query';
-import { Link, useLocation } from 'wouter';
+import { useQueryClient, useQuery } from '@tanstack/react-query';
+import { Link, useLocation, useSearch } from 'wouter';
 import {
   useListFeatures,
   getListFeaturesQueryKey,
@@ -41,30 +41,69 @@ import { TaskComposerSheet, type CreateTaskFormData } from '@/components/task/Ta
 
 export function TasksPage() {
   const [, setLocation] = useLocation();
+  const searchString = useSearch();
   const qc = useQueryClient();
 
   const featuresQuery = useListFeatures({ query: { queryKey: getListFeaturesQueryKey() } });
   const featuresList = featuresQuery.data ?? [];
 
-  // Parse URL search param `?spec=<spec-id>`
-  const searchParams = new URLSearchParams(window.location.search);
-  const specParam = searchParams.get('spec');
+  // Parse URL search param `?spec=<spec-id>` reactively
+  const specParam = useMemo(() => {
+    const params = new URLSearchParams(searchString);
+    return params.get('spec');
+  }, [searchString]);
 
-  const selectedSpecId = useMemo(() => {
-    if (specParam && featuresList.some((f: Feature) => f.id === specParam)) {
-      return specParam;
+  const [selectedSpecId, setSelectedSpecId] = useState<string>(() => {
+    const params = new URLSearchParams(typeof window !== 'undefined' ? window.location.search : '');
+    return params.get('spec') || '';
+  });
+
+  // If visiting /tasks without a ?spec param:
+  // Automatically redirect / sync URL using setLocation('/tasks?spec=' + encodeURIComponent(defaultSpec), { replace: true })
+  useEffect(() => {
+    if (!specParam && featuresList.length > 0) {
+      const defaultSpec = featuresList[0]?.id || 'all';
+      setSelectedSpecId(defaultSpec);
+      setLocation(`/tasks?spec=${encodeURIComponent(defaultSpec)}`, { replace: true });
+    } else if (specParam) {
+      setSelectedSpecId(specParam);
     }
-    return featuresList[0]?.id || '';
-  }, [specParam, featuresList]);
+  }, [specParam, featuresList, setLocation]);
+
+  const isAllSpecs = selectedSpecId === 'all';
 
   const selectedFeature = useMemo(() => {
+    if (isAllSpecs) return null;
     return featuresList.find((f: Feature) => f.id === selectedSpecId);
-  }, [featuresList, selectedSpecId]);
+  }, [featuresList, selectedSpecId, isAllSpecs]);
 
-  const tasksQuery = useListTasks(selectedSpecId, {
+  // Query tasks: when selectedSpecId === 'all', query from /api/tasks (or /api/specs/all/tasks?format=array)
+  const allTasksQuery = useQuery({
+    queryKey: ['tasks', 'all'],
+    queryFn: async (): Promise<Task[]> => {
+      try {
+        const res = await fetch('/api/tasks');
+        if (res.ok) {
+          const data = await res.json();
+          return Array.isArray(data) ? data : (data.tasks || []);
+        }
+      } catch {}
+      try {
+        const res2 = await fetch('/api/specs/all/tasks?format=array');
+        if (res2.ok) {
+          const data = await res2.json();
+          return Array.isArray(data) ? data : (data.tasks || []);
+        }
+      } catch {}
+      return [];
+    },
+    enabled: isAllSpecs,
+  });
+
+  const singleSpecTasksQuery = useListTasks(isAllSpecs ? '' : selectedSpecId, {
     query: {
-      queryKey: getListTasksQueryKey(selectedSpecId),
-      enabled: Boolean(selectedSpecId),
+      queryKey: getListTasksQueryKey(isAllSpecs ? '' : selectedSpecId),
+      enabled: Boolean(selectedSpecId) && !isAllSpecs,
     },
   });
 
@@ -77,7 +116,9 @@ export function TasksPage() {
   const reviewTask = useReviewTask();
 
   const refresh = () => {
-    if (selectedSpecId) {
+    if (isAllSpecs) {
+      void qc.invalidateQueries({ queryKey: ['tasks', 'all'] });
+    } else if (selectedSpecId) {
       void qc.invalidateQueries({ queryKey: getListTasksQueryKey(selectedSpecId) });
     }
     void qc.invalidateQueries({ queryKey: getListFeaturesQueryKey() });
@@ -85,14 +126,15 @@ export function TasksPage() {
   };
 
   const handleCreateTask = (formData: CreateTaskFormData) => {
-    if (!selectedSpecId) return;
+    const targetSpecId = isAllSpecs ? (formData.groupId || featuresList[0]?.id) : selectedSpecId;
+    if (!targetSpecId) return;
 
     createTask.mutate(
       {
-        featureId: selectedSpecId,
+        featureId: targetSpecId,
         data: {
           id: formData.id,
-          groupId: formData.groupId,
+          groupId: formData.groupId || targetSpecId,
           parentId: formData.parentId || null,
           title: formData.title,
           description: formData.description,
@@ -111,57 +153,112 @@ export function TasksPage() {
     );
   };
 
-  // Instant actions without intrusive window.prompt!
+  // Instant actions: Status transitions and drag-drop support for both single-spec and All Specifications
+  const handleTransitionAction = async (
+    task: Task,
+    action: string,
+    params: { note?: string; worktree?: string; actor?: string; decision?: string } = {}
+  ) => {
+    const actor = params.actor || 'human';
+    const note = params.note || '';
+    const worktree = params.worktree || task.worktree || `worktree/${task.id}`;
+
+    if (isAllSpecs) {
+      const payload: Record<string, any> = { action, actor };
+      if (note) payload.note = note;
+      if (params.decision) payload.decision = params.decision;
+      if (worktree) payload.worktree = worktree;
+
+      let transitioned = false;
+      try {
+        const res = await fetch(`/api/tasks/${encodeURIComponent(task.id)}/transition`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+        if (res.ok) transitioned = true;
+      } catch {}
+
+      if (!transitioned) {
+        try {
+          const res = await fetch(`/api/specs/all/tasks/${encodeURIComponent(task.id)}/transition`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+          });
+          if (res.ok) transitioned = true;
+        } catch {}
+      }
+
+      const fallbackSpecId = task.groupId || task.featureId;
+      if (!transitioned && fallbackSpecId) {
+        try {
+          await fetch(`/api/specs/${encodeURIComponent(fallbackSpecId)}/tasks/${encodeURIComponent(task.id)}/transition`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+          });
+        } catch {}
+      }
+      refresh();
+      return;
+    }
+
+    if (action === 'claim') {
+      claimTask.mutate(
+        { featureId: selectedSpecId, taskId: task.id, data: { worktree, actor } },
+        { onSuccess: refresh }
+      );
+    } else if (action === 'submit') {
+      submitTask.mutate(
+        { featureId: selectedSpecId, taskId: task.id, data: { note: note || 'Submitted for review' } },
+        { onSuccess: refresh }
+      );
+    } else if (action === 'approve') {
+      reviewTask.mutate(
+        { featureId: selectedSpecId, taskId: task.id, data: { decision: 'approve', note: note || 'Verified and approved' } },
+        { onSuccess: refresh }
+      );
+    } else if (action === 'reject') {
+      reviewTask.mutate(
+        { featureId: selectedSpecId, taskId: task.id, data: { decision: 'reject', note: note || 'Changes requested' } },
+        { onSuccess: refresh }
+      );
+    }
+  };
+
   const handleClaim = (task: Task, worktree?: string, actor?: string) => {
-    if (!selectedSpecId) return;
-    const wt = worktree || task.worktree || `worktree/${task.id}`;
-    const act = actor || 'human';
-    claimTask.mutate(
-      { featureId: selectedSpecId, taskId: task.id, data: { worktree: wt, actor: act } },
-      { onSuccess: refresh }
-    );
+    void handleTransitionAction(task, 'claim', { worktree, actor });
   };
 
   const handleSubmit = (task: Task, note?: string) => {
-    if (!selectedSpecId) return;
-    const n = note || 'Submitted for review';
-    submitTask.mutate(
-      { featureId: selectedSpecId, taskId: task.id, data: { note: n } },
-      { onSuccess: refresh }
-    );
+    void handleTransitionAction(task, 'submit', { note });
   };
 
   const handleApprove = (task: Task, note?: string) => {
-    if (!selectedSpecId) return;
-    const n = note || 'Verified and approved';
-    reviewTask.mutate(
-      { featureId: selectedSpecId, taskId: task.id, data: { decision: 'approve', note: n } },
-      { onSuccess: refresh }
-    );
+    void handleTransitionAction(task, 'approve', { note, decision: 'approve' });
   };
 
   const handleReject = (task: Task, note?: string) => {
-    if (!selectedSpecId) return;
-    const n = note || 'Changes requested';
-    reviewTask.mutate(
-      { featureId: selectedSpecId, taskId: task.id, data: { decision: 'reject', note: n } },
-      { onSuccess: refresh }
-    );
+    void handleTransitionAction(task, 'reject', { note, decision: 'reject' });
   };
 
-  const rawTasks = tasksQuery.data;
+  const rawTasks = isAllSpecs ? allTasksQuery.data : singleSpecTasksQuery.data;
   const taskList: Task[] = Array.isArray(rawTasks)
     ? rawTasks
     : Array.isArray((rawTasks as any)?.tasks)
     ? (rawTasks as any).tasks
     : [];
 
+  const isLoading = isAllSpecs ? allTasksQuery.isLoading : singleSpecTasksQuery.isLoading;
+  const isError = isAllSpecs ? allTasksQuery.isError : singleSpecTasksQuery.isError;
+
   return (
     <div className="space-y-6">
       {/* Top Navigation Row: Back Link & Spec Switcher */}
       <div className="flex flex-wrap items-center justify-between gap-4">
         <Link
-          href={selectedSpecId ? `/specs?spec=${encodeURIComponent(selectedSpecId)}` : '/specs'}
+          href={selectedSpecId && !isAllSpecs ? `/specs?spec=${encodeURIComponent(selectedSpecId)}` : '/specs'}
           className="inline-flex items-center gap-2 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors no-underline cursor-pointer"
           data-testid="link-back-specs"
         >
@@ -175,8 +272,9 @@ export function TasksPage() {
             Active Spec:
           </span>
           <Select
-            value={selectedSpecId}
+            value={selectedSpecId || 'all'}
             onValueChange={(val) => {
+              setSelectedSpecId(val);
               setLocation(`/tasks?spec=${encodeURIComponent(val)}`);
             }}
           >
@@ -184,6 +282,12 @@ export function TasksPage() {
               <SelectValue placeholder="Select specification..." />
             </SelectTrigger>
             <SelectContent>
+              <SelectItem value="all" className="text-xs font-medium">
+                <span className="font-semibold text-foreground">All Specifications</span>
+                <span className="text-[10px] text-muted-foreground ml-2 font-mono">
+                  (workspace view)
+                </span>
+              </SelectItem>
               {featuresList.map((f: Feature) => (
                 <SelectItem key={f.id} value={f.id} className="text-xs">
                   <span className="font-semibold text-foreground">{f.name}</span>
@@ -201,23 +305,25 @@ export function TasksPage() {
       <header className="flex flex-wrap items-end justify-between gap-4 border-b border-border/80 pb-6">
         <div>
           <div className="mb-2 font-mono text-[10px] uppercase tracking-[.19em] text-primary">
-            Specification / {selectedSpecId || 'None'}
+            {isAllSpecs ? 'Workspace / All Specifications' : `Specification / ${selectedSpecId || 'None'}`}
           </div>
           <h1 className="font-serif text-[28px] sm:text-[34px] font-semibold leading-tight tracking-[-.04em] text-foreground">
-            {selectedFeature?.name ?? selectedSpecId ?? 'Specification Tasks'}
+            {isAllSpecs
+              ? 'All Specifications & Tasks'
+              : selectedFeature?.name ?? selectedSpecId ?? 'Specification Tasks'}
           </h1>
-          {selectedFeature?.description && (
-            <p className="mb-0 mt-2 max-w-2xl text-xs sm:text-sm text-muted-foreground leading-relaxed">
-              {selectedFeature.description}
-            </p>
-          )}
+          <p className="mb-0 mt-2 max-w-2xl text-xs sm:text-sm text-muted-foreground leading-relaxed">
+            {isAllSpecs
+              ? 'Consolidated task execution board across all specifications in this workspace.'
+              : selectedFeature?.description || 'Inspect and execute verifiable tasks for this specification.'}
+          </p>
         </div>
 
         <Button
           onClick={() => setIsComposerOpen(true)}
           className="gap-1.5 shadow-md"
           data-testid="button-new-task"
-          disabled={!selectedSpecId}
+          disabled={!isAllSpecs && !selectedSpecId}
         >
           <Plus size={15} />
           Add Task
@@ -234,13 +340,13 @@ export function TasksPage() {
       />
 
       {/* Main Content Area */}
-      {featuresQuery.isLoading || tasksQuery.isLoading ? (
+      {featuresQuery.isLoading || isLoading ? (
         <div className="space-y-3">
           {[1, 2, 3].map((i) => (
             <div key={i} className="h-24 rounded-xl border border-border/60 bg-card/50 animate-pulse" />
           ))}
         </div>
-      ) : featuresQuery.isError || tasksQuery.isError ? (
+      ) : featuresQuery.isError || isError ? (
         <div className="rounded-xl border border-border/80 bg-card/90 p-5 flex items-center gap-4">
           <span className="grid size-10 shrink-0 place-items-center rounded-full bg-rose-100 dark:bg-rose-950/50 text-rose-700 dark:text-rose-400">
             <AlertCircle size={18} />

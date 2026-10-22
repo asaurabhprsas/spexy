@@ -1,8 +1,65 @@
 import React, { useMemo } from 'react';
+import { Badge } from '@/components/ui/badge';
+import { Clock, ShieldCheck, Tag } from 'lucide-react';
 
 interface MarkdownRendererProps {
   content: string;
   className?: string;
+}
+
+export interface FrontmatterData {
+  status?: string;
+  updated_at?: string;
+  approved_by?: string | null;
+  extra: Record<string, string>;
+}
+
+export function extractFrontmatter(rawContent: string): { frontmatter: FrontmatterData | null; body: string } {
+  const match = rawContent.match(/^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/);
+  if (!match) {
+    return { frontmatter: null, body: rawContent };
+  }
+
+  const rawYaml = match[1];
+  const body = rawContent.slice(match[0].length);
+
+  const lines = rawYaml.split(/\r?\n/);
+  const data: Record<string, string> = {};
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith('#')) continue;
+    const colonIndex = trimmed.indexOf(':');
+    if (colonIndex !== -1) {
+      const key = trimmed.slice(0, colonIndex).trim();
+      let val = trimmed.slice(colonIndex + 1).trim();
+      if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) {
+        val = val.slice(1, -1);
+      }
+      data[key] = val;
+    }
+  }
+
+  const status = data.status || undefined;
+  const updated_at = data.updated_at || data.updatedAt || undefined;
+  const approved_by = data.approved_by !== undefined ? data.approved_by : data.approvedBy !== undefined ? data.approvedBy : undefined;
+
+  const extra: Record<string, string> = {};
+  for (const [k, v] of Object.entries(data)) {
+    if (!['status', 'updated_at', 'updatedAt', 'approved_by', 'approvedBy'].includes(k)) {
+      extra[k] = v;
+    }
+  }
+
+  return {
+    frontmatter: {
+      status,
+      updated_at,
+      approved_by,
+      extra,
+    },
+    body,
+  };
 }
 
 // Inline token parser for bold, italic, code, and links
@@ -203,10 +260,105 @@ function parseMarkdownBlocks(raw: string): Block[] {
 }
 
 export function MarkdownRenderer({ content, className = '' }: MarkdownRendererProps) {
-  const blocks = useMemo(() => parseMarkdownBlocks(content), [content]);
+  const { frontmatter, body } = useMemo(() => extractFrontmatter(content), [content]);
+  const blocks = useMemo(() => parseMarkdownBlocks(body), [body]);
+
+  const formattedDate = useMemo(() => {
+    if (!frontmatter?.updated_at) return null;
+    try {
+      const d = new Date(frontmatter.updated_at);
+      if (isNaN(d.getTime())) return frontmatter.updated_at;
+      return d.toLocaleDateString(undefined, {
+        month: 'short',
+        day: 'numeric',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+      });
+    } catch {
+      return frontmatter.updated_at;
+    }
+  }, [frontmatter?.updated_at]);
+
+  const isApproved = Boolean(
+    frontmatter?.approved_by &&
+      frontmatter.approved_by !== 'null' &&
+      frontmatter.approved_by !== 'None' &&
+      frontmatter.approved_by !== ''
+  );
 
   return (
-    <div className={`prose dark:prose-invert max-w-none text-sm leading-relaxed space-y-4 ${className}`}>
+    <div className={`prose dark:prose-invert max-w-none text-sm leading-relaxed ${className}`}>
+      {/* Frontmatter Metadata Card */}
+      {frontmatter && (
+        <div className="not-prose mb-6 rounded-xl border border-border/80 bg-card/80 p-4 shadow-xs backdrop-blur-sm space-y-2.5">
+          <div className="flex flex-wrap items-center justify-between gap-2.5">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
+                Document Metadata
+              </span>
+
+              {frontmatter.status && (
+                <Badge
+                  variant="outline"
+                  className={`font-mono text-[10px] uppercase tracking-wider ${
+                    frontmatter.status === 'approved'
+                      ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border-emerald-500/30'
+                      : frontmatter.status === 'in-review'
+                      ? 'bg-amber-500/15 text-amber-700 dark:text-amber-400 border-amber-500/30'
+                      : 'bg-primary/10 text-primary border-primary/20'
+                  }`}
+                >
+                  {frontmatter.status}
+                </Badge>
+              )}
+
+              {isApproved ? (
+                <Badge
+                  variant="outline"
+                  className="bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border-emerald-500/30 gap-1 font-mono text-[10px]"
+                >
+                  <ShieldCheck size={11} />
+                  Approved by {frontmatter.approved_by}
+                </Badge>
+              ) : (
+                <Badge
+                  variant="outline"
+                  className="bg-muted text-muted-foreground gap-1 font-mono text-[10px]"
+                >
+                  <Clock size={11} />
+                  Pending Approval
+                </Badge>
+              )}
+            </div>
+
+            {formattedDate && (
+              <div className="flex items-center gap-1.5 text-[11px] font-mono text-muted-foreground">
+                <Clock size={12} />
+                <span>Updated: {formattedDate}</span>
+              </div>
+            )}
+          </div>
+
+          {/* Additional frontmatter keys as neat pills */}
+          {Object.entries(frontmatter.extra).length > 0 && (
+            <div className="flex flex-wrap items-center gap-1.5 pt-1 border-t border-border/40">
+              {Object.entries(frontmatter.extra).map(([k, v]) => (
+                <span
+                  key={k}
+                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-mono bg-muted/70 text-muted-foreground border border-border/50"
+                >
+                  <Tag size={10} className="text-primary opacity-70" />
+                  <span className="font-semibold text-foreground/85">{k}:</span>
+                  <span>{v}</span>
+                </span>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      <div className="space-y-4">
       {blocks.map((block, idx) => {
         switch (block.type) {
           case 'heading': {
@@ -333,6 +485,7 @@ export function MarkdownRenderer({ content, className = '' }: MarkdownRendererPr
             );
         }
       })}
+      </div>
     </div>
   );
 }
