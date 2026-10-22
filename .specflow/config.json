@@ -1,9 +1,9 @@
 {
   "preferences": {
-    "themeId": "zinc",
-    "colorMode": "light",
+    "themeId": "default",
+    "colorMode": "dark",
     "compactMode": false,
-    "isInspectorFullWidth": false,
+    "isInspectorFullWidth": true,
     "fontId": "jetbrains",
     "editorViewMode": "rendered"
   }

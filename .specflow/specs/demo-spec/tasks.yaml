@@ -102,7 +102,7 @@ groups:
         parent_id: null
         title: Authentication & Authorization Engine
         description: Implement complete auth layer with session tokens and RBAC checks.
-        status: in-progress
+        status: todo
         priority: high
         depends_on:
           - "1"
@@ -160,13 +160,13 @@ groups:
         parent_id: "2"
         title: Add OAuth2 GitHub & Google strategies
         description: Support external federated SSO logins.
-        status: todo
+        status: in-progress
         priority: medium
         depends_on:
           - "2.1"
         worktree: specflow
         branch: local-dev
-        locked_at: null
+        locked_at: 2026-10-22T07:03:32.579Z
         files:
           - src/auth/oauth.ts
         leverage: ""
@@ -182,13 +182,13 @@ groups:
         parent_id: null
         title: Real-time Notification Service
         description: Scalable WebSocket communication pipeline for task and spec alerts.
-        status: todo
+        status: in-progress
         priority: high
         depends_on:
           - "2.1"
         worktree: specflow
         branch: local-dev
-        locked_at: null
+        locked_at: 2026-10-22T07:03:17.527Z
         files:
           - src/services/ws.ts
           - src/services/bus.ts
