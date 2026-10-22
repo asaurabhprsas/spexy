@@ -90,7 +90,7 @@ program
       const targetDir = path.resolve(process.cwd(), dir);
       initSpecFlowWorkspace(targetDir);
       console.log(`✓ Spec-Flow workspace initialized at: ${targetDir}`);
-      console.log(`  • Created .specflow/ (steering, specs, templates, .cache)`);
+      console.log(`  • Created .specflow/ (steering, specs, .cache) and templates/`);
       console.log(`  • Created docs/ (ARCHITECTURE.md, PROGRESS.md, ONBOARDING.md)`);
       console.log(`\nNext step: Run "spec-flow status" to review steering documents.`);
     } catch (err: any) {

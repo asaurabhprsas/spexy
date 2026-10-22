@@ -27,6 +27,11 @@ export interface LogEvent {
   category: LogCategory;
   actor: string;
   message: string;
+  details?: {
+    taskId?: string;
+    taskTitle?: string;
+    [key: string]: any;
+  };
 }
 
 interface LiveLogsDrawerProps {
@@ -41,8 +46,40 @@ export function LiveLogsDrawer({ open, onClose, onLogsCountChange }: LiveLogsDra
   const [categoryFilter, setCategoryFilter] = useState<string>('ALL');
   const [autoScroll, setAutoScroll] = useState<boolean>(true);
   const [isExpanded, setIsExpanded] = useState<boolean>(false);
+  const [drawerHeight, setDrawerHeight] = useState<number>(320);
+  const [isResizing, setIsResizing] = useState<boolean>(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const lastProcessedMsgRef = useRef<WebSocketMessage | null>(null);
+
+  // Top draggable resize handler
+  const handleMouseDownResize = (e: React.MouseEvent) => {
+    e.preventDefault();
+    setIsResizing(true);
+  };
+
+  useEffect(() => {
+    if (!isResizing) return;
+
+    const handleMouseMove = (e: MouseEvent) => {
+      const newHeight = window.innerHeight - e.clientY;
+      const minHeight = 180;
+      const maxHeight = window.innerHeight * 0.8; // 80vh
+      if (newHeight >= minHeight && newHeight <= maxHeight) {
+        setDrawerHeight(newHeight);
+      }
+    };
+
+    const handleMouseUp = () => {
+      setIsResizing(false);
+    };
+
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mouseup', handleMouseUp);
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [isResizing]);
 
   // Initial fetch from /api/logs
   useEffect(() => {
@@ -78,15 +115,22 @@ export function LiveLogsDrawer({ open, onClose, onLogsCountChange }: LiveLogsDra
         category: (lastMessage.payload.category as LogCategory) || 'SYSTEM',
         actor: lastMessage.payload.actor || 'System',
         message: lastMessage.payload.message || 'Activity event',
+        details: lastMessage.payload.details || (lastMessage.payload.taskTitle ? {
+          taskId: lastMessage.payload.taskId,
+          taskTitle: lastMessage.payload.taskTitle,
+        } : undefined),
       };
       setLogs((prev) => [newLog, ...prev.filter((l) => l.id !== newLog.id)]);
     } else if (lastMessage.type === 'TASK_UPDATED') {
+      const taskId = lastMessage.taskId || lastMessage.payload?.taskId || lastMessage.payload?.specId;
+      const taskTitle = lastMessage.payload?.taskTitle || lastMessage.payload?.title;
       const newLog: LogEvent = {
         id: `log-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
         timestamp: new Date().toISOString(),
         category: 'TASK',
         actor: 'Agent/Human',
-        message: `Task updated: ${lastMessage.taskId || lastMessage.payload?.specId || 'workflow task'}`,
+        message: `Task updated: ${taskId || 'workflow task'}`,
+        details: taskTitle || taskId ? { taskId, taskTitle } : undefined,
       };
       setLogs((prev) => [newLog, ...prev]);
     } else if (lastMessage.type === 'DOC_UPDATED') {
@@ -170,12 +214,22 @@ export function LiveLogsDrawer({ open, onClose, onLogsCountChange }: LiveLogsDra
   return (
     <div className="fixed inset-x-0 bottom-0 z-50 flex justify-center px-2 sm:px-6 pointer-events-none">
       <div
-        className={`pointer-events-auto flex flex-col w-full max-w-5xl rounded-t-2xl border border-border/90 bg-card/95 shadow-2xl backdrop-blur-xl transition-all duration-300 ${
-          isExpanded ? 'h-[85vh]' : 'h-96'
+        style={{ height: isExpanded ? '85vh' : `${drawerHeight}px` }}
+        className={`pointer-events-auto flex flex-col w-full max-w-5xl rounded-t-2xl border border-border/90 bg-card/95 shadow-2xl backdrop-blur-xl ${
+          isResizing ? 'select-none transition-none' : 'transition-[height] duration-200'
         }`}
       >
+        {/* Top Draggable Resize Bar */}
+        <div
+          onMouseDown={handleMouseDownResize}
+          className="w-full h-3 cursor-ns-resize flex items-center justify-center hover:bg-primary/20 active:bg-primary/30 transition-colors group select-none shrink-0 rounded-t-2xl"
+          title="Drag up or down to resize height"
+        >
+          <div className="w-12 h-1 rounded-full bg-border group-hover:bg-primary/60 transition-colors" />
+        </div>
+
         {/* Drawer Header */}
-        <header className="flex items-center justify-between border-b border-border/80 px-4 py-3 bg-muted/40 rounded-t-2xl">
+        <header className="flex items-center justify-between border-b border-border/80 px-4 py-2.5 bg-muted/40">
           <div className="flex items-center gap-3">
             <span className="grid size-8 place-items-center rounded-lg bg-primary/10 text-primary">
               <Terminal size={16} />
@@ -317,9 +371,22 @@ export function LiveLogsDrawer({ open, onClose, onLogsCountChange }: LiveLogsDra
                   {log.actor}
                 </span>
 
-                <span className="flex-1 text-foreground break-words leading-relaxed text-[11px]">
-                  {log.message}
-                </span>
+                <div className="flex-1 min-w-0">
+                  {log.details?.taskTitle && (
+                    <div className="mb-1 flex items-center gap-1.5 font-mono text-[11px] font-semibold text-primary">
+                      <Layers size={11} />
+                      <span>Task: &ldquo;{log.details.taskTitle}&rdquo;</span>
+                      {log.details.taskId && (
+                        <span className="text-[10px] text-muted-foreground font-normal">
+                          ({log.details.taskId})
+                        </span>
+                      )}
+                    </div>
+                  )}
+                  <span className="text-foreground break-words leading-relaxed text-[11px]">
+                    {log.message}
+                  </span>
+                </div>
               </div>
             ))
           )}

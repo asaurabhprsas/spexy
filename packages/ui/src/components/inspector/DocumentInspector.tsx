@@ -82,6 +82,8 @@ export function DocumentInspector({ documentId, onClose }: DocumentInspectorProp
   // Floating button state for text selection
   const [floatingButtonPos, setFloatingButtonPos] = useState<{ top: number; left: number } | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const contentContainerRef = useRef<HTMLDivElement>(null);
+  const previewRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const doc = docQuery.data;
@@ -184,13 +186,61 @@ export function DocumentInspector({ documentId, onClose }: DocumentInspectorProp
     setEndLine(calculatedEndLine);
 
     const textareaRect = textarea.getBoundingClientRect();
-    const containerRect = containerRef.current?.getBoundingClientRect();
+    const container = contentContainerRef.current || containerRef.current;
+    const containerRect = container?.getBoundingClientRect();
 
     if (containerRect) {
       setFloatingButtonPos({
         top: Math.max(10, textareaRect.top - containerRect.top + 20),
         left: Math.min(containerRect.width - 220, textareaRect.width / 2),
       });
+    }
+  };
+
+  const handlePreviewTextSelect = () => {
+    const sel = window.getSelection();
+    const selected = sel?.toString().trim();
+    if (!sel || !selected || selected.length === 0 || sel.rangeCount === 0) {
+      return;
+    }
+
+    // Find line index in content:
+    const idx = content.indexOf(selected);
+    let calculatedStartLine = 1;
+    let calculatedEndLine = 1;
+
+    if (idx !== -1) {
+      const before = content.slice(0, idx);
+      calculatedStartLine = before.split('\n').length;
+      calculatedEndLine = (before + selected).split('\n').length;
+    } else {
+      // Fallback: match by line containing selected snippet
+      const lines = content.split('\n');
+      const firstLineSnippet = selected.split('\n')[0]?.trim().slice(0, 30) || selected.slice(0, 30);
+      const foundIdx = lines.findIndex((l) => l.includes(firstLineSnippet));
+      if (foundIdx !== -1) {
+        calculatedStartLine = foundIdx + 1;
+        calculatedEndLine = Math.min(lines.length, calculatedStartLine + selected.split('\n').length - 1);
+      }
+    }
+
+    setSelectedText(selected);
+    setStartLine(calculatedStartLine);
+    setEndLine(calculatedEndLine);
+
+    try {
+      const range = sel.getRangeAt(0);
+      const rect = range.getBoundingClientRect();
+      const container = contentContainerRef.current;
+      if (container) {
+        const cRect = container.getBoundingClientRect();
+        setFloatingButtonPos({
+          top: Math.max(10, rect.top - cRect.top - 42),
+          left: Math.max(10, Math.min(cRect.width - 220, rect.left - cRect.left + (rect.width / 2) - 80)),
+        });
+      }
+    } catch {
+      // Ignore transition selection errors
     }
   };
 
@@ -491,9 +541,9 @@ export function DocumentInspector({ documentId, onClose }: DocumentInspectorProp
             </div>
 
             {/* Document Content View Modes */}
-            <div className="relative flex-1 min-h-0 overflow-hidden bg-background/50 flex">
+            <div ref={contentContainerRef} className="relative flex-1 min-h-0 overflow-hidden bg-background/50 flex">
               {/* Floating "Add Comment for AI" button on text selection */}
-              {floatingButtonPos && (viewMode === 'source' || viewMode === 'split') && (
+              {floatingButtonPos && (
                 <div
                   style={{
                     position: 'absolute',
@@ -533,7 +583,11 @@ export function DocumentInspector({ documentId, onClose }: DocumentInspectorProp
 
               {/* Preview View */}
               {(viewMode === 'preview' || viewMode === 'split') && (
-                <div className={`${viewMode === 'split' ? 'w-1/2' : 'w-full'} h-full overflow-y-auto p-6 bg-card/40`}>
+                <div
+                  ref={previewRef}
+                  onMouseUp={handlePreviewTextSelect}
+                  className={`${viewMode === 'split' ? 'w-1/2' : 'w-full'} h-full overflow-y-auto p-6 bg-card/40 select-text`}
+                >
                   <MarkdownRenderer content={content} />
                 </div>
               )}

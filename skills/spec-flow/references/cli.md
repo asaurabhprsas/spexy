@@ -8,7 +8,7 @@ All query commands support `--json` for machine consumption.
 ## Command Catalog
 
 ### `spec-flow init [dir]`
-Scaffolds the `.specflow/` structure (config, steering, specs, templates, .cache) and companion `docs/` folder in the target directory.
+Scaffolds the `.specflow/` structure (config, steering, specs, .cache), root `templates/`, and companion `docs/` folder in the target directory.
 - `[dir]`: Target directory (defaults to current directory `.`).
 
 ### `spec-flow status [--json]`

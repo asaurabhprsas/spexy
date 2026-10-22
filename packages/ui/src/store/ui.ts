@@ -1,6 +1,6 @@
 import { create } from "zustand";
 
-type DocumentFilter = "all" | "steering" | "requirements" | "design";
+type DocumentFilter = "all" | "steering" | "specifications" | "requirements" | "design";
 
 type WorkflowUiState = {
   selectedDocumentId: string | null;

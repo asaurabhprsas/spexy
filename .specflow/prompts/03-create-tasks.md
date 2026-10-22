@@ -10,7 +10,7 @@ Generate a valid, DAG-enforced `tasks.yaml` in `.specflow/specs/<spec-id>/tasks.
 
 ## Instructions
 1. Analyze `.specflow/specs/<spec-id>/requirements.md` and `design.md`.
-2. Reference the template in `.specflow/templates/specs/tasks.template.yaml`.
+2. Reference the template in `templates/specs/tasks.template.yaml`.
 3. Organize tasks into sequential phases (Foundation, Implementation, Integration, Verification).
 4. Each task item must define:
    - `id`: Unique alphanumeric ID (e.g., "1", "2", "3").

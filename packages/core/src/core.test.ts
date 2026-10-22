@@ -344,13 +344,16 @@ Document body here.`;
       initSpecFlowWorkspace(tmpDir);
 
       const sfDir = path.join(tmpDir, ".specflow");
-      // Verify templates exist
-      expect(fs.existsSync(path.join(sfDir, "templates", "steering", "product.template.md"))).toBe(true);
-      expect(fs.existsSync(path.join(sfDir, "templates", "steering", "tech.template.md"))).toBe(true);
-      expect(fs.existsSync(path.join(sfDir, "templates", "steering", "structure.template.md"))).toBe(true);
-      expect(fs.existsSync(path.join(sfDir, "templates", "specs", "requirements.template.md"))).toBe(true);
-      expect(fs.existsSync(path.join(sfDir, "templates", "specs", "design.template.md"))).toBe(true);
-      expect(fs.existsSync(path.join(sfDir, "templates", "specs", "tasks.template.yaml"))).toBe(true);
+      // Verify templates exist in projectRoot/templates
+      expect(fs.existsSync(path.join(tmpDir, "templates", "steering", "product.template.md"))).toBe(true);
+      expect(fs.existsSync(path.join(tmpDir, "templates", "steering", "tech.template.md"))).toBe(true);
+      expect(fs.existsSync(path.join(tmpDir, "templates", "steering", "structure.template.md"))).toBe(true);
+      expect(fs.existsSync(path.join(tmpDir, "templates", "specs", "requirements.template.md"))).toBe(true);
+      expect(fs.existsSync(path.join(tmpDir, "templates", "specs", "design.template.md"))).toBe(true);
+      expect(fs.existsSync(path.join(tmpDir, "templates", "specs", "tasks.template.yaml"))).toBe(true);
+
+      // Verify legacy .specflow/templates does not exist
+      expect(fs.existsSync(path.join(sfDir, "templates"))).toBe(false);
 
       // Verify prompts exist
       expect(fs.existsSync(path.join(sfDir, "prompts", "README.md"))).toBe(true);
@@ -364,6 +367,17 @@ Document body here.`;
       createSpec(tmpDir, "test-spec", { force: true });
       expect(fs.existsSync(path.join(sfDir, "specs", "test-spec", "references"))).toBe(true);
       expect(fs.existsSync(path.join(sfDir, "specs", "test-spec", "images"))).toBe(true);
+    });
+
+    it("cleans up legacy .specflow/templates directory on init", () => {
+      const legacyDir = path.join(tmpDir, ".specflow", "templates");
+      fs.mkdirSync(legacyDir, { recursive: true });
+      fs.writeFileSync(path.join(legacyDir, "legacy.txt"), "legacy");
+      expect(fs.existsSync(legacyDir)).toBe(true);
+
+      initSpecFlowWorkspace(tmpDir);
+      expect(fs.existsSync(legacyDir)).toBe(false);
+      expect(fs.existsSync(path.join(tmpDir, "templates", "steering", "product.template.md"))).toBe(true);
     });
   });
 

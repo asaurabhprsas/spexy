@@ -1,7 +1,13 @@
 import React, { useState } from 'react';
 import type { Task } from '@workspace/api-client-react';
-import { DndContext, useDraggable, useDroppable, type DragEndEvent } from '@dnd-kit/core';
-import { CSS } from '@dnd-kit/utilities';
+import {
+  DndContext,
+  DragOverlay,
+  useDraggable,
+  useDroppable,
+  type DragEndEvent,
+  type DragStartEvent,
+} from '@dnd-kit/core';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
@@ -26,8 +32,8 @@ import {
   AlertCircle,
   ShieldCheck,
   RotateCcw,
-  Sparkles,
 } from 'lucide-react';
+import { TaskDetailModal } from '@/components/task/TaskDetailModal';
 
 interface KanbanBoardProps {
   tasks: Task[];
@@ -44,6 +50,12 @@ export function KanbanBoard({
   onApproveDone,
   onRequestChanges,
 }: KanbanBoardProps) {
+  // Dragging active item state for smooth DragOverlay
+  const [activeTaskId, setActiveTaskId] = useState<string | null>(null);
+
+  // Selected task state for TaskDetailModal
+  const [detailTask, setDetailTask] = useState<Task | null>(null);
+
   // Verification dialog state for dragging to done
   const [pendingDoneTask, setPendingDoneTask] = useState<Task | null>(null);
   const [verificationNote, setVerificationNote] = useState('');
@@ -61,7 +73,16 @@ export function KanbanBoard({
   const [pendingRejectTask, setPendingRejectTask] = useState<Task | null>(null);
   const [rejectNote, setRejectNote] = useState('');
 
+  const handleDragStart = (event: DragStartEvent) => {
+    setActiveTaskId(String(event.active.id));
+  };
+
+  const handleDragCancel = () => {
+    setActiveTaskId(null);
+  };
+
   const handleDragEnd = (event: DragEndEvent) => {
+    setActiveTaskId(null);
     if (!event.over) return;
     const taskId = String(event.active.id);
     const destinationLane = String(event.over.id) as Task['status'];
@@ -139,10 +160,15 @@ export function KanbanBoard({
   ];
 
   const blockedTasks = tasks.filter((t) => t.availability === 'blocked' || (t.blockers && t.blockers.length > 0));
+  const activeTask = activeTaskId ? tasks.find((t) => t.id === activeTaskId) : null;
 
   return (
     <div className="space-y-6">
-      <DndContext onDragEnd={handleDragEnd}>
+      <DndContext
+        onDragStart={handleDragStart}
+        onDragEnd={handleDragEnd}
+        onDragCancel={handleDragCancel}
+      >
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
           {lanes.map((lane) => {
             const laneTasks = tasks.filter(
@@ -154,6 +180,7 @@ export function KanbanBoard({
                 status={lane.id}
                 label={lane.label}
                 tasks={laneTasks}
+                onSelectTask={(t) => setDetailTask(t)}
                 onQuickClaim={(t) => {
                   setPendingClaimTask(t);
                   setClaimWorktree(t.worktree || `worktree/${t.id}`);
@@ -175,7 +202,38 @@ export function KanbanBoard({
             );
           })}
         </div>
+
+        {/* Floating Portal DragOverlay with smooth drop animation */}
+        <DragOverlay dropAnimation={{ duration: 200, easing: 'cubic-bezier(0.18, 0.67, 0.6, 1.22)' }}>
+          {activeTask ? <KanbanCardOverlay task={activeTask} /> : null}
+        </DragOverlay>
       </DndContext>
+
+      {/* Task Detail Modal */}
+      <TaskDetailModal
+        task={detailTask}
+        open={detailTask !== null}
+        onOpenChange={(open) => !open && setDetailTask(null)}
+        allTasks={tasks}
+        onSelectTask={(t) => setDetailTask(t)}
+        onClaim={(t) => {
+          setPendingClaimTask(t);
+          setClaimWorktree(t.worktree || `worktree/${t.id}`);
+          setClaimActor('AI Agent');
+        }}
+        onSubmitReview={(t) => {
+          setPendingSubmitTask(t);
+          setSubmitNote('');
+        }}
+        onApprove={(t) => {
+          setPendingDoneTask(t);
+          setVerificationNote('');
+        }}
+        onRequestChanges={(t) => {
+          setPendingRejectTask(t);
+          setRejectNote('');
+        }}
+      />
 
       {/* Blocked Dependencies Drawer / Box */}
       {blockedTasks.length > 0 && (
@@ -190,7 +248,8 @@ export function KanbanBoard({
             {blockedTasks.map((t) => (
               <div
                 key={t.id}
-                className="rounded-lg border border-rose-300/60 dark:border-rose-900/60 bg-background/80 p-3"
+                onClick={() => setDetailTask(t)}
+                className="rounded-lg border border-rose-300/60 dark:border-rose-900/60 bg-background/80 p-3 cursor-pointer hover:border-rose-500/60 transition-colors"
               >
                 <div className="flex items-center justify-between gap-2 mb-1">
                   <span className="font-mono text-[10px] text-muted-foreground">{t.id}</span>
@@ -361,6 +420,7 @@ interface KanbanLaneProps {
   status: Task['status'];
   label: string;
   tasks: Task[];
+  onSelectTask: (task: Task) => void;
   onQuickClaim: (task: Task) => void;
   onQuickSubmit: (task: Task) => void;
   onQuickApprove: (task: Task) => void;
@@ -371,6 +431,7 @@ function KanbanLane({
   status,
   label,
   tasks,
+  onSelectTask,
   onQuickClaim,
   onQuickSubmit,
   onQuickApprove,
@@ -420,6 +481,7 @@ function KanbanLane({
             <KanbanCard
               key={task.id}
               task={task}
+              onSelect={onSelectTask}
               onQuickClaim={onQuickClaim}
               onQuickSubmit={onQuickSubmit}
               onQuickApprove={onQuickApprove}
@@ -434,6 +496,7 @@ function KanbanLane({
 
 interface KanbanCardProps {
   task: Task;
+  onSelect: (task: Task) => void;
   onQuickClaim: (task: Task) => void;
   onQuickSubmit: (task: Task) => void;
   onQuickApprove: (task: Task) => void;
@@ -442,22 +505,18 @@ interface KanbanCardProps {
 
 function KanbanCard({
   task,
+  onSelect,
   onQuickClaim,
   onQuickSubmit,
   onQuickApprove,
   onQuickReject,
 }: KanbanCardProps) {
   const isDraggable = task.status !== 'done' && task.availability !== 'blocked';
-  const { attributes, listeners, setNodeRef, setActivatorNodeRef, transform, isDragging } =
+  const { attributes, listeners, setNodeRef, setActivatorNodeRef, isDragging } =
     useDraggable({
       id: task.id,
       disabled: !isDraggable,
     });
-
-  const style: React.CSSProperties = {
-    transform: CSS.Transform.toString(transform),
-    transition: isDragging ? undefined : 'transform 160ms ease',
-  };
 
   const getPriorityDot = (p: string) => {
     switch (p) {
@@ -470,13 +529,31 @@ function KanbanCard({
     }
   };
 
+  // While dragging, render a dashed placeholder in place. DragOverlay handles the moving card!
+  if (isDragging) {
+    return (
+      <div
+        ref={setNodeRef}
+        className="rounded-lg border-2 border-dashed border-primary/50 bg-muted/30 p-3 opacity-30 min-h-[96px] pointer-events-none transition-all"
+        aria-hidden="true"
+      >
+        <div className="flex items-center gap-1.5 mb-2">
+          <span className="font-mono text-[9px] text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
+            {task.id}
+          </span>
+        </div>
+        <h4 className="text-xs font-semibold text-foreground/50 line-clamp-2">
+          {task.title}
+        </h4>
+      </div>
+    );
+  }
+
   return (
     <article
       ref={setNodeRef}
-      style={style}
-      className={`rounded-lg border border-border/70 bg-background/80 p-3 shadow-xs transition hover:border-primary/40 ${
-        isDragging ? 'z-50 opacity-40 shadow-xl' : ''
-      }`}
+      onClick={() => onSelect(task)}
+      className="rounded-lg border border-border/70 bg-background/80 p-3 shadow-xs transition hover:border-primary/40 cursor-pointer group"
     >
       <div className="flex items-start justify-between gap-2 mb-2">
         <div className="min-w-0 flex-1">
@@ -489,7 +566,7 @@ function KanbanCard({
               title={`${task.priority} priority`}
             />
           </div>
-          <h4 className="text-xs font-semibold text-foreground leading-snug line-clamp-2">
+          <h4 className="text-xs font-semibold text-foreground leading-snug line-clamp-2 group-hover:text-primary transition-colors">
             {task.title}
           </h4>
         </div>
@@ -499,9 +576,10 @@ function KanbanCard({
             ref={setActivatorNodeRef}
             {...attributes}
             {...listeners}
+            onClick={(e) => e.stopPropagation()}
             type="button"
             aria-label="Drag task"
-            className="cursor-grab text-muted-foreground hover:text-foreground active:cursor-grabbing p-1"
+            className="cursor-grab text-muted-foreground hover:text-foreground active:cursor-grabbing p-1 -mr-1"
           >
             <GripVertical size={14} />
           </button>
@@ -540,7 +618,10 @@ function KanbanCard({
       )}
 
       {/* Quick Action Buttons */}
-      <div className="flex items-center gap-1.5 pt-2 border-t border-border/50">
+      <div
+        className="flex items-center gap-1.5 pt-2 border-t border-border/50"
+        onClick={(e) => e.stopPropagation()}
+      >
         {task.status === 'todo' && task.availability === 'available' && (
           <Button
             size="sm"
@@ -593,5 +674,64 @@ function KanbanCard({
         )}
       </div>
     </article>
+  );
+}
+
+function KanbanCardOverlay({ task }: { task: Task }) {
+  const getPriorityDot = (p: string) => {
+    switch (p) {
+      case 'high':
+        return 'bg-rose-500';
+      case 'medium':
+        return 'bg-amber-500';
+      default:
+        return 'bg-slate-400';
+    }
+  };
+
+  return (
+    <div className="w-[280px] rounded-lg border-2 border-primary/60 bg-background/95 p-3 shadow-2xl rotate-1 scale-[1.02] cursor-grabbing backdrop-blur-xs select-none pointer-events-none">
+      <div className="flex items-start justify-between gap-2 mb-2">
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-1.5 mb-1">
+            <span className="font-mono text-[9px] text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
+              {task.id}
+            </span>
+            <span
+              className={`size-1.5 rounded-full ${getPriorityDot(task.priority)}`}
+            />
+          </div>
+          <h4 className="text-xs font-semibold text-foreground leading-snug line-clamp-2">
+            {task.title}
+          </h4>
+        </div>
+        <div className="text-primary p-1 -mr-1">
+          <GripVertical size={14} />
+        </div>
+      </div>
+
+      {task.description && (
+        <p className="text-[11px] text-muted-foreground line-clamp-2 mb-2.5 leading-relaxed">
+          {task.description}
+        </p>
+      )}
+
+      {(task.worktree || (task.files && task.files.length > 0)) && (
+        <div className="flex flex-wrap gap-1.5 font-mono text-[9px] text-muted-foreground">
+          {task.worktree && (
+            <span className="inline-flex items-center gap-1 bg-muted/60 px-1.5 py-0.5 rounded">
+              <GitBranch size={10} />
+              {task.worktree}
+            </span>
+          )}
+          {task.files && task.files.length > 0 && (
+            <span className="inline-flex items-center gap-1 bg-muted/60 px-1.5 py-0.5 rounded">
+              <FileText size={10} />
+              {task.files.length}
+            </span>
+          )}
+        </div>
+      )}
+    </div>
   );
 }

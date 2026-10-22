@@ -664,5 +664,67 @@ describe("Track B: Fastify/Bun WebSocket Server & File Watcher", () => {
     const limitedBody: any = await limitedRes.json();
     expect(limitedBody.logs.length).toBe(1);
   });
+
+  it("logs task creation and transition activities with taskTitle and details", async () => {
+    // 0. Create a valid spec
+    await fetch(`${baseUrl}/api/specs`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: "task-log-spec", title: "Task Log Spec", force: true }),
+    });
+
+    // 1. Create a task via POST /api/specs/task-log-spec/tasks
+    const createRes = await fetch(`${baseUrl}/api/specs/task-log-spec/tasks`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        id: "task-log-test",
+        title: "Log Test Task",
+        description: "Testing activity log details",
+        priority: "high",
+      }),
+    });
+    expect(createRes.status).toBe(201);
+
+    // 2. Transition task via POST /api/specs/task-log-spec/tasks/task-log-test/transition
+    const transitionRes = await fetch(`${baseUrl}/api/specs/task-log-spec/tasks/task-log-test/transition`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        action: "claim",
+        actor: "agent",
+      }),
+    });
+    expect(transitionRes.status).toBe(200);
+
+    // 3. Check logs
+    const logsRes = await fetch(`${baseUrl}/api/logs?category=task`);
+    expect(logsRes.status).toBe(200);
+    const logsBody: any = await logsRes.json();
+    const taskLogs = logsBody.logs;
+
+    const createLog = taskLogs.find((l: any) => l.action === "create" && l.details?.taskId === "task-log-test");
+    expect(createLog).toBeDefined();
+    expect(createLog.message).toBe('Task "Log Test Task" (task-log-test) created in spec "task-log-spec"');
+    expect(createLog.details).toEqual({
+      specId: "task-log-spec",
+      taskId: "task-log-test",
+      taskTitle: "Log Test Task",
+      actor: "human",
+    });
+
+    const transitionLog = taskLogs.find((l: any) => l.action === "claim" && l.details?.taskId === "task-log-test");
+    expect(transitionLog).toBeDefined();
+    expect(transitionLog.message).toBe('Task "Log Test Task" (task-log-test) in spec "task-log-spec" transitioned to in-progress');
+    expect(transitionLog.details).toEqual({
+      specId: "task-log-spec",
+      taskId: "task-log-test",
+      taskTitle: "Log Test Task",
+      fromStatus: "todo",
+      toStatus: "in-progress",
+      actor: "agent",
+      note: undefined,
+    });
+  });
 });
 

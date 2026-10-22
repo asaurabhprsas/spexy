@@ -12,7 +12,7 @@ Draft or update foundational steering documents (`product.md`, `tech.md`, `struc
 ## Instructions
 1. Inspect current steering status:
    `spec-flow status`
-2. Refer to the turnkey templates in `.specflow/templates/steering/`:
+2. Refer to the turnkey templates in `templates/steering/`:
    - `product.template.md`: Product vision, target users, features, principles, metrics.
    - `tech.template.md`: Technology stack, patterns, security, and quality constraints.
    - `structure.template.md`: Monorepo structure, naming conventions, branching rules.

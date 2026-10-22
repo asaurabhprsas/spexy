@@ -20,7 +20,7 @@ Scaffold and author `requirements.md` and `design.md` for a new feature.
    - `.specflow/specs/<spec-id>/tasks.yaml`
    - `.specflow/specs/<spec-id>/references/`
    - `.specflow/specs/<spec-id>/images/`
-3. Reference templates in `.specflow/templates/specs/`:
+3. Reference templates in `templates/specs/`:
    - `requirements.template.md`: User story, functional requirements with acceptance criteria, and non-functional requirements.
    - `design.template.md`: Architecture, components, interfaces, data models, integration contracts, and error handling.
 4. Author `requirements.md` and `design.md` thoroughly:

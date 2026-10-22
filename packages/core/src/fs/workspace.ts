@@ -469,15 +469,22 @@ export function updateTaskInDoc(
 export function initSpecFlowWorkspace(projectRoot: string): void {
   const sfDir = getSpecflowDir(projectRoot);
   const docsDir = path.join(projectRoot, DOCS_DIR);
+  const templatesDir = path.join(projectRoot, "templates");
 
   fs.mkdirSync(path.join(sfDir, "steering"), { recursive: true });
   fs.mkdirSync(path.join(sfDir, "specs"), { recursive: true });
-  fs.mkdirSync(path.join(sfDir, "templates", "steering"), { recursive: true });
-  fs.mkdirSync(path.join(sfDir, "templates", "specs"), { recursive: true });
+  fs.mkdirSync(path.join(templatesDir, "steering"), { recursive: true });
+  fs.mkdirSync(path.join(templatesDir, "specs"), { recursive: true });
   fs.mkdirSync(path.join(sfDir, "prompts"), { recursive: true });
   fs.mkdirSync(path.join(sfDir, ".cache", "checkpoints"), { recursive: true });
   fs.mkdirSync(path.join(sfDir, ".cache", "history"), { recursive: true });
   fs.mkdirSync(docsDir, { recursive: true });
+
+  // Clean up legacy .specflow/templates if it exists
+  const legacyTemplatesDir = path.join(sfDir, "templates");
+  if (fs.existsSync(legacyTemplatesDir)) {
+    fs.rmSync(legacyTemplatesDir, { recursive: true, force: true });
+  }
 
   const now = new Date().toISOString();
 
@@ -511,7 +518,6 @@ This directory is managed by **Spec-Flow**, the local-first Spec-Driven Developm
 ## Structure
 - \`steering/\`: Foundational documents (product, tech, structure). Must be approved by a human before spec execution.
 - \`specs/\`: Feature specifications containing requirements, design, tasks, and audit logs.
-- \`templates/\`: Turnkey templates for steering, specifications, and tasks.
 - \`prompts/\`: Actionable guidance prompts for autonomous AI agents.
 - \`.cache/\`: Ephemeral local state, review comments, and rolling checkpoints.
 `,
@@ -532,7 +538,7 @@ High-level cross-spec roadmap and development milestones.
     );
   }
 
-  // 6. Turnkey Templates in .specflow/templates/
+  // 6. Turnkey Templates in templates/
   const templates: { subpath: string; content: string }[] = [
     {
       subpath: path.join("steering", "product.template.md"),
@@ -716,7 +722,7 @@ groups:
   ];
 
   for (const tpl of templates) {
-    const tplPath = path.join(sfDir, "templates", tpl.subpath);
+    const tplPath = path.join(templatesDir, tpl.subpath);
     if (!fs.existsSync(tplPath)) {
       fs.writeFileSync(tplPath, tpl.content, "utf-8");
     }
@@ -761,7 +767,7 @@ Draft or update foundational steering documents (\`product.md\`, \`tech.md\`, \`
 ## Instructions
 1. Inspect current steering status:
    \`spec-flow status\`
-2. Refer to the turnkey templates in \`.specflow/templates/steering/\`:
+2. Refer to the turnkey templates in \`templates/steering/\`:
    - \`product.template.md\`: Product vision, target users, features, principles, metrics.
    - \`tech.template.md\`: Technology stack, patterns, security, and quality constraints.
    - \`structure.template.md\`: Monorepo structure, naming conventions, branching rules.
@@ -807,7 +813,7 @@ Scaffold and author \`requirements.md\` and \`design.md\` for a new feature.
    - \`.specflow/specs/<spec-id>/tasks.yaml\`
    - \`.specflow/specs/<spec-id>/references/\`
    - \`.specflow/specs/<spec-id>/images/\`
-3. Reference templates in \`.specflow/templates/specs/\`:
+3. Reference templates in \`templates/specs/\`:
    - \`requirements.template.md\`: User story, functional requirements with acceptance criteria, and non-functional requirements.
    - \`design.template.md\`: Architecture, components, interfaces, data models, integration contracts, and error handling.
 4. Author \`requirements.md\` and \`design.md\` thoroughly:
@@ -832,7 +838,7 @@ Generate a valid, DAG-enforced \`tasks.yaml\` in \`.specflow/specs/<spec-id>/tas
 
 ## Instructions
 1. Analyze \`.specflow/specs/<spec-id>/requirements.md\` and \`design.md\`.
-2. Reference the template in \`.specflow/templates/specs/tasks.template.yaml\`.
+2. Reference the template in \`templates/specs/tasks.template.yaml\`.
 3. Organize tasks into sequential phases (Foundation, Implementation, Integration, Verification).
 4. Each task item must define:
    - \`id\`: Unique alphanumeric ID (e.g., "1", "2", "3").

@@ -238,8 +238,8 @@ export function createServer(options: ServerOptions = {}): {
           category: "task",
           action: action as string,
           actor: actor as string,
-          message: `Task "${taskId}" transitioned via ${action} to ${nextStatus}`,
-          details: { specId, taskId, nextStatus, action, actor, note },
+          message: `Task "${target.title}" (${taskId}) in spec "${specId}" transitioned to ${nextStatus}`,
+          details: { specId, taskId, taskTitle: target.title, fromStatus: target.status, toStatus: nextStatus, actor, note },
         });
 
         ws.send(JSON.stringify({
@@ -701,9 +701,9 @@ export function createServer(options: ServerOptions = {}): {
           logActivity({
             category: "task",
             action: "create",
-            actor: "agent",
-            message: `Created task "${newTask.id}" in spec "${specId}"`,
-            details: { specId, taskId: newTask.id },
+            actor: "human",
+            message: `Task "${newTask.title}" (${newTask.id}) created in spec "${specId}"`,
+            details: { specId, taskId: newTask.id, taskTitle: newTask.title, actor: "human" },
           });
 
           broadcast({
@@ -766,8 +766,16 @@ export function createServer(options: ServerOptions = {}): {
             category: "task",
             action,
             actor,
-            message: `Task "${taskId}" transitioned via ${action} to ${nextStatus}`,
-            details: { specId, taskId, nextStatus, action, actor, note: reqBody.note },
+            message: `Task "${target.title}" (${taskId}) in spec "${specId}" transitioned to ${nextStatus}`,
+            details: {
+              specId,
+              taskId,
+              taskTitle: target.title,
+              fromStatus: target.status,
+              toStatus: nextStatus,
+              actor,
+              note: reqBody.note,
+            },
           });
 
           broadcast({
@@ -878,8 +886,16 @@ export function createServer(options: ServerOptions = {}): {
             category: "task",
             action,
             actor,
-            message: `Task "${taskId}" transitioned via ${action} to ${nextStatus}`,
-            details: { specId, taskId, nextStatus, action, actor, note: reqBody.note },
+            message: `Task "${target.title}" (${taskId}) in spec "${specId}" transitioned to ${nextStatus}`,
+            details: {
+              specId,
+              taskId,
+              taskTitle: target.title,
+              fromStatus: target.status,
+              toStatus: nextStatus,
+              actor,
+              note: reqBody.note,
+            },
           });
 
           broadcast({

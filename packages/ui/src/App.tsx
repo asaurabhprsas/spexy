@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent, type ReactNode } from 'react';
+import { useEffect, useState, useMemo, type FormEvent, type ReactNode } from 'react';
 import { QueryClient, QueryClientProvider, useQueryClient } from '@tanstack/react-query';
 import { Link, Route, Switch, useLocation, Router as WouterRouter, useParams } from 'wouter';
 import {
@@ -13,6 +13,7 @@ import {
   Clock3,
   FileText,
   GitBranch,
+  Layers,
   Layers3,
   LayoutGrid,
   ListOrdered,
@@ -31,8 +32,12 @@ import {
   Eye,
   X,
   FileCheck2,
+  PanelLeftClose,
+  PanelLeftOpen,
+  Compass,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { ErrorBoundary } from '@/components/error-boundary';
@@ -88,6 +93,7 @@ const dateLabel = (value: string) =>
 
 function Shell({ children }: { children: ReactNode }) {
   const [location] = useLocation();
+  const filter = useWorkflowUiStore((state) => state.documentFilter);
   const dashboard = useGetDashboard();
   const health = useHealthCheck({
     query: { queryKey: getHealthCheckQueryKey(), refetchInterval: 45_000 },
@@ -96,99 +102,190 @@ function Shell({ children }: { children: ReactNode }) {
   const [isLogsDrawerOpen, setIsLogsDrawerOpen] = useState(false);
   const [logsCount, setLogsCount] = useState(0);
 
+  // Collapsible sidebar state with hover-to-expand
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(() => {
+    try {
+      return localStorage.getItem('specflow_sidebar_collapsed') === 'true';
+    } catch {
+      return false;
+    }
+  });
+  const [isHovered, setIsHovered] = useState(false);
+
+  const toggleSidebar = () => {
+    setIsSidebarCollapsed((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem('specflow_sidebar_collapsed', String(next));
+      } catch {}
+      return next;
+    });
+  };
+
   const project = dashboard.data?.projectName ?? 'Workspace';
+  const isExpandedView = !isSidebarCollapsed || isHovered;
 
   return (
     <div className="min-h-[100dvh] md:flex bg-background text-foreground">
-      <aside className="bg-sidebar text-sidebar-foreground md:fixed md:inset-y-0 md:flex md:w-[252px] md:flex-col border-r border-sidebar-border">
-        <div className="flex items-center justify-between px-5 py-5 md:block md:px-6 md:pt-7">
-          <Link href="/" className="group flex items-center gap-3 text-sidebar-foreground no-underline">
-            <span className="grid size-10 place-items-center rounded-xl border border-white/10 bg-white/[.07] text-primary">
-              <TerminalSquare size={19} />
+      <aside
+        onMouseEnter={() => setIsHovered(true)}
+        onMouseLeave={() => setIsHovered(false)}
+        className={cx(
+          'bg-sidebar text-sidebar-foreground md:fixed md:inset-y-0 md:flex md:flex-col border-r border-sidebar-border transition-all duration-300 ease-in-out',
+          isSidebarCollapsed
+            ? isHovered
+              ? 'md:w-64 z-40 shadow-2xl'
+              : 'md:w-16 z-30'
+            : 'md:w-[252px] z-30'
+        )}
+      >
+        <div className="flex items-center justify-between px-3 py-4 md:px-4 md:pt-5">
+          <Link href="/" className="group flex items-center gap-3 text-sidebar-foreground no-underline min-w-0">
+            <span className="grid size-9 place-items-center rounded-xl border border-white/10 bg-white/[.07] text-primary shrink-0">
+              <TerminalSquare size={18} />
             </span>
-            <span>
-              <span className="block font-serif text-[17px] font-bold tracking-tight">spec-flow</span>
-              <span className="mt-0.5 block font-mono text-[9px] uppercase tracking-[.19em] text-white/45">
-                human × agent
+            {isExpandedView && (
+              <span className="truncate animate-in fade-in duration-200">
+                <span className="block font-serif text-[16px] font-bold tracking-tight">spec-flow</span>
+                <span className="mt-0.5 block font-mono text-[8px] uppercase tracking-[.19em] text-white/45">
+                  human × agent
+                </span>
               </span>
-            </span>
+            )}
           </Link>
-          <div className="flex items-center gap-2 md:mt-7">
-            <span className="rounded-full border border-white/10 px-2.5 py-1 font-mono text-[10px] text-white/60 inline-flex items-center gap-1.5">
+          <button
+            type="button"
+            onClick={toggleSidebar}
+            className="hidden md:grid size-7 place-items-center rounded-md text-white/50 hover:text-white hover:bg-white/10 transition-colors cursor-pointer ml-auto shrink-0"
+            title={isSidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          >
+            {isSidebarCollapsed ? <PanelLeftOpen size={15} /> : <PanelLeftClose size={15} />}
+          </button>
+        </div>
+
+        {/* Live Status and Logs Button in Header */}
+        {isExpandedView ? (
+          <div className="flex items-center gap-2 px-4 py-2 border-b border-white/5">
+            <span className="rounded-full border border-white/10 px-2 py-0.5 font-mono text-[9px] text-white/60 inline-flex items-center gap-1.5">
               {isConnected ? (
-                <Wifi size={11} className="text-emerald-400" />
+                <Wifi size={10} className="text-emerald-400" />
               ) : (
-                <WifiOff size={11} className="text-rose-400" />
+                <WifiOff size={10} className="text-rose-400" />
               )}
               {isConnected ? 'live ws' : wsStatus}
             </span>
 
-            {/* Live Logs Trigger Button */}
+            {/* Live Logs Trigger Button (Toggle) */}
             <button
               type="button"
-              onClick={() => setIsLogsDrawerOpen(!isLogsDrawerOpen)}
-              className="rounded-full border border-white/15 bg-white/[.08] hover:bg-white/[.15] px-2.5 py-1 font-mono text-[10px] text-white/90 inline-flex items-center gap-1.5 transition-colors cursor-pointer"
-              title="Open Live Activity Logs"
+              onClick={() => setIsLogsDrawerOpen((prev) => !prev)}
+              className="rounded-full border border-white/15 bg-white/[.08] hover:bg-white/[.15] px-2 py-0.5 font-mono text-[9px] text-white/90 inline-flex items-center gap-1.5 transition-colors cursor-pointer"
+              title="Toggle Live Activity Logs"
             >
-              <span className="relative flex size-2">
+              <span className="relative flex size-1.5">
                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                <span className="relative inline-flex rounded-full size-2 bg-emerald-500"></span>
+                <span className="relative inline-flex rounded-full size-1.5 bg-emerald-500"></span>
               </span>
-              <TerminalSquare size={11} className="text-primary" />
               <span>Live Logs</span>
               {logsCount > 0 && (
-                <span className="bg-primary/30 text-white px-1.5 rounded-full text-[9px] font-bold">
+                <span className="bg-primary/30 text-white px-1.5 rounded-full text-[8px] font-bold">
                   {logsCount}
                 </span>
               )}
             </button>
           </div>
-        </div>
+        ) : (
+          <div className="hidden md:flex flex-col items-center gap-2 py-2 border-b border-white/5">
+            <button
+              type="button"
+              onClick={() => setIsLogsDrawerOpen((prev) => !prev)}
+              className="grid size-8 place-items-center rounded-lg border border-white/15 bg-white/[.08] hover:bg-white/[.15] text-white transition-colors cursor-pointer relative"
+              title="Toggle Live Activity Logs"
+            >
+              <TerminalSquare size={13} className="text-primary" />
+              <span className="absolute -top-0.5 -right-0.5 flex size-2">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full size-2 bg-emerald-500"></span>
+              </span>
+            </button>
+          </div>
+        )}
 
-        <div className="hidden px-6 pb-5 md:block">
-          <div className="mb-2 font-mono text-[9px] uppercase tracking-[.18em] text-white/40">Current workspace</div>
-          <div className="truncate text-[13px] font-semibold text-white/90">{project}</div>
-        </div>
+        {isExpandedView && (
+          <div className="hidden px-4 py-3 md:block">
+            <div className="mb-1 font-mono text-[8px] uppercase tracking-[.18em] text-white/40">Current workspace</div>
+            <div className="truncate text-[12px] font-semibold text-white/90">{project}</div>
+          </div>
+        )}
 
-        <nav className="flex gap-1 overflow-x-auto px-3 pb-3 md:flex-col md:px-3 md:py-2">
-          <NavItem href="/" current={location === '/'} icon={<Layers3 size={16} />} label="Overview" />
+        <nav className="flex gap-1 overflow-x-auto px-2 pb-3 md:flex-col md:px-2 md:py-2">
+          <NavItem
+            href="/"
+            current={location === '/' || location === '/dashboard'}
+            icon={<Layers3 size={16} />}
+            label="Dashboard"
+            collapsed={!isExpandedView}
+          />
+          <NavItem
+            href="/steering"
+            current={location === '/steering' || (location === '/documents' && filter === 'steering')}
+            icon={<Compass size={16} />}
+            label="Steering"
+            collapsed={!isExpandedView}
+          />
+          <NavItem
+            href="/specs"
+            current={location === '/specs' || location.startsWith('/features') || location.startsWith('/tasks')}
+            icon={<Layers size={16} />}
+            label="Specifications"
+            collapsed={!isExpandedView}
+          />
           <NavItem
             href="/documents"
-            current={location.startsWith('/documents')}
+            current={location === '/documents' && filter !== 'steering'}
             icon={<BookOpen size={16} />}
             label="Documents"
+            collapsed={!isExpandedView}
           />
-          <NavItem
-            href="/features"
-            current={location.startsWith('/features') || location.startsWith('/tasks')}
-            icon={<ListTodo size={16} />}
-            label="Tasks"
-          />
+
           <button
             type="button"
-            onClick={() => setIsLogsDrawerOpen(true)}
-            className="flex min-w-fit items-center gap-3 rounded-lg px-3 py-2.5 text-[13px] font-medium text-white/60 hover:bg-white/[.06] hover:text-white/90 transition-colors md:w-full cursor-pointer"
+            onClick={() => setIsLogsDrawerOpen((prev) => !prev)}
+            title={!isExpandedView ? 'Live Activity' : undefined}
+            className={cx(
+              'flex min-w-fit items-center rounded-lg text-[13px] font-medium text-white/60 hover:bg-white/[.06] hover:text-white/90 transition-colors md:w-full cursor-pointer',
+              !isExpandedView ? 'justify-center p-2.5' : 'gap-3 px-3 py-2.5'
+            )}
           >
-            <Activity size={16} className="text-emerald-400" />
-            <span>Live Activity</span>
-            <span className="ml-auto inline-flex size-2 rounded-full bg-emerald-400 animate-pulse" />
+            <Activity size={16} className="text-emerald-400 shrink-0" />
+            {isExpandedView && <span>Live Activity</span>}
+            {isExpandedView && (
+              <span className="ml-auto inline-flex size-2 rounded-full bg-emerald-400 animate-pulse" />
+            )}
           </button>
         </nav>
 
         <div className="hidden flex-1 md:block" />
 
-        <div className="hidden border-t border-white/10 p-5 md:block">
-          <div className="flex items-center gap-2 text-[11px] text-white/55">
-            <ShieldCheck size={14} className="text-primary" />
-            Your specs stay local-first
+        {isExpandedView && (
+          <div className="hidden border-t border-white/10 p-4 md:block animate-in fade-in duration-200">
+            <div className="flex items-center gap-2 text-[11px] text-white/55">
+              <ShieldCheck size={14} className="text-primary" />
+              Your specs stay local-first
+            </div>
+            <p className="mb-0 mt-2 text-[10px] leading-relaxed text-white/35">
+              Approved context is the source of truth for every agent run.
+            </p>
           </div>
-          <p className="mb-0 mt-2 text-[10px] leading-relaxed text-white/35">
-            Approved context is the source of truth for every agent run.
-          </p>
-        </div>
+        )}
       </aside>
 
-      <main className="min-w-0 flex-1 px-4 pb-12 pt-5 sm:px-7 md:ml-[252px] md:px-10 md:pt-9 xl:px-14">
+      <main
+        className={cx(
+          'min-w-0 flex-1 px-4 pb-12 pt-5 sm:px-7 md:px-10 md:pt-9 xl:px-14 transition-all duration-300',
+          isSidebarCollapsed ? 'md:ml-16' : 'md:ml-[252px]'
+        )}
+      >
         <div className="mx-auto max-w-[1360px]">{children}</div>
       </main>
 
@@ -202,19 +299,33 @@ function Shell({ children }: { children: ReactNode }) {
   );
 }
 
-function NavItem({ href, current, icon, label }: { href: string; current: boolean; icon: ReactNode; label: string }) {
+function NavItem({
+  href,
+  current,
+  icon,
+  label,
+  collapsed = false,
+}: {
+  href: string;
+  current: boolean;
+  icon: ReactNode;
+  label: string;
+  collapsed?: boolean;
+}) {
   return (
     <Link
       href={href}
       data-testid={`link-${label.toLowerCase()}`}
+      title={collapsed ? label : undefined}
       className={cx(
-        'flex min-w-fit items-center gap-3 rounded-lg px-3 py-2.5 text-[13px] font-medium no-underline transition-colors md:w-full',
+        'flex min-w-fit items-center rounded-lg text-[13px] font-medium no-underline transition-colors md:w-full',
+        collapsed ? 'justify-center p-2.5' : 'gap-3 px-3 py-2.5',
         current ? 'bg-white/[.11] text-white' : 'text-white/60 hover:bg-white/[.06] hover:text-white/90'
       )}
     >
       <span className={current ? 'text-primary' : ''}>{icon}</span>
-      {label}
-      {current && <span className="ml-auto hidden h-1.5 w-1.5 rounded-full bg-primary md:block" />}
+      {!collapsed && <span className="truncate">{label}</span>}
+      {current && !collapsed && <span className="ml-auto hidden h-1.5 w-1.5 rounded-full bg-primary md:block shrink-0" />}
     </Link>
   );
 }
@@ -910,14 +1021,67 @@ function Metric({
 }
 
 function DocumentsPage() {
+  const [location] = useLocation();
   const docs = useListDocuments({ query: { queryKey: getListDocumentsQueryKey() } });
+  const featuresQuery = useListFeatures({ query: { queryKey: getListFeaturesQueryKey() } });
+  const featuresList = featuresQuery.data ?? [];
+
   const selected = useWorkflowUiStore((state) => state.selectedDocumentId);
   const setSelected = useWorkflowUiStore((state) => state.setSelectedDocumentId);
   const filter = useWorkflowUiStore((state) => state.documentFilter);
   const setFilter = useWorkflowUiStore((state) => state.setDocumentFilter);
 
-  const filtered = (docs.data ?? []).filter((d: DocumentSummary) => filter === 'all' || d.kind === filter);
+  // Sync URL search parameters or location path with active document filter
+  useEffect(() => {
+    const searchParams = new URLSearchParams(window.location.search);
+    const filterParam = searchParams.get('filter');
+    if (location === '/steering' || filterParam === 'steering') {
+      setFilter('steering');
+    } else if (filterParam === 'specifications') {
+      setFilter('specifications');
+    } else if (filterParam && ['all', 'steering', 'specifications', 'requirements', 'design'].includes(filterParam)) {
+      setFilter(filterParam as any);
+    }
+  }, [location, setFilter]);
+
+  const filtered = (docs.data ?? []).filter((d: DocumentSummary) => {
+    if (filter === 'all') return true;
+    if (filter === 'steering') return d.kind === 'steering' || d.path.includes('/steering/');
+    if (filter === 'specifications') {
+      return Boolean(d.featureId) || (d.kind as string) === 'specifications' || d.path.includes('/specs/') || d.path.includes('/features/');
+    }
+    if (filter === 'requirements') return d.kind === 'requirements';
+    if (filter === 'design') return d.kind === 'design';
+    return true;
+  });
+
+  // When Specifications filter is active, group documents by spec (feature)
+  const groupedSpecs = useMemo(() => {
+    if (filter !== 'specifications') return null;
+    const groups: Record<string, { title: string; docs: DocumentSummary[] }> = {};
+
+    for (const doc of filtered) {
+      const featId = doc.featureId || 'general';
+      const featureObj = featuresList.find((f: Feature) => f.id === featId);
+      const groupTitle = featureObj?.name || (featId === 'general' ? 'General Specifications' : featId);
+
+      if (!groups[featId]) {
+        groups[featId] = { title: groupTitle, docs: [] };
+      }
+      groups[featId].docs.push(doc);
+    }
+    return groups;
+  }, [filter, filtered, featuresList]);
+
   const currentId = selected && filtered.some((d: DocumentSummary) => d.id === selected) ? selected : filtered[0]?.id;
+
+  const filterTabs = [
+    { id: 'all' as const, label: 'All' },
+    { id: 'steering' as const, label: 'Steering' },
+    { id: 'specifications' as const, label: 'Specifications' },
+    { id: 'requirements' as const, label: 'Requirements' },
+    { id: 'design' as const, label: 'Design' },
+  ];
 
   return (
     <div>
@@ -932,7 +1096,7 @@ function DocumentsPage() {
       ) : docs.isError ? (
         <ErrorState message="Document index is unavailable." retry={() => void docs.refetch()} />
       ) : (
-        <div className="grid gap-5 lg:grid-cols-[280px_minmax(0,1fr)]">
+        <div className="grid gap-5 lg:grid-cols-[290px_minmax(0,1fr)]">
           <Surface className="h-fit overflow-hidden">
             <div className="border-b border-border/70 p-4">
               <div className="mb-3 flex items-center justify-between">
@@ -940,7 +1104,7 @@ function DocumentsPage() {
                 <span className="font-mono text-[10px] text-muted-foreground">{docs.data?.length ?? 0}</span>
               </div>
               <div className="flex flex-wrap gap-1.5">
-                {(['all', 'steering', 'requirements', 'design'] as const).map((f) => (
+                {filterTabs.map(({ id: f, label }) => (
                   <button
                     key={f}
                     onClick={() => setFilter(f)}
@@ -950,14 +1114,44 @@ function DocumentsPage() {
                     )}
                     data-testid={`filter-documents-${f}`}
                   >
-                    {f}
+                    {label}
                   </button>
                 ))}
               </div>
             </div>
 
             <div className="divide-y divide-border/60 max-h-[calc(100vh-280px)] overflow-y-auto">
-              {filtered.length ? (
+              {filtered.length === 0 ? (
+                <div className="px-4 py-10 text-center text-xs text-muted-foreground">No documents in this view.</div>
+              ) : groupedSpecs ? (
+                Object.entries(groupedSpecs).map(([groupId, group]) => (
+                  <div key={groupId} className="p-2 space-y-1">
+                    <div className="px-2.5 py-1.5 font-serif text-xs font-semibold text-primary bg-muted/30 rounded flex items-center justify-between">
+                      <span className="truncate">{group.title}</span>
+                      <Badge variant="secondary" className="font-mono text-[9px] h-4">
+                        {group.docs.length}
+                      </Badge>
+                    </div>
+                    {group.docs.map((doc: DocumentSummary) => (
+                      <button
+                        key={doc.id}
+                        onClick={() => setSelected(doc.id)}
+                        className={cx(
+                          'block w-full p-3 text-left transition rounded-lg hover:bg-secondary/40',
+                          currentId === doc.id && 'bg-accent/40 border-l-2 border-primary font-medium'
+                        )}
+                        data-testid={`select-document-${doc.id}`}
+                      >
+                        <div className="mb-1 flex items-center justify-between gap-2">
+                          <span className="truncate text-xs font-semibold">{doc.title}</span>
+                          <StatusPill value={doc.status} />
+                        </div>
+                        <div className="truncate font-mono text-[9px] text-muted-foreground">{doc.path}</div>
+                      </button>
+                    ))}
+                  </div>
+                ))
+              ) : (
                 filtered.map((doc: DocumentSummary) => (
                   <button
                     key={doc.id}
@@ -979,8 +1173,6 @@ function DocumentsPage() {
                     </div>
                   </button>
                 ))
-              ) : (
-                <div className="px-4 py-10 text-center text-xs text-muted-foreground">No documents in this view.</div>
               )}
             </div>
           </Surface>
@@ -1464,6 +1656,8 @@ function Router() {
           <Route path="/" component={Dashboard} />
           <Route path="/dashboard" component={Dashboard} />
           <Route path="/documents" component={DocumentsPage} />
+          <Route path="/steering" component={DocumentsPage} />
+          <Route path="/specs" component={FeaturesPage} />
           <Route path="/features" component={FeaturesPage} />
           <Route path="/features/:featureId" component={FeatureTasksPage} />
           <Route component={NotFound} />

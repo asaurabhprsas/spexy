@@ -17,13 +17,12 @@ import {
   AlertCircle,
   ChevronDown,
   ChevronRight,
-  CheckCircle2,
-  Clock,
   Sparkles,
   Link as LinkIcon,
   Check,
   RotateCcw,
 } from 'lucide-react';
+import { TaskDetailModal } from '@/components/task/TaskDetailModal';
 
 export type ExtendedTask = Task & {
   notes?: {
@@ -47,6 +46,8 @@ export function HierarchicalTaskList({
   onApprove,
   onRequestChanges,
 }: HierarchicalTaskListProps) {
+  const [detailTask, setDetailTask] = useState<Task | null>(null);
+
   // Group tasks by groupId (Phase)
   const groupedTasks = React.useMemo(() => {
     const groups: Record<string, ExtendedTask[]> = {};
@@ -112,6 +113,7 @@ export function HierarchicalTaskList({
                         task={rootTask}
                         childrenTasks={children}
                         allTasks={groupTasks}
+                        onSelectTask={(t) => setDetailTask(t)}
                         onClaim={onClaim}
                         onSubmitReview={onSubmitReview}
                         onApprove={onApprove}
@@ -125,6 +127,19 @@ export function HierarchicalTaskList({
           );
         })}
       </Accordion>
+
+      {/* Task Detail Modal */}
+      <TaskDetailModal
+        task={detailTask}
+        open={detailTask !== null}
+        onOpenChange={(open) => !open && setDetailTask(null)}
+        allTasks={tasks}
+        onSelectTask={(t) => setDetailTask(t)}
+        onClaim={onClaim}
+        onSubmitReview={onSubmitReview}
+        onApprove={onApprove}
+        onRequestChanges={onRequestChanges}
+      />
     </div>
   );
 }
@@ -134,6 +149,7 @@ interface TaskTreeNodeProps {
   childrenTasks: ExtendedTask[];
   allTasks: ExtendedTask[];
   level?: number;
+  onSelectTask?: (task: Task) => void;
   onClaim?: (task: Task) => void;
   onSubmitReview?: (task: Task) => void;
   onApprove?: (task: Task) => void;
@@ -145,6 +161,7 @@ function TaskTreeNode({
   childrenTasks,
   allTasks,
   level = 0,
+  onSelectTask,
   onClaim,
   onSubmitReview,
   onApprove,
@@ -185,13 +202,19 @@ function TaskTreeNode({
       )}
 
       {/* Main Task Item Card */}
-      <div className="rounded-lg border border-border/70 bg-background/80 p-3.5 shadow-xs transition hover:border-primary/40">
+      <div
+        onClick={() => onSelectTask?.(task)}
+        className="rounded-lg border border-border/70 bg-background/80 p-3.5 shadow-xs transition hover:border-primary/40 cursor-pointer group"
+      >
         <div className="flex flex-wrap items-start justify-between gap-2.5">
           {/* Left info */}
           <div className="flex items-start gap-2.5 min-w-0 flex-1">
             <button
               type="button"
-              onClick={() => setIsExpanded(!isExpanded)}
+              onClick={(e) => {
+                e.stopPropagation();
+                setIsExpanded(!isExpanded);
+              }}
               className="mt-0.5 text-muted-foreground hover:text-foreground transition-transform"
               aria-label="Toggle task details"
             >
@@ -242,14 +265,17 @@ function TaskTreeNode({
                 )}
               </div>
 
-              <h4 className="text-xs font-semibold text-foreground leading-snug">
+              <h4 className="text-xs font-semibold text-foreground leading-snug group-hover:text-primary transition-colors">
                 {task.title}
               </h4>
             </div>
           </div>
 
           {/* Right Action Buttons */}
-          <div className="flex items-center gap-1.5 self-center">
+          <div
+            className="flex items-center gap-1.5 self-center"
+            onClick={(e) => e.stopPropagation()}
+          >
             {task.status === 'todo' && task.availability === 'available' && onClaim && (
               <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => onClaim(task)}>
                 Claim
@@ -389,6 +415,7 @@ function TaskTreeNode({
                 childrenTasks={grandChildren}
                 allTasks={allTasks}
                 level={level + 1}
+                onSelectTask={onSelectTask}
                 onClaim={onClaim}
                 onSubmitReview={onSubmitReview}
                 onApprove={onApprove}
