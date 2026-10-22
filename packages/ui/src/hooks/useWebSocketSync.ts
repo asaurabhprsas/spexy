@@ -75,6 +75,7 @@ export function useWebSocketSync() {
             case 'TASK_UPDATED': {
               void queryClient.invalidateQueries({ queryKey: getGetDashboardQueryKey() });
               void queryClient.invalidateQueries({ queryKey: getListFeaturesQueryKey() });
+              void queryClient.invalidateQueries({ queryKey: ['tasks', 'all'] });
               if (data.featureId) {
                 void queryClient.invalidateQueries({ queryKey: getListTasksQueryKey(data.featureId) });
               } else {

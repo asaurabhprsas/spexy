@@ -7,3 +7,5 @@ export * from "./fs/workspace";
 export * from "./checkpoint/ring-buffer";
 export * from "./git/worktree";
 export * from "./comments/fuzzy-anchor";
+export * from "./documents/archive";
+export * from "./config";

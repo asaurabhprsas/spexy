@@ -47,6 +47,7 @@ import { Separator } from '@/components/ui/separator';
 import { useWorkflowUiStore } from '@/store/ui';
 import { DocumentInspector } from '@/components/inspector/DocumentInspector';
 import { MarkdownRenderer } from '@/components/inspector/MarkdownRenderer';
+import { UnsavedChangesDialog } from '@/components/inspector/UnsavedChangesDialog';
 
 export interface SpecFileInfo {
   name: string;
@@ -84,6 +85,32 @@ export function SpecificationsHub() {
 
   const searchString = useSearch();
   const isInspectorFullWidth = useWorkflowUiStore((state) => state.isInspectorFullWidth);
+  const isDocumentDirty = useWorkflowUiStore((state) => state.isDocumentDirty);
+  const setIsDocumentDirty = useWorkflowUiStore((state) => state.setIsDocumentDirty);
+
+  // Unsaved changes protection
+  const [showDiscardDialog, setShowDiscardDialog] = useState(false);
+  const [pendingAction, setPendingAction] = useState<(() => void) | null>(null);
+
+  const confirmDiscard = (action: () => void) => {
+    if (isDocumentDirty) {
+      setPendingAction(() => action);
+      setShowDiscardDialog(true);
+    } else {
+      action();
+    }
+  };
+
+  const handleConfirmDiscard = () => {
+    setShowDiscardDialog(false);
+    setIsDocumentDirty(false);
+    if (pendingAction) {
+      const act = pendingAction;
+      setPendingAction(null);
+      act();
+    }
+  };
+
   const features = featuresQuery.data ?? [];
 
   // Parse URL search param `?spec=<spec-id>` reactively with useSearch
@@ -175,9 +202,12 @@ export function SpecificationsHub() {
   );
 
   const handleSelectSpec = (specId: string) => {
-    setSelectedSpecId(specId);
-    setLocation(`/specs?spec=${encodeURIComponent(specId)}`);
-    setSelectedReferenceFile(null);
+    if (specId === selectedSpecId) return;
+    confirmDiscard(() => {
+      setSelectedSpecId(specId);
+      setLocation(`/specs?spec=${encodeURIComponent(specId)}`);
+      setSelectedReferenceFile(null);
+    });
   };
 
   const handleCreateSubmit = (e: FormEvent<HTMLFormElement>) => {
@@ -515,7 +545,13 @@ export function SpecificationsHub() {
               {/* Filter Tabs for Previewing Spec Documents and Files */}
               <Tabs
                 value={activeSpecFilterTab}
-                onValueChange={(v) => setActiveSpecFilterTab(v as any)}
+                onValueChange={(v) => {
+                  const nextTab = v as any;
+                  if (nextTab === activeSpecFilterTab) return;
+                  confirmDiscard(() => {
+                    setActiveSpecFilterTab(nextTab);
+                  });
+                }}
                 className="space-y-4"
               >
                 <div className="border-b border-border/70 pb-2">
@@ -846,6 +882,16 @@ export function SpecificationsHub() {
           ) : null}
         </div>
       )}
+
+      <UnsavedChangesDialog
+        open={showDiscardDialog}
+        onOpenChange={setShowDiscardDialog}
+        onConfirmDiscard={handleConfirmDiscard}
+        onKeepEditing={() => {
+          setShowDiscardDialog(false);
+          setPendingAction(null);
+        }}
+      />
     </div>
   );
 }

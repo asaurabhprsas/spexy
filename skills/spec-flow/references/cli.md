@@ -80,6 +80,12 @@ Fetches document contents or frontmatter:
 - `-c, --compact`: **Token Saver**: Extracts and outputs ONLY frontmatter `{ status, updated_at, approved_by, title }`, completely omitting the long markdown body!
 - In full mode: Outputs raw markdown or serialized object if format is json/yaml.
 
+### `spec-flow doc archive <path-or-id>`
+Archives a steering or specification document:
+- Moves file into `.specflow/archived/` preserving the relative path hierarchy.
+- Automatically handles naming collisions by adding incremental numeric suffixes (`_1.md`, `_2.md`).
+- Deletes the original source file and broadcasts real-time document updates.
+
 ### `spec-flow checkpoint list [file] [--json]`
 Lists rolling file snapshots from `.specflow/.cache/checkpoints/`:
 - Displays snapshot ID, SHA-256 hash, timestamp, size, and target file.

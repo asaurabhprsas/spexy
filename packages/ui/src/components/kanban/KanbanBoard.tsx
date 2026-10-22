@@ -58,9 +58,9 @@ export function KanbanBoard({
   const handleDragEnd = (event: DragEndEvent) => {
     setActiveTaskId(null);
     if (!event.over) return;
-    const taskId = String(event.active.id);
+    const cardId = String(event.active.id);
     const destinationLane = String(event.over.id) as Task['status'];
-    const task = tasks.find((t) => t.id === taskId);
+    const task = tasks.find((t) => (t as any).compositeKey === cardId || t.id === cardId);
 
     if (!task || destinationLane === task.status) return;
 
@@ -96,7 +96,9 @@ export function KanbanBoard({
   const blockedTasks = tasks.filter(
     (t) => t.availability === 'blocked' || (t.blockers && t.blockers.length > 0)
   );
-  const activeTask = activeTaskId ? tasks.find((t) => t.id === activeTaskId) : null;
+  const activeTask = activeTaskId
+    ? tasks.find((t) => (t as any).compositeKey === activeTaskId || t.id === activeTaskId)
+    : null;
 
   return (
     <div className="space-y-6">
@@ -169,12 +171,17 @@ export function KanbanBoard({
           <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
             {blockedTasks.map((t) => (
               <div
-                key={t.id}
+                key={(t as any).compositeKey || t.id}
                 onClick={() => setDetailTask(t)}
                 className="rounded-lg border border-rose-300/60 dark:border-rose-900/60 bg-background/80 p-3 cursor-pointer hover:border-rose-500/60 transition-colors"
               >
                 <div className="flex items-center justify-between gap-2 mb-1">
-                  <span className="font-mono text-[10px] text-muted-foreground">{t.id}</span>
+                  <span className="font-mono text-[10px] text-muted-foreground">{(t as any).originalId || t.id}</span>
+                  {((t as any).specId || (t as any).spec_id) && (
+                    <Badge variant="outline" className="font-mono text-[8px] px-1 py-0 h-4 text-primary bg-primary/5 border-primary/20">
+                      {(t as any).specId || (t as any).spec_id}
+                    </Badge>
+                  )}
                   <Badge variant="destructive" className="font-mono text-[9px] uppercase">
                     Blocked
                   </Badge>
@@ -255,7 +262,7 @@ function KanbanLane({
         ) : (
           tasks.map((task) => (
             <KanbanCard
-              key={task.id}
+              key={(task as any).compositeKey || task.id}
               task={task}
               onSelect={onSelectTask}
               onQuickClaim={onQuickClaim}
@@ -287,10 +294,11 @@ function KanbanCard({
   onQuickApprove,
   onQuickReject,
 }: KanbanCardProps) {
+  const cardId = (task as any).compositeKey || task.id;
   const isDraggable = task.status !== 'done' && task.availability !== 'blocked';
   const { attributes, listeners, setNodeRef, setActivatorNodeRef, isDragging } =
     useDraggable({
-      id: task.id,
+      id: cardId,
       disabled: !isDraggable,
     });
 
@@ -317,8 +325,13 @@ function KanbanCard({
       >
         <div className="flex items-center gap-1.5 mb-2">
           <span className="font-mono text-[9px] text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
-            {task.id}
+            {(task as any).originalId || task.id}
           </span>
+          {((task as any).specId || (task as any).spec_id) && (
+            <Badge variant="outline" className="font-mono text-[8px] px-1 py-0 h-4 text-primary bg-primary/5 border-primary/20">
+              {(task as any).specId || (task as any).spec_id}
+            </Badge>
+          )}
         </div>
         <h4 className="text-xs font-semibold text-foreground/50 line-clamp-2">
           {task.title}
@@ -337,8 +350,13 @@ function KanbanCard({
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-1.5 mb-1 flex-wrap">
             <span className="font-mono text-[9px] font-semibold text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
-              {task.id}
+              {(task as any).originalId || task.id}
             </span>
+            {((task as any).specId || (task as any).spec_id) && (
+              <Badge variant="outline" className="font-mono text-[8px] px-1 py-0 h-4 text-primary bg-primary/5 border-primary/20">
+                {(task as any).specId || (task as any).spec_id}
+              </Badge>
+            )}
             <Badge
               variant="outline"
               className={`font-mono text-[8px] uppercase tracking-wider px-1.5 py-0 h-4 ${getPriorityBadgeClass(task.priority)}`}
@@ -463,10 +481,15 @@ function KanbanCardOverlay({ task }: { task: Task }) {
     <div className="w-[280px] rounded-lg border-2 border-primary/60 bg-background/95 p-3 shadow-2xl rotate-1 scale-[1.02] cursor-grabbing backdrop-blur-xs select-none pointer-events-none">
       <div className="flex items-start justify-between gap-2 mb-2">
         <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-1.5 mb-1">
+          <div className="flex items-center gap-1.5 mb-1 flex-wrap">
             <span className="font-mono text-[9px] text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
-              {task.id}
+              {(task as any).originalId || task.id}
             </span>
+            {((task as any).specId || (task as any).spec_id) && (
+              <Badge variant="outline" className="font-mono text-[8px] px-1 py-0 h-4 text-primary bg-primary/5 border-primary/20">
+                {(task as any).specId || (task as any).spec_id}
+              </Badge>
+            )}
             <Badge variant="outline" className="font-mono text-[8px] uppercase tracking-wider px-1.5 py-0 h-4">
               {task.priority}
             </Badge>

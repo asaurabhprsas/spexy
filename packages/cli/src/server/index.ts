@@ -2,11 +2,13 @@ import fs from "node:fs";
 import path from "node:path";
 import {
   addComment,
+  archiveDocument,
   createSpec,
   deleteComment,
   findProjectRoot,
   flattenTasks,
   getBlockingDependencies,
+  getPreferences,
   getSpecflowDir,
   getSteeringStatus,
   getTaskAvailability,
@@ -30,6 +32,7 @@ import {
   TasksDocument,
   transitionTask,
   updateComment,
+  updatePreferences,
   updateSteeringDocument,
   updateTaskInDoc,
   validateTaskGraph,
@@ -1382,6 +1385,75 @@ export function createServer(options: ServerOptions = {}): {
           }
 
           return json({ error: `Document "${docId}" not found` }, 404);
+        }
+
+        // POST /api/documents/archive
+        if (pathname === "/api/documents/archive" && method === "POST") {
+          const reqBody = await parseBody(req);
+          const target = reqBody.id || reqBody.path || reqBody.documentId || reqBody.docId;
+          if (!target) {
+            return json({ error: "Missing document id or path" }, 400);
+          }
+          const res = archiveDocument(projectRoot, target);
+          broadcast({
+            type: "DOCUMENT_ARCHIVED",
+            payload: { originalPath: res.originalPath, archivedPath: res.archivedPath },
+          });
+          broadcast({
+            type: "DOC_UPDATED",
+            payload: { file: res.originalPath },
+          });
+          logActivity({
+            category: "document",
+            action: "archive",
+            actor: "human",
+            message: `Archived document "${target}" to ${res.archivedPath}`,
+            details: { originalPath: res.originalPath, archivedPath: res.archivedPath },
+          });
+          return json({ success: true, originalPath: res.originalPath, archivedPath: res.archivedPath });
+        }
+
+        // POST /api/documents/:id/archive
+        const docArchiveMatch = pathname.match(/^\/api\/documents\/([^/]+)\/archive$/);
+        if (docArchiveMatch && method === "POST") {
+          const rawId = decodeURIComponent(docArchiveMatch[1]);
+          const reqBody = await parseBody(req).catch(() => ({}));
+          const target = reqBody.id || reqBody.path || rawId;
+          const res = archiveDocument(projectRoot, target);
+          broadcast({
+            type: "DOCUMENT_ARCHIVED",
+            payload: { originalPath: res.originalPath, archivedPath: res.archivedPath },
+          });
+          broadcast({
+            type: "DOC_UPDATED",
+            payload: { file: res.originalPath },
+          });
+          logActivity({
+            category: "document",
+            action: "archive",
+            actor: "human",
+            message: `Archived document "${target}" to ${res.archivedPath}`,
+            details: { originalPath: res.originalPath, archivedPath: res.archivedPath },
+          });
+          return json({ success: true, originalPath: res.originalPath, archivedPath: res.archivedPath });
+        }
+
+        // GET /api/preferences
+        if (pathname === "/api/preferences" && method === "GET") {
+          const preferences = getPreferences(projectRoot);
+          return json({ preferences });
+        }
+
+        // PUT /api/preferences
+        if (pathname === "/api/preferences" && method === "PUT") {
+          const reqBody = await parseBody(req);
+          const prefsToUpdate = reqBody.preferences !== undefined ? reqBody.preferences : reqBody;
+          const updated = updatePreferences(projectRoot, prefsToUpdate);
+          broadcast({
+            type: "PREFERENCES_UPDATED",
+            payload: { preferences: updated },
+          });
+          return json({ success: true, preferences: updated });
         }
 
         // Unknown API route

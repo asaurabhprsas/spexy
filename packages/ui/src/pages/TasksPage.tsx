@@ -161,7 +161,9 @@ export function TasksPage() {
   ) => {
     const actor = params.actor || 'human';
     const note = params.note || '';
-    const worktree = params.worktree || task.worktree || `worktree/${task.id}`;
+    const originalTaskId = (task as any).originalId || task.id;
+    const worktree = params.worktree || task.worktree || `worktree/${originalTaskId}`;
+    const parentSpecId = (task as any).specId || (task as any).spec_id || task.groupId || task.featureId;
 
     if (isAllSpecs) {
       const payload: Record<string, any> = { action, actor };
@@ -170,18 +172,24 @@ export function TasksPage() {
       if (worktree) payload.worktree = worktree;
 
       let transitioned = false;
-      try {
-        const res = await fetch(`/api/tasks/${encodeURIComponent(task.id)}/transition`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload),
-        });
-        if (res.ok) transitioned = true;
-      } catch {}
+      // Target parent spec endpoint first if known!
+      if (parentSpecId) {
+        try {
+          const res = await fetch(
+            `/api/specs/${encodeURIComponent(parentSpecId)}/tasks/${encodeURIComponent(originalTaskId)}/transition`,
+            {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(payload),
+            }
+          );
+          if (res.ok) transitioned = true;
+        } catch {}
+      }
 
       if (!transitioned) {
         try {
-          const res = await fetch(`/api/specs/all/tasks/${encodeURIComponent(task.id)}/transition`, {
+          const res = await fetch(`/api/tasks/${encodeURIComponent(originalTaskId)}/transition`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(payload),
@@ -190,38 +198,39 @@ export function TasksPage() {
         } catch {}
       }
 
-      const fallbackSpecId = task.groupId || task.featureId;
-      if (!transitioned && fallbackSpecId) {
+      if (!transitioned) {
         try {
-          await fetch(`/api/specs/${encodeURIComponent(fallbackSpecId)}/tasks/${encodeURIComponent(task.id)}/transition`, {
+          const res = await fetch(`/api/specs/all/tasks/${encodeURIComponent(originalTaskId)}/transition`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(payload),
           });
+          if (res.ok) transitioned = true;
         } catch {}
       }
+
       refresh();
       return;
     }
 
     if (action === 'claim') {
       claimTask.mutate(
-        { featureId: selectedSpecId, taskId: task.id, data: { worktree, actor } },
+        { featureId: selectedSpecId, taskId: originalTaskId, data: { worktree, actor } },
         { onSuccess: refresh }
       );
     } else if (action === 'submit') {
       submitTask.mutate(
-        { featureId: selectedSpecId, taskId: task.id, data: { note: note || 'Submitted for review' } },
+        { featureId: selectedSpecId, taskId: originalTaskId, data: { note: note || 'Submitted for review' } },
         { onSuccess: refresh }
       );
     } else if (action === 'approve') {
       reviewTask.mutate(
-        { featureId: selectedSpecId, taskId: task.id, data: { decision: 'approve', note: note || 'Verified and approved' } },
+        { featureId: selectedSpecId, taskId: originalTaskId, data: { decision: 'approve', note: note || 'Verified and approved' } },
         { onSuccess: refresh }
       );
     } else if (action === 'reject') {
       reviewTask.mutate(
-        { featureId: selectedSpecId, taskId: task.id, data: { decision: 'reject', note: note || 'Changes requested' } },
+        { featureId: selectedSpecId, taskId: originalTaskId, data: { decision: 'reject', note: note || 'Changes requested' } },
         { onSuccess: refresh }
       );
     }
@@ -244,11 +253,27 @@ export function TasksPage() {
   };
 
   const rawTasks = isAllSpecs ? allTasksQuery.data : singleSpecTasksQuery.data;
-  const taskList: Task[] = Array.isArray(rawTasks)
-    ? rawTasks
-    : Array.isArray((rawTasks as any)?.tasks)
-    ? (rawTasks as any).tasks
-    : [];
+  const taskList: Task[] = useMemo(() => {
+    const list: Task[] = Array.isArray(rawTasks)
+      ? rawTasks
+      : Array.isArray((rawTasks as any)?.tasks)
+      ? (rawTasks as any).tasks
+      : [];
+
+    if (!isAllSpecs) return list;
+
+    return list.map((task: any) => {
+      const parentSpec = task.specId || task.spec_id || task.groupId || 'spec';
+      const compositeId = `${parentSpec}:${task.id}`;
+      return {
+        ...task,
+        compositeKey: compositeId,
+        specId: parentSpec,
+        spec_id: parentSpec,
+        originalId: task.id,
+      };
+    });
+  }, [rawTasks, isAllSpecs]);
 
   const isLoading = isAllSpecs ? allTasksQuery.isLoading : singleSpecTasksQuery.isLoading;
   const isError = isAllSpecs ? allTasksQuery.isError : singleSpecTasksQuery.isError;
@@ -383,9 +408,13 @@ export function TasksPage() {
             <span className="mx-auto mb-4 grid size-12 place-items-center rounded-full bg-primary/10 text-primary">
               <LayoutGrid size={22} />
             </span>
-            <h2 className="font-serif text-xl font-semibold">No tasks in this specification</h2>
+            <h2 className="font-serif text-xl font-semibold">
+              {isAllSpecs ? 'No tasks found across specifications' : 'No tasks in this specification'}
+            </h2>
             <p className="mt-2 text-xs text-muted-foreground leading-relaxed">
-              Break down this feature specification into verifiable tasks for agents and collaborators.
+              {isAllSpecs
+                ? 'None of the active specifications have tasks defined yet.'
+                : 'Break down this feature specification into verifiable tasks for agents and collaborators.'}
             </p>
             <Button onClick={() => setIsComposerOpen(true)} className="mt-5 gap-1.5">
               <Plus size={14} />

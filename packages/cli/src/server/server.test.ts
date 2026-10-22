@@ -906,5 +906,78 @@ describe("Track B: Fastify/Bun WebSocket Server & File Watcher", () => {
 
     ws.close();
   });
+
+  it("POST /api/documents/:id/archive and POST /api/documents/archive moves docs to .specflow/archived/ and broadcasts event", async () => {
+    // 1. Create a custom steering document
+    const steeringDocPath = path.join(tmpDir, ".specflow", "steering", "custom-rules.md");
+    fs.writeFileSync(steeringDocPath, "# Custom Rules\nSome rules.", "utf-8");
+
+    // Test POST /api/documents/:id/archive
+    const res1 = await fetch(`${baseUrl}/api/documents/custom-rules/archive`, {
+      method: "POST",
+    });
+    expect(res1.status).toBe(200);
+    const body1: any = await res1.json();
+    expect(body1.success).toBe(true);
+    expect(body1.originalPath).toBe(".specflow/steering/custom-rules.md");
+    expect(body1.archivedPath).toBe(".specflow/archived/steering/custom-rules.md");
+    expect(fs.existsSync(steeringDocPath)).toBe(false);
+    expect(fs.existsSync(path.join(tmpDir, body1.archivedPath))).toBe(true);
+
+    // 2. Create another doc and test POST /api/documents/archive with body
+    const arbitraryDocPath = path.join(tmpDir, "docs", "archivable.md");
+    fs.mkdirSync(path.dirname(arbitraryDocPath), { recursive: true });
+    fs.writeFileSync(arbitraryDocPath, "# Archivable\nTest content.", "utf-8");
+
+    const res2 = await fetch(`${baseUrl}/api/documents/archive`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ path: "docs/archivable.md" }),
+    });
+    expect(res2.status).toBe(200);
+    const body2: any = await res2.json();
+    expect(body2.success).toBe(true);
+    expect(body2.originalPath).toBe("docs/archivable.md");
+    expect(body2.archivedPath).toBe(".specflow/archived/docs/archivable.md");
+    expect(fs.existsSync(arbitraryDocPath)).toBe(false);
+    expect(fs.existsSync(path.join(tmpDir, body2.archivedPath))).toBe(true);
+  });
+
+  it("GET /api/preferences and PUT /api/preferences manages user preferences", async () => {
+    // Initial GET should return empty preferences
+    const res1 = await fetch(`${baseUrl}/api/preferences`);
+    expect(res1.status).toBe(200);
+    const body1: any = await res1.json();
+    expect(body1).toHaveProperty("preferences");
+    expect(body1.preferences).toEqual({});
+
+    // PUT to set preferences
+    const res2 = await fetch(`${baseUrl}/api/preferences`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ theme: "dark", compactView: true }),
+    });
+    expect(res2.status).toBe(200);
+    const body2: any = await res2.json();
+    expect(body2.success).toBe(true);
+    expect(body2.preferences).toEqual({ theme: "dark", compactView: true });
+
+    // GET should now return saved preferences
+    const res3 = await fetch(`${baseUrl}/api/preferences`);
+    expect(res3.status).toBe(200);
+    const body3: any = await res3.json();
+    expect(body3.preferences).toEqual({ theme: "dark", compactView: true });
+
+    // PUT again to merge preferences
+    const res4 = await fetch(`${baseUrl}/api/preferences`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ theme: "light", fontSize: 16 }),
+    });
+    expect(res4.status).toBe(200);
+    const body4: any = await res4.json();
+    expect(body4.success).toBe(true);
+    expect(body4.preferences).toEqual({ theme: "light", compactView: true, fontSize: 16 });
+  });
 });
 

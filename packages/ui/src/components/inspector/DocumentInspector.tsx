@@ -33,6 +33,7 @@ import {
   Pencil,
   Trash2,
   History,
+  Archive,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -41,6 +42,18 @@ import { Input } from '@/components/ui/input';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { useWorkflowUiStore } from '@/store/ui';
 import { MarkdownRenderer } from './MarkdownRenderer';
+import { UnsavedChangesDialog } from './UnsavedChangesDialog';
+import {
+  AlertDialog,
+  AlertDialogContent,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogAction,
+  AlertDialogCancel,
+} from '@/components/ui/alert-dialog';
+import { toast } from '@/hooks/use-toast';
 
 interface DocumentInspectorProps {
   documentId: string;
@@ -74,6 +87,52 @@ export function DocumentInspector({ documentId, onClose }: DocumentInspectorProp
   const [viewMode, setViewMode] = useState<'source' | 'preview' | 'split'>('source');
   const isInspectorFullWidth = useWorkflowUiStore((state) => state.isInspectorFullWidth);
   const setInspectorFullWidth = useWorkflowUiStore((state) => state.setInspectorFullWidth);
+  const setIsDocumentDirty = useWorkflowUiStore((state) => state.setIsDocumentDirty);
+
+  // Unsaved changes dialog state
+  const [showDiscardDialog, setShowDiscardDialog] = useState(false);
+  const [pendingAction, setPendingAction] = useState<(() => void) | null>(null);
+
+  // Archive dialog state
+  const [showArchiveDialog, setShowArchiveDialog] = useState(false);
+  const [isArchiving, setIsArchiving] = useState(false);
+
+  const handleArchiveDocument = async () => {
+    setIsArchiving(true);
+    try {
+      const res = await fetch(`/api/documents/${encodeURIComponent(documentId)}/archive`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      });
+      if (res.ok) {
+        toast({
+          title: 'Document Archived',
+          description: 'Document moved to .specflow/archived/ successfully.',
+        });
+        void queryClient.invalidateQueries({ queryKey: getListDocumentsQueryKey() });
+        void queryClient.invalidateQueries({ queryKey: getGetDashboardQueryKey() });
+        setShowArchiveDialog(false);
+        setIsDocumentDirty(false);
+        if (onClose) onClose();
+      } else {
+        const err = await res.json().catch(() => ({}));
+        toast({
+          title: 'Archive Failed',
+          description: err.error || 'Failed to archive document.',
+          variant: 'destructive',
+        });
+      }
+    } catch (err: any) {
+      toast({
+        title: 'Archive Error',
+        description: err?.message || 'Network error archiving document.',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsArchiving(false);
+    }
+  };
+
   const [commentDrawerTab, setCommentDrawerTab] = useState<'active' | 'history'>('active');
   const [editingCommentId, setEditingCommentId] = useState<string | null>(null);
   const [editInstruction, setEditInstruction] = useState('');
@@ -90,6 +149,53 @@ export function DocumentInspector({ documentId, onClose }: DocumentInspectorProp
   const gutterRef = useRef<HTMLDivElement>(null);
 
   const doc = docQuery.data;
+
+  const isDirty = Boolean(doc && doc.content !== undefined && content !== doc.content);
+
+  // Sync isDocumentDirty to store
+  useEffect(() => {
+    setIsDocumentDirty(isDirty);
+    return () => {
+      setIsDocumentDirty(false);
+    };
+  }, [isDirty, setIsDocumentDirty]);
+
+  // Warn on tab/window close or reload when dirty
+  useEffect(() => {
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (isDirty) {
+        e.preventDefault();
+        e.returnValue = '';
+      }
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [isDirty]);
+
+  const confirmDiscard = (action: () => void) => {
+    if (isDirty) {
+      setPendingAction(() => action);
+      setShowDiscardDialog(true);
+    } else {
+      action();
+    }
+  };
+
+  const handleClose = () => {
+    confirmDiscard(() => {
+      if (onClose) onClose();
+    });
+  };
+
+  const handleConfirmDiscard = () => {
+    setShowDiscardDialog(false);
+    setIsDocumentDirty(false);
+    if (pendingAction) {
+      const act = pendingAction;
+      setPendingAction(null);
+      act();
+    }
+  };
 
   const lineCount = useMemo(() => Math.max(1, content.split('\n').length), [content]);
 
@@ -202,7 +308,7 @@ export function DocumentInspector({ documentId, onClose }: DocumentInspectorProp
     const containerRect = container?.getBoundingClientRect();
 
     if (containerRect) {
-      const lineHeight = 19; // px per line
+      const lineHeight = 22; // locked line height (22px)
       const lineTop = (calculatedStartLine - 1) * lineHeight - textarea.scrollTop;
       setFloatingButtonPos({
         top: Math.max(10, Math.min(textarea.clientHeight - 40, lineTop + 24)),
@@ -541,6 +647,20 @@ export function DocumentInspector({ documentId, onClose }: DocumentInspectorProp
             </Badge>
           </Button>
 
+          {/* Archive Document Button */}
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={() => setShowArchiveDialog(true)}
+            disabled={isArchiving}
+            className="h-8 px-2 text-xs gap-1.5 text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors cursor-pointer"
+            title="Archive this document to .specflow/archived/"
+            data-testid="button-archive-document"
+          >
+            {isArchiving ? <Loader2 size={13} className="animate-spin" /> : <Archive size={13} />}
+            <span className="hidden sm:inline">Archive</span>
+          </Button>
+
           {/* Expand / Maximize Toggle */}
           <Button
             size="sm"
@@ -553,7 +673,7 @@ export function DocumentInspector({ documentId, onClose }: DocumentInspectorProp
           </Button>
 
           {onClose && (
-            <Button size="sm" variant="ghost" onClick={onClose} aria-label="Close Inspector" className="h-8 w-8 p-0">
+            <Button size="sm" variant="ghost" onClick={handleClose} aria-label="Close Inspector" className="h-8 w-8 p-0">
               <X size={16} />
             </Button>
           )}
@@ -617,7 +737,7 @@ export function DocumentInspector({ documentId, onClose }: DocumentInspectorProp
                   {/* Line Numbers Gutter */}
                   <div
                     ref={gutterRef}
-                    className="w-10 sm:w-12 select-none border-r border-border/50 py-4 pr-3 text-right font-mono text-xs leading-relaxed text-muted-foreground/40 shrink-0 overflow-hidden"
+                    className="w-10 sm:w-12 select-none border-r border-border/50 py-3 pr-3 text-right font-mono text-xs leading-[22px] text-muted-foreground/40 shrink-0 overflow-hidden"
                     aria-hidden="true"
                   >
                     {Array.from({ length: lineCount }, (_, i) => {
@@ -626,11 +746,11 @@ export function DocumentInspector({ documentId, onClose }: DocumentInspectorProp
                       return (
                         <div
                           key={lineNum}
-                          className={
+                          className={`h-[22px] leading-[22px] text-xs font-mono ${
                             isHighlighted
                               ? 'text-primary font-bold bg-primary/10 -mr-3 pr-3 rounded-l'
                               : ''
-                          }
+                          }`}
                         >
                           {lineNum}
                         </div>
@@ -639,7 +759,7 @@ export function DocumentInspector({ documentId, onClose }: DocumentInspectorProp
                   </div>
 
                   {/* Textarea Editor */}
-                  <div className="flex-1 h-full overflow-hidden p-4">
+                  <div className="p-3 overflow-hidden flex-1 h-full">
                     <Textarea
                       ref={textareaRef}
                       value={content}
@@ -649,7 +769,7 @@ export function DocumentInspector({ documentId, onClose }: DocumentInspectorProp
                       onKeyUp={handleTextSelect}
                       onMouseUp={handleTextSelect}
                       placeholder="Document content..."
-                      className="w-full h-full min-h-[450px] font-mono text-xs leading-relaxed resize-none border-0 bg-transparent p-0 focus-visible:ring-0 focus-visible:outline-none whitespace-pre"
+                      className="font-mono text-xs md:text-xs leading-[22px] p-0 m-0 border-0 shadow-none whitespace-pre resize-none focus-visible:ring-0 focus-visible:outline-none min-h-0 h-full w-full overflow-x-auto bg-transparent"
                     />
                   </div>
                 </div>
@@ -1054,6 +1174,41 @@ export function DocumentInspector({ documentId, onClose }: DocumentInspectorProp
           </aside>
         )}
       </div>
+
+      <UnsavedChangesDialog
+        open={showDiscardDialog}
+        onOpenChange={setShowDiscardDialog}
+        onConfirmDiscard={handleConfirmDiscard}
+        onKeepEditing={() => {
+          setShowDiscardDialog(false);
+          setPendingAction(null);
+        }}
+      />
+
+      <AlertDialog open={showArchiveDialog} onOpenChange={setShowArchiveDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <Archive size={16} className="text-destructive" />
+              Archive Document
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to archive <strong className="text-foreground">{doc?.title || documentId}</strong>? It will be moved to <code className="font-mono text-xs text-primary">.specflow/archived/</code> and removed from your active workspace specifications.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isArchiving}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleArchiveDocument}
+              disabled={isArchiving}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90 gap-1.5"
+            >
+              {isArchiving ? <Loader2 size={13} className="animate-spin" /> : <Archive size={13} />}
+              Archive Document
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

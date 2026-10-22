@@ -403,4 +403,22 @@ describe("@spec-flow/cli Comprehensive Test Suite", () => {
     const failOutput = runCli(["doc", "get", "does-not-exist.md"], { expectFail: true });
     expect(failOutput).toContain('Document "does-not-exist.md" not found');
   });
+
+  it("archives documents via spec-flow doc archive <path-or-id>", () => {
+    runCli(["init"]);
+
+    // Create a steering document to archive
+    const docPath = path.join(tmpDir, ".specflow", "steering", "constitution.md");
+    fs.writeFileSync(docPath, "# Constitution\nTeam principles.", "utf-8");
+
+    const output = runCli(["doc", "archive", "constitution.md"]);
+    expect(output).toContain("Archived .specflow/steering/constitution.md -> .specflow/archived/steering/constitution.md");
+
+    expect(fs.existsSync(docPath)).toBe(false);
+    expect(fs.existsSync(path.join(tmpDir, ".specflow", "archived", "steering", "constitution.md"))).toBe(true);
+
+    // Archiving non-existent doc should fail
+    const failOut = runCli(["doc", "archive", "does-not-exist.md"], { expectFail: true });
+    expect(failOut).toContain('Error archiving document "does-not-exist.md"');
+  });
 });

@@ -35,6 +35,7 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   Compass,
+  Sliders,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -47,6 +48,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { useWorkflowUiStore } from '@/store/ui';
 import { useWebSocketSync } from '@/hooks/useWebSocketSync';
 import { DocumentInspector } from '@/components/inspector/DocumentInspector';
+import { UnsavedChangesDialog } from '@/components/inspector/UnsavedChangesDialog';
 import { LiveLogsDrawer } from '@/components/logs/LiveLogsDrawer';
 import { HierarchicalTaskList } from '@/components/list/HierarchicalTaskList';
 import { TaskDagViewer } from '@/components/graph/TaskDagViewer';
@@ -55,6 +57,8 @@ import NotFound from '@/pages/not-found';
 import { SteeringPage } from '@/pages/SteeringPage';
 import { SpecificationsHub } from '@/pages/SpecificationsHub';
 import { TasksPage } from '@/pages/TasksPage';
+import { SettingsPage } from '@/pages/SettingsPage';
+import { POPULAR_THEMES, POPULAR_FONTS } from '@/lib/themes';
 import {
   useGetDashboard,
   getGetDashboardQueryKey,
@@ -93,6 +97,43 @@ const dateLabel = (value: string) =>
     hour: 'numeric',
     minute: '2-digit',
   }).format(new Date(value));
+
+function ThemeManager() {
+  const themeId = useWorkflowUiStore((state) => state.themeId);
+  const fontId = useWorkflowUiStore((state) => state.fontId);
+  const colorMode = useWorkflowUiStore((state) => state.colorMode);
+
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+    const root = document.documentElement;
+
+    // 1. Resolve dark vs light
+    const isDark =
+      colorMode === 'dark' ||
+      (colorMode === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+
+    if (isDark) {
+      root.classList.add('dark');
+    } else {
+      root.classList.remove('dark');
+    }
+
+    // 2. Apply theme color variables
+    const theme = POPULAR_THEMES.find((t) => t.id === themeId) || POPULAR_THEMES[0];
+    const vars = isDark ? theme.dark : theme.light;
+    for (const [key, value] of Object.entries(vars)) {
+      root.style.setProperty(key, value);
+    }
+
+    // 3. Apply font families
+    const font = POPULAR_FONTS.find((f) => f.id === fontId) || POPULAR_FONTS[0];
+    root.style.setProperty('--app-font-sans', font.fontSans);
+    root.style.setProperty('--app-font-serif', font.fontSerif);
+    root.style.setProperty('--app-font-mono', font.fontMono);
+  }, [themeId, fontId, colorMode]);
+
+  return null;
+}
 
 function Shell({ children }: { children: ReactNode }) {
   const [location] = useLocation();
@@ -256,6 +297,13 @@ function Shell({ children }: { children: ReactNode }) {
             current={location === '/documents'}
             icon={<BookOpen size={16} />}
             label="Documents"
+            collapsed={!isExpandedView}
+          />
+          <NavItem
+            href="/settings"
+            current={location === '/settings'}
+            icon={<Sliders size={16} />}
+            label="Settings"
             collapsed={!isExpandedView}
           />
 
@@ -1045,6 +1093,32 @@ function DocumentsPage() {
   const filter = useWorkflowUiStore((state) => state.documentFilter);
   const setFilter = useWorkflowUiStore((state) => state.setDocumentFilter);
 
+  const isDocumentDirty = useWorkflowUiStore((state) => state.isDocumentDirty);
+  const setIsDocumentDirty = useWorkflowUiStore((state) => state.setIsDocumentDirty);
+
+  // Unsaved changes protection
+  const [showDiscardDialog, setShowDiscardDialog] = useState(false);
+  const [pendingAction, setPendingAction] = useState<(() => void) | null>(null);
+
+  const confirmDiscard = (action: () => void) => {
+    if (isDocumentDirty) {
+      setPendingAction(() => action);
+      setShowDiscardDialog(true);
+    } else {
+      action();
+    }
+  };
+
+  const handleConfirmDiscard = () => {
+    setShowDiscardDialog(false);
+    setIsDocumentDirty(false);
+    if (pendingAction) {
+      const act = pendingAction;
+      setPendingAction(null);
+      act();
+    }
+  };
+
   // Sync URL search parameters with active document filter
   useEffect(() => {
     const searchParams = new URLSearchParams(window.location.search);
@@ -1121,7 +1195,10 @@ function DocumentsPage() {
                 {filterTabs.map(({ id: f, label }) => (
                   <button
                     key={f}
-                    onClick={() => setFilter(f)}
+                    onClick={() => {
+                      if (filter === f) return;
+                      confirmDiscard(() => setFilter(f));
+                    }}
                     className={cx(
                       'rounded-full px-2.5 py-1 font-mono text-[9px] uppercase tracking-wider transition-colors',
                       filter === f ? 'bg-sidebar text-white' : 'bg-secondary text-muted-foreground hover:bg-secondary/80'
@@ -1149,7 +1226,10 @@ function DocumentsPage() {
                     {group.docs.map((doc: DocumentSummary) => (
                       <button
                         key={doc.id}
-                        onClick={() => setSelected(doc.id)}
+                        onClick={() => {
+                          if (currentId === doc.id) return;
+                          confirmDiscard(() => setSelected(doc.id));
+                        }}
                         className={cx(
                           'block w-full p-3 text-left transition rounded-lg hover:bg-secondary/40',
                           currentId === doc.id && 'bg-accent/40 border-l-2 border-primary font-medium'
@@ -1169,7 +1249,10 @@ function DocumentsPage() {
                 filtered.map((doc: DocumentSummary) => (
                   <button
                     key={doc.id}
-                    onClick={() => setSelected(doc.id)}
+                    onClick={() => {
+                      if (currentId === doc.id) return;
+                      confirmDiscard(() => setSelected(doc.id));
+                    }}
                     className={cx(
                       'block w-full p-4 text-left transition hover:bg-secondary/40',
                       currentId === doc.id && 'bg-accent/40 border-l-2 border-primary'
@@ -1206,6 +1289,16 @@ function DocumentsPage() {
           )}
         </div>
       )}
+
+      <UnsavedChangesDialog
+        open={showDiscardDialog}
+        onOpenChange={setShowDiscardDialog}
+        onConfirmDiscard={handleConfirmDiscard}
+        onKeepEditing={() => {
+          setShowDiscardDialog(false);
+          setPendingAction(null);
+        }}
+      />
     </div>
   );
 }
@@ -1243,6 +1336,7 @@ function Router() {
           <Route path="/features/:featureId" component={FeatureTasksRedirect} />
           <Route path="/tasks" component={TasksPage} />
           <Route path="/documents" component={DocumentsPage} />
+          <Route path="/settings" component={SettingsPage} />
           <Route component={NotFound} />
         </Switch>
       </Shell>
@@ -1254,6 +1348,7 @@ function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
+        <ThemeManager />
         <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, '')}>
           <Router />
         </WouterRouter>

@@ -30,6 +30,7 @@ import {
   registerWorktree,
   listDocuments,
   findDocument,
+  archiveDocument,
   parseDocumentFrontmatter,
   WorkflowRuleError,
   type TaskItem,
@@ -945,6 +946,20 @@ docCmd
       process.stdout.write(raw.endsWith("\n") ? raw : raw + "\n");
     } catch (err: any) {
       console.error(`Error reading document "${pathOrId}": ${err.message}`);
+      process.exit(1);
+    }
+  });
+
+docCmd
+  .command("archive <path-or-id>")
+  .description("Archive a document into .specflow/archived/ and remove the source file")
+  .action((pathOrId) => {
+    try {
+      const projectRoot = getRoot();
+      const res = archiveDocument(projectRoot, pathOrId);
+      console.log(`Archived ${res.originalPath} -> ${res.archivedPath}`);
+    } catch (err: any) {
+      console.error(`Error archiving document "${pathOrId}": ${err.message}`);
       process.exit(1);
     }
   });

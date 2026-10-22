@@ -39,6 +39,8 @@ import {
 } from "./comments/fuzzy-anchor";
 import { acquireTaskLease } from "./git/worktree";
 import { TaskItem } from "./schemas/tasks";
+import { archiveDocument } from "./documents/archive";
+import { getPreferences, updatePreferences } from "./config";
 
 describe("@spec-flow/core Test Suite", () => {
   let tmpDir: string;
@@ -407,6 +409,124 @@ Document body here.`;
       expect(() => acquireTaskLease(task, "worktree-billing", "feat-billing")).toThrow(
         /already leased/i,
       );
+    });
+  });
+
+  describe("Document Archiving Engine (archiveDocument)", () => {
+    it("archives a steering document to .specflow/archived/steering/ and deletes source", () => {
+      initSpecFlowWorkspace(tmpDir);
+      const constitutionPath = path.join(tmpDir, ".specflow", "steering", "constitution.md");
+      fs.writeFileSync(constitutionPath, "# Team Constitution\nCore values and principles.", "utf-8");
+
+      expect(fs.existsSync(constitutionPath)).toBe(true);
+
+      const result = archiveDocument(tmpDir, "constitution");
+      expect(result.originalPath).toBe(".specflow/steering/constitution.md");
+      expect(result.archivedPath).toBe(".specflow/archived/steering/constitution.md");
+
+      expect(fs.existsSync(constitutionPath)).toBe(false);
+      const archivedAbs = path.join(tmpDir, result.archivedPath);
+      expect(fs.existsSync(archivedAbs)).toBe(true);
+      expect(fs.readFileSync(archivedAbs, "utf-8")).toContain("# Team Constitution");
+    });
+
+    it("archives a spec document and removes source file", () => {
+      initSpecFlowWorkspace(tmpDir);
+      createSpec(tmpDir, "demo-spec", { force: true });
+      const reqPath = path.join(tmpDir, ".specflow", "specs", "demo-spec", "requirements.md");
+      expect(fs.existsSync(reqPath)).toBe(true);
+
+      const result = archiveDocument(tmpDir, "demo-spec:requirements");
+      expect(result.originalPath).toBe(".specflow/specs/demo-spec/requirements.md");
+      expect(result.archivedPath).toBe(".specflow/archived/specs/demo-spec/requirements.md");
+
+      expect(fs.existsSync(reqPath)).toBe(false);
+      const archivedAbs = path.join(tmpDir, result.archivedPath);
+      expect(fs.existsSync(archivedAbs)).toBe(true);
+      expect(fs.readFileSync(archivedAbs, "utf-8")).toContain("Requirements");
+    });
+
+    it("handles collisions by generating _1, _2 suffix", () => {
+      initSpecFlowWorkspace(tmpDir);
+      const constitutionPath = path.join(tmpDir, ".specflow", "steering", "constitution.md");
+      fs.writeFileSync(constitutionPath, "Version 1", "utf-8");
+
+      // First archive
+      const res1 = archiveDocument(tmpDir, ".specflow/steering/constitution.md");
+      expect(res1.archivedPath).toBe(".specflow/archived/steering/constitution.md");
+      expect(fs.readFileSync(path.join(tmpDir, res1.archivedPath), "utf-8")).toBe("Version 1");
+
+      // Recreate source file and archive again
+      fs.writeFileSync(constitutionPath, "Version 2", "utf-8");
+      const res2 = archiveDocument(tmpDir, ".specflow/steering/constitution.md");
+      expect(res2.archivedPath).toBe(".specflow/archived/steering/constitution_1.md");
+      expect(fs.readFileSync(path.join(tmpDir, res2.archivedPath), "utf-8")).toBe("Version 2");
+
+      // Recreate source file and archive a third time
+      fs.writeFileSync(constitutionPath, "Version 3", "utf-8");
+      const res3 = archiveDocument(tmpDir, ".specflow/steering/constitution.md");
+      expect(res3.archivedPath).toBe(".specflow/archived/steering/constitution_2.md");
+      expect(fs.readFileSync(path.join(tmpDir, res3.archivedPath), "utf-8")).toBe("Version 3");
+    });
+
+    it("archives arbitrary markdown files outside .specflow/", () => {
+      initSpecFlowWorkspace(tmpDir);
+      const customPath = path.join(tmpDir, "docs", "custom-guide.md");
+      fs.mkdirSync(path.dirname(customPath), { recursive: true });
+      fs.writeFileSync(customPath, "# Custom Guide\nArbitrary doc", "utf-8");
+
+      const result = archiveDocument(tmpDir, "docs/custom-guide.md");
+      expect(result.originalPath).toBe("docs/custom-guide.md");
+      expect(result.archivedPath).toBe(".specflow/archived/docs/custom-guide.md");
+
+      expect(fs.existsSync(customPath)).toBe(false);
+      expect(fs.existsSync(path.join(tmpDir, result.archivedPath))).toBe(true);
+    });
+
+    it("throws an error if document is not found", () => {
+      initSpecFlowWorkspace(tmpDir);
+      expect(() => archiveDocument(tmpDir, "non-existent-doc")).toThrow(/not found/i);
+    });
+  });
+
+  describe("Preferences Persistence (getPreferences, updatePreferences)", () => {
+    it("returns empty object if .specflow/config.json does not exist", () => {
+      initSpecFlowWorkspace(tmpDir);
+      const prefs = getPreferences(tmpDir);
+      expect(prefs).toEqual({});
+    });
+
+    it("creates .specflow/config.json and persists preferences on updatePreferences", () => {
+      initSpecFlowWorkspace(tmpDir);
+      const updated = updatePreferences(tmpDir, { theme: "dark", editorFontSize: 14 });
+
+      expect(updated).toEqual({ theme: "dark", editorFontSize: 14 });
+      const prefs = getPreferences(tmpDir);
+      expect(prefs).toEqual({ theme: "dark", editorFontSize: 14 });
+
+      const configJsonPath = path.join(tmpDir, ".specflow", "config.json");
+      expect(fs.existsSync(configJsonPath)).toBe(true);
+      const raw = JSON.parse(fs.readFileSync(configJsonPath, "utf-8"));
+      expect(raw.preferences).toEqual({ theme: "dark", editorFontSize: 14 });
+    });
+
+    it("merges new preferences with existing preferences", () => {
+      initSpecFlowWorkspace(tmpDir);
+      updatePreferences(tmpDir, { theme: "dark", lineNumbers: true });
+      const merged = updatePreferences(tmpDir, { theme: "light", autoSave: true });
+
+      expect(merged).toEqual({
+        theme: "light",
+        lineNumbers: true,
+        autoSave: true,
+      });
+
+      const prefs = getPreferences(tmpDir);
+      expect(prefs).toEqual({
+        theme: "light",
+        lineNumbers: true,
+        autoSave: true,
+      });
     });
   });
 });

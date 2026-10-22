@@ -7,13 +7,41 @@ import {
 import { Compass, BookOpen, AlertCircle, RefreshCw, FileText } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { useWorkflowUiStore } from '@/store/ui';
 import { DocumentInspector } from '@/components/inspector/DocumentInspector';
+import { UnsavedChangesDialog } from '@/components/inspector/UnsavedChangesDialog';
 
 const cx = (...values: Array<string | false | null | undefined>) => values.filter(Boolean).join(' ');
 
 export function SteeringPage() {
   const docs = useListDocuments({ query: { queryKey: getListDocumentsQueryKey() } });
   const [selectedId, setSelectedId] = useState<string | null>(null);
+
+  const isDocumentDirty = useWorkflowUiStore((state) => state.isDocumentDirty);
+  const setIsDocumentDirty = useWorkflowUiStore((state) => state.setIsDocumentDirty);
+
+  // Unsaved changes protection
+  const [showDiscardDialog, setShowDiscardDialog] = useState(false);
+  const [pendingAction, setPendingAction] = useState<(() => void) | null>(null);
+
+  const confirmDiscard = (action: () => void) => {
+    if (isDocumentDirty) {
+      setPendingAction(() => action);
+      setShowDiscardDialog(true);
+    } else {
+      action();
+    }
+  };
+
+  const handleConfirmDiscard = () => {
+    setShowDiscardDialog(false);
+    setIsDocumentDirty(false);
+    if (pendingAction) {
+      const act = pendingAction;
+      setPendingAction(null);
+      act();
+    }
+  };
 
   // STRICT Isolation: ONLY steering documents, never specifications or features
   const steeringDocs = useMemo(() => {
@@ -101,7 +129,10 @@ export function SteeringPage() {
               {steeringDocs.map((doc: DocumentSummary) => (
                 <button
                   key={doc.id}
-                  onClick={() => setSelectedId(doc.id)}
+                  onClick={() => {
+                    if (currentId === doc.id) return;
+                    confirmDiscard(() => setSelectedId(doc.id));
+                  }}
                   className={cx(
                     'block w-full p-4 text-left transition hover:bg-secondary/40 cursor-pointer',
                     currentId === doc.id && 'bg-accent/40 border-l-2 border-primary font-medium'
@@ -147,6 +178,16 @@ export function SteeringPage() {
           )}
         </div>
       )}
+
+      <UnsavedChangesDialog
+        open={showDiscardDialog}
+        onOpenChange={setShowDiscardDialog}
+        onConfirmDiscard={handleConfirmDiscard}
+        onKeepEditing={() => {
+          setShowDiscardDialog(false);
+          setPendingAction(null);
+        }}
+      />
     </div>
   );
 }
