@@ -174,7 +174,9 @@ export function createServer(options: ServerOptions = {}): {
   const projectRoot = options.projectRoot || findProjectRoot();
   initSpexyWorkspace(projectRoot);
 
-  const staticDir = path.resolve(import.meta.dirname, "../../static");
+  const bundledStatic = path.resolve(import.meta.dirname, "../static");
+  const devStatic = path.resolve(import.meta.dirname, "../../static");
+  const staticDir = fs.existsSync(bundledStatic) ? bundledStatic : devStatic;
   const clients = new Set<any>();
 
   const broadcast = (event: { type: string; payload: any }) => {
@@ -1634,7 +1636,9 @@ export function startServer(
       websocket,
     });
   } else {
-    throw new Error("Spexy server requires Bun runtime.");
+    throw new Error(
+      "Spexy server requires Bun runtime (v1.3+). Please run with 'bunx spexy-cli dashboard' or install Bun from https://bun.sh"
+    );
   }
 
   const url = `http://${host}:${port}`;

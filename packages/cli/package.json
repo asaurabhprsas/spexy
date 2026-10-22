@@ -1,12 +1,41 @@
 {
-  "name": "@spexy/cli",
-  "version": "0.1.0",
-  "private": true,
+  "name": "spexy-cli",
+  "version": "0.1.0-alpha.0",
+  "description": "Local-first, human-in-the-loop Spec-Driven Development (SDD) orchestration platform",
   "type": "module",
+  "license": "MIT",
   "bin": {
-    "spexy": "./src/bin.ts",
-    "spec-flow": "./src/bin.ts"
+    "spexy": "./dist/bin.js",
+    "spec-flow": "./dist/bin.js"
   },
+  "files": [
+    "dist",
+    "static",
+    "README.md",
+    "LICENSE"
+  ],
+  "publishConfig": {
+    "access": "public",
+    "tag": "alpha"
+  },
+  "keywords": [
+    "spexy",
+    "spec-driven-development",
+    "sdd",
+    "ai-agents",
+    "agentic-workflow",
+    "dag",
+    "cli"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/asaurabhprsas/spexy.git",
+    "directory": "packages/cli"
+  },
+  "bugs": {
+    "url": "https://github.com/asaurabhprsas/spexy/issues"
+  },
+  "homepage": "https://github.com/asaurabhprsas/spexy#readme",
   "dependencies": {
     "@spexy/core": "workspace:*",
     "commander": "^15.0.0"

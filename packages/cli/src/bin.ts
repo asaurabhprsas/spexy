@@ -3,6 +3,7 @@ import path from "node:path";
 import fs from "node:fs";
 import { Command } from "commander";
 import YAML from "yaml";
+import packageJson from "../package.json";
 import {
   findProjectRoot,
   getSpecflowDir,
@@ -77,7 +78,7 @@ const program = new Command();
 program
   .name("spexy")
   .description("Spexy CLI: Spec-Driven Development orchestration for AI agents and human architects")
-  .version("0.1.0")
+  .version(packageJson.version || "0.1.0-alpha.0")
   .option("--dashboard", "Start the local dashboard server")
   .option("--port <port>", "Port for dashboard server", (v) => parseInt(v, 10))
   .option("--host <host>", "Host for dashboard server")

@@ -1,6 +1,6 @@
 {
   "name": "spexy",
-  "version": "0.1.0",
+  "version": "0.1.0-alpha.0",
   "private": true,
   "license": "MIT",
   "workspaces": [
@@ -8,13 +8,18 @@
     "skills/*"
   ],
   "scripts": {
-    "build": "pnpm --filter @workspace/spexy build",
+    "build": "bun run build:ui && bun run build:cli",
+    "build:ui": "cd packages/ui && bun run build",
+    "build:cli": "bun run ./scripts/build-cli.ts",
     "typecheck": "tsc --noEmit && tsc -p packages/ui/tsconfig.json --noEmit",
     "publish:local": "bun run ./scripts/publish-local.ts",
     "local:publish": "bun run ./scripts/publish-local.ts",
     "link:skills": "bun run ./scripts/link-skills.ts",
     "prepare": "bun run link:skills",
     "test": "bun test",
+    "release:check": "bun run typecheck && NO_PROXY=\"*\" bun test && bun run build && bun ./packages/cli/dist/bin.js doctor --compact",
+    "release:pack": "cd packages/cli && npm pack --dry-run",
+    "release:alpha": "bun run ./scripts/release-alpha.ts",
     "lint": "oxlint .",
     "format": "oxfmt .",
     "format:check": "oxfmt --check ."

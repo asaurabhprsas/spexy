@@ -481,4 +481,28 @@ describe("@spexy/cli Comprehensive Test Suite", () => {
     const failCompactOut = runCli(["doctor", "--compact"], { expectFail: true });
     expect(failCompactOut).toContain("FAIL");
   });
+
+  it("verifies package configuration and bundled distribution artifact", () => {
+    const pkgJsonPath = path.resolve(__dirname, "..", "package.json");
+    const pkg = JSON.parse(fs.readFileSync(pkgJsonPath, "utf-8"));
+
+    expect(pkg.name).toBe("spexy-cli");
+    expect(pkg.version).toBe("0.1.0-alpha.0");
+    expect(pkg.private).toBeUndefined();
+    expect(pkg.publishConfig).toEqual({ access: "public", tag: "alpha" });
+    expect(pkg.bin).toEqual({ spexy: "./dist/bin.js", "spec-flow": "./dist/bin.js" });
+    expect(pkg.files).toContain("dist");
+    expect(pkg.files).toContain("static");
+
+    // Test version flag
+    const versionOut = runCli(["--version"]).trim();
+    expect(versionOut).toBe(pkg.version);
+
+    // Verify dist/bin.js exists and is runnable via node
+    const distBin = path.resolve(__dirname, "..", "dist", "bin.js");
+    if (fs.existsSync(distBin)) {
+      const nodeVersion = execSync(`node ${distBin} --version`, { encoding: "utf-8" }).trim();
+      expect(nodeVersion).toBe(pkg.version);
+    }
+  });
 });
