@@ -3,6 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
 import { execSync } from "node:child_process";
+import YAML from "yaml";
 
 describe("@spec-flow/cli Comprehensive Test Suite", () => {
   let tmpDir: string;
@@ -42,6 +43,7 @@ describe("@spec-flow/cli Comprehensive Test Suite", () => {
     expect(output).toContain("task");
     expect(output).toContain("comment");
     expect(output).toContain("checkpoint");
+    expect(output).toContain("doc");
   });
 
   it("initializes workspace and reports status", () => {
@@ -240,5 +242,165 @@ describe("@spec-flow/cli Comprehensive Test Suite", () => {
     const restoreOutput = runCli(["checkpoint", "restore", "chk-test-snap"]);
     expect(restoreOutput).toContain("Restored snapshot");
     expect(fs.readFileSync(testDoc, "utf-8")).toBe("Version 1 content");
+  });
+
+  it("outputs token-optimized compact and formatted task lists", () => {
+    runCli(["init"]);
+    runCli(["spec", "create", "compact-tasks-spec", "--force"]);
+
+    // 1. spec-flow task list --compact --json
+    const compactJsonOut = runCli(["task", "list", "--compact", "--json"]);
+    const compactTasks = JSON.parse(compactJsonOut);
+    expect(Array.isArray(compactTasks)).toBe(true);
+    expect(compactTasks.length).toBeGreaterThan(0);
+    const taskJson = compactTasks[0];
+    expect(Object.keys(taskJson).sort()).toEqual(
+      ["availability", "blockers", "id", "priority", "spec_id", "status", "title"].sort(),
+    );
+    expect(taskJson.description).toBeUndefined();
+    expect(taskJson.files).toBeUndefined();
+    expect(taskJson.requirements_ref).toBeUndefined();
+    expect(taskJson.notes).toBeUndefined();
+    expect(taskJson.history).toBeUndefined();
+
+    // 2. spec-flow task list --compact --yaml
+    const compactYamlOut = runCli(["task", "list", "--compact", "--yaml"]);
+    const compactYamlTasks = YAML.parse(compactYamlOut);
+    expect(Array.isArray(compactYamlTasks)).toBe(true);
+    expect(compactYamlTasks.length).toBeGreaterThan(0);
+    const taskYaml = compactYamlTasks[0];
+    expect(Object.keys(taskYaml).sort()).toEqual(
+      ["availability", "blockers", "id", "priority", "spec_id", "status", "title"].sort(),
+    );
+    expect(taskYaml.description).toBeUndefined();
+    expect(taskYaml.files).toBeUndefined();
+
+    // Also verify --format yaml
+    const formatYamlOut = runCli(["task", "list", "-c", "--format", "yaml"]);
+    const formatYamlTasks = YAML.parse(formatYamlOut);
+    expect(formatYamlTasks).toEqual(compactYamlTasks);
+  });
+
+  it("outputs token-optimized compact comment list", () => {
+    runCli(["init"]);
+    const commentsPath = path.join(tmpDir, ".specflow", ".cache", "pending-comments.yaml");
+    const commentContent = `comments:
+  - id: cmt-compact-1
+    target_file: docs/ARCHITECTURE.md
+    status: pending
+    author: human
+    created_at: "${new Date().toISOString()}"
+    anchor:
+      start_line: 12
+      end_line: 15
+      anchor_text: "## Section"
+      context_before: "Introduction text"
+    instruction: "Shorten this section"
+    resolution_note: null
+`;
+    fs.writeFileSync(commentsPath, commentContent, "utf-8");
+
+    // spec-flow comment list --compact --json
+    const compactCommentOut = runCli(["comment", "list", "--compact", "--json"]);
+    const compactComments = JSON.parse(compactCommentOut);
+    expect(Array.isArray(compactComments)).toBe(true);
+    expect(compactComments.length).toBe(1);
+    const cmt = compactComments[0];
+    expect(cmt).toEqual({
+      id: "cmt-compact-1",
+      status: "pending",
+      author: "human",
+      target_file: "docs/ARCHITECTURE.md",
+      lines: "12-15",
+      instruction: "Shorten this section",
+    });
+    expect(cmt.anchor).toBeUndefined();
+    expect(cmt.resolution_note).toBeUndefined();
+
+    // spec-flow comment list --compact --yaml
+    const compactCommentYaml = runCli(["comment", "list", "-c", "--yaml"]);
+    const parsedYamlComments = YAML.parse(compactCommentYaml);
+    expect(parsedYamlComments[0].lines).toBe("12-15");
+    expect(parsedYamlComments[0].instruction).toBe("Shorten this section");
+  });
+
+  it("outputs token-optimized compact spec list", () => {
+    runCli(["init"]);
+    runCli(["spec", "create", "spec-a", "--force"]);
+    runCli(["spec", "create", "spec-b", "--force"]);
+
+    // spec-flow spec list --compact --json
+    const compactSpecOut = runCli(["spec", "list", "--compact", "--json"]);
+    const compactSpecs = JSON.parse(compactSpecOut);
+    expect(Array.isArray(compactSpecs)).toBe(true);
+    expect(compactSpecs.length).toBe(2);
+    const specA = compactSpecs.find((s: any) => s.id === "spec-a");
+    expect(specA).toEqual({
+      id: "spec-a",
+      status: "in-progress",
+      tasks: "0/1",
+    });
+
+    // spec-flow spec list --compact --yaml
+    const compactSpecYaml = runCli(["spec", "list", "-c", "--yaml"]);
+    const parsedSpecYaml = YAML.parse(compactSpecYaml);
+    expect(parsedSpecYaml.length).toBe(2);
+    const yamlSpecA = parsedSpecYaml.find((s: any) => s.id === "spec-a");
+    expect(yamlSpecA.tasks).toBe("0/1");
+    expect(yamlSpecA.status).toBe("in-progress");
+  });
+
+  it("manages doc list and doc get with token killer compact modes", () => {
+    runCli(["init"]);
+    runCli(["spec", "create", "auth-feature", "--force", "--title", "Authentication Feature"]);
+
+    // 1. spec-flow doc list --compact --json
+    const compactDocListOut = runCli(["doc", "list", "--compact", "--json"]);
+    const compactDocs = JSON.parse(compactDocListOut);
+    expect(Array.isArray(compactDocs)).toBe(true);
+    expect(compactDocs.length).toBeGreaterThanOrEqual(3);
+    for (const d of compactDocs) {
+      expect(Object.keys(d).sort()).toEqual(["id", "path", "status"].sort());
+      expect(d.kind).toBeUndefined();
+      expect(d.title).toBeUndefined();
+      expect(d.content).toBeUndefined();
+    }
+    expect(compactDocs.some((d: any) => d.id === "product")).toBe(true);
+    expect(compactDocs.some((d: any) => d.id === "auth-feature:requirements")).toBe(true);
+
+    // 2. spec-flow doc list (full) --json
+    const fullDocListOut = runCli(["doc", "list", "--json"]);
+    const fullDocs = JSON.parse(fullDocListOut);
+    expect(fullDocs.some((d: any) => d.id === "product" && d.kind === "steering" && d.title)).toBe(true);
+
+    // 3. spec-flow doc get product.md --compact --json
+    const compactDocGetJson = runCli(["doc", "get", "product.md", "--compact", "--json"]);
+    const parsedGetJson = JSON.parse(compactDocGetJson);
+    expect(parsedGetJson.status).toBe("draft");
+    expect(parsedGetJson.updated_at).toBeDefined();
+    expect(parsedGetJson.approved_by).toBeNull();
+    expect(parsedGetJson.title).toBeDefined();
+    expect(parsedGetJson.content).toBeUndefined();
+    expect(parsedGetJson.body).toBeUndefined();
+
+    // 4. spec-flow doc get product.md --compact --yaml
+    const compactDocGetYaml = runCli(["doc", "get", "product.md", "--compact", "--yaml"]);
+    const parsedGetYaml = YAML.parse(compactDocGetYaml);
+    expect(parsedGetYaml.status).toBe("draft");
+    expect(parsedGetYaml.updated_at).toBeDefined();
+    expect(parsedGetYaml.approved_by).toBeNull();
+    expect(parsedGetYaml.title).toBeDefined();
+    // Ensure markdown body was completely omitted
+    expect(compactDocGetYaml).not.toContain("## Vision");
+    expect(compactDocGetYaml).not.toContain("## Target Users");
+
+    // 5. spec-flow doc get with full content (default text output)
+    const fullDocText = runCli(["doc", "get", "product.md"]);
+    expect(fullDocText).toContain("# Product Vision & Direction");
+    expect(fullDocText).toContain("## Vision");
+
+    // 6. spec-flow doc get with nonexistent doc should fail gracefully
+    const failOutput = runCli(["doc", "get", "does-not-exist.md"], { expectFail: true });
+    expect(failOutput).toContain('Document "does-not-exist.md" not found');
   });
 });

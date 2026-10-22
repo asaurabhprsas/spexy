@@ -2,6 +2,7 @@
 import path from "node:path";
 import fs from "node:fs";
 import { Command } from "commander";
+import YAML from "yaml";
 import {
   findProjectRoot,
   getSpecflowDir,
@@ -27,11 +28,45 @@ import {
   releaseTaskLease,
   resolveGitContext,
   registerWorktree,
+  listDocuments,
+  findDocument,
+  parseDocumentFrontmatter,
   WorkflowRuleError,
   type TaskItem,
   type TasksDocument,
 } from "@spec-flow/core";
 import { startServer } from "./server";
+
+type OutputFormat = "json" | "yaml" | "text";
+
+function resolveFormat(options: {
+  format?: string;
+  json?: boolean;
+  yaml?: boolean;
+}): OutputFormat {
+  if (options.format) {
+    const fmt = options.format.toLowerCase();
+    if (fmt === "json" || fmt === "yaml") {
+      return fmt;
+    }
+    throw new Error(`Invalid format "${options.format}". Supported formats are: json, yaml.`);
+  }
+  if (options.yaml) return "yaml";
+  if (options.json) return "json";
+  return "text";
+}
+
+function dumpYaml(data: unknown): string {
+  try {
+    const jsYaml = require("js-yaml");
+    if (typeof jsYaml.dump === "function") {
+      return jsYaml.dump(data).trimEnd() + "\n";
+    }
+  } catch {
+    // fallback to YAML
+  }
+  return YAML.stringify(data).trimEnd() + "\n";
+}
 
 const program = new Command();
 
@@ -154,31 +189,55 @@ const specCmd = program.command("spec").description("Manage specifications");
 specCmd
   .command("list")
   .description("List all specs with status and task completion percentage")
+  .option("-c, --compact", "Output minimal spec fields ({ id, status, tasks })")
+  .option("--format <format>", "Format output as json or yaml")
+  .option("--yaml", "Output spec list as YAML")
   .option("--json", "Output spec list as JSON")
   .action((options) => {
     try {
       const projectRoot = getRoot();
+      const format = resolveFormat(options);
       const specs = listSpecs(projectRoot);
-      const enhanced = specs.map((s) => ({
-        ...s,
-        completionPercentage: s.taskCount > 0 ? Math.round((s.completedTaskCount / s.taskCount) * 100) : 0,
-      }));
 
-      if (options.json) {
-        console.log(JSON.stringify(enhanced, null, 2));
+      const outputSpecs = options.compact
+        ? specs.map((s) => ({
+            id: s.id,
+            status: s.status,
+            tasks: `${s.completedTaskCount}/${s.taskCount}`,
+          }))
+        : specs.map((s) => ({
+            ...s,
+            completionPercentage: s.taskCount > 0 ? Math.round((s.completedTaskCount / s.taskCount) * 100) : 0,
+          }));
+
+      if (format === "json") {
+        console.log(JSON.stringify(outputSpecs, null, 2));
         return;
       }
 
-      if (enhanced.length === 0) {
+      if (format === "yaml") {
+        console.log(dumpYaml(outputSpecs));
+        return;
+      }
+
+      if (outputSpecs.length === 0) {
         console.log(`No specs found. Create a spec with "spec-flow spec create <id>".`);
         return;
       }
 
-      console.log(`ID`.padEnd(20) + `STATUS`.padEnd(15) + `PROGRESS`.padEnd(15) + `NAME`);
-      console.log(`-`.repeat(65));
-      for (const s of enhanced) {
-        const progress = `${s.completedTaskCount}/${s.taskCount} (${s.completionPercentage}%)`;
-        console.log(s.id.padEnd(20) + s.status.padEnd(15) + progress.padEnd(15) + s.name);
+      if (options.compact) {
+        console.log(`ID`.padEnd(20) + `STATUS`.padEnd(15) + `TASKS`);
+        console.log(`-`.repeat(50));
+        for (const s of outputSpecs as any[]) {
+          console.log(s.id.padEnd(20) + s.status.padEnd(15) + s.tasks);
+        }
+      } else {
+        console.log(`ID`.padEnd(20) + `STATUS`.padEnd(15) + `PROGRESS`.padEnd(15) + `NAME`);
+        console.log(`-`.repeat(65));
+        for (const s of outputSpecs as any[]) {
+          const progress = `${s.completedTaskCount}/${s.taskCount} (${s.completionPercentage}%)`;
+          console.log(s.id.padEnd(20) + s.status.padEnd(15) + progress.padEnd(15) + s.name);
+        }
       }
     } catch (err: any) {
       console.error(`Error listing specs: ${err.message}`);
@@ -213,16 +272,22 @@ const taskCmd = program.command("task").description("Manage tasks, availability,
 taskCmd
   .command("list [spec-id]")
   .description("List tasks with status, priority, availability, and blocking dependencies")
+  .option("-c, --compact", "Output minimal task fields ({ id, spec_id, title, status, priority, availability, blockers })")
+  .option("--format <format>", "Format output as json or yaml")
+  .option("--yaml", "Output task list as YAML")
   .option("--available", "Filter to only tasks available for execution")
   .option("--json", "Output task list as JSON")
   .action((specId, options) => {
     try {
       const projectRoot = getRoot();
+      const format = resolveFormat(options);
       const specs = specId ? [{ id: specId }] : listSpecs(projectRoot);
 
       if (specs.length === 0) {
-        if (options.json) {
+        if (format === "json") {
           console.log(JSON.stringify([]));
+        } else if (format === "yaml") {
+          console.log(dumpYaml([]));
         } else {
           console.log(`No specs found. Create a spec with "spec-flow spec create <id>".`);
         }
@@ -264,8 +329,25 @@ taskCmd
         }
       }
 
-      if (options.json) {
-        console.log(JSON.stringify(allTasks, null, 2));
+      const outputTasks = options.compact
+        ? allTasks.map((t) => ({
+            id: t.id,
+            spec_id: t.spec_id,
+            title: t.title,
+            status: t.status,
+            priority: t.priority,
+            availability: t.availability,
+            blockers: t.blockers,
+          }))
+        : allTasks;
+
+      if (format === "json") {
+        console.log(JSON.stringify(outputTasks, null, 2));
+        return;
+      }
+
+      if (format === "yaml") {
+        console.log(dumpYaml(outputTasks));
         return;
       }
 
@@ -479,15 +561,35 @@ const commentCmd = program.command("comment").description("Manage review comment
 commentCmd
   .command("list")
   .description("List comments across documents")
+  .option("-c, --compact", "Output minimal comment fields ({ id, status, author, target_file, lines, instruction })")
+  .option("--format <format>", "Format output as json or yaml")
+  .option("--yaml", "Output comments as YAML")
   .option("--pending", "Show only pending comments")
   .option("--json", "Output comments as JSON")
   .action((options) => {
     try {
       const projectRoot = getRoot();
+      const format = resolveFormat(options);
       const comments = listComments(projectRoot, { pendingOnly: options.pending });
 
-      if (options.json) {
-        console.log(JSON.stringify(comments, null, 2));
+      const outputComments = options.compact
+        ? comments.map((c) => ({
+            id: c.id,
+            status: c.status,
+            author: c.author,
+            target_file: c.target_file,
+            lines: `${c.anchor.start_line}-${c.anchor.end_line}`,
+            instruction: c.instruction,
+          }))
+        : comments;
+
+      if (format === "json") {
+        console.log(JSON.stringify(outputComments, null, 2));
+        return;
+      }
+
+      if (format === "yaml") {
+        console.log(dumpYaml(outputComments));
         return;
       }
 
@@ -676,7 +778,178 @@ checkpointCmd
     }
   });
 
-// 7. dashboard command
+// 7. doc commands: list, get
+const docCmd = program.command("doc").description("Manage and inspect steering and specification documents");
+
+docCmd
+  .command("list")
+  .description("List all documents found in steering and specs")
+  .option("-c, --compact", "Output minimal document fields ({ id, path, status })")
+  .option("--format <format>", "Format output as json or yaml")
+  .option("--yaml", "Output document list as YAML")
+  .option("--json", "Output document list as JSON")
+  .action((options) => {
+    try {
+      const projectRoot = getRoot();
+      const format = resolveFormat(options);
+      const docs = listDocuments(projectRoot);
+
+      const outputDocs = options.compact
+        ? docs.map((d) => ({
+            id: d.id,
+            path: d.path,
+            status: d.status,
+          }))
+        : docs.map((d) => ({
+            id: d.id,
+            path: d.path,
+            kind: d.kind,
+            status: d.status,
+            title: d.title,
+          }));
+
+      if (format === "json") {
+        console.log(JSON.stringify(outputDocs, null, 2));
+        return;
+      }
+
+      if (format === "yaml") {
+        console.log(dumpYaml(outputDocs));
+        return;
+      }
+
+      if (outputDocs.length === 0) {
+        console.log("No documents found.");
+        return;
+      }
+
+      if (options.compact) {
+        console.log(`ID`.padEnd(25) + `STATUS`.padEnd(14) + `PATH`);
+        console.log(`-`.repeat(70));
+        for (const d of outputDocs as any[]) {
+          console.log(d.id.padEnd(25) + d.status.padEnd(14) + d.path);
+        }
+      } else {
+        console.log(`ID`.padEnd(25) + `KIND`.padEnd(16) + `STATUS`.padEnd(14) + `TITLE`);
+        console.log(`-`.repeat(80));
+        for (const d of outputDocs as any[]) {
+          console.log(d.id.padEnd(25) + d.kind.padEnd(16) + d.status.padEnd(14) + d.title);
+        }
+      }
+    } catch (err: any) {
+      console.error(`Error listing documents: ${err.message}`);
+      process.exit(1);
+    }
+  });
+
+docCmd
+  .command("get <path-or-id>")
+  .description("Get a document by ID or path")
+  .option("-c, --compact", "Output only frontmatter ({ status, updated_at, approved_by, title })")
+  .option("--format <format>", "Format output as json or yaml")
+  .option("--yaml", "Output document as YAML")
+  .option("--json", "Output document as JSON")
+  .action((pathOrId, options) => {
+    try {
+      const projectRoot = getRoot();
+      const format = resolveFormat(options);
+      const doc = findDocument(projectRoot, pathOrId);
+
+      const raw = fs.readFileSync(doc.fullPath, "utf-8");
+
+      if (options.compact) {
+        let compactData: {
+          status: string;
+          updated_at?: string;
+          approved_by?: string | null;
+          title?: string;
+        };
+
+        if (doc.kind === "tasks" || doc.fullPath.endsWith(".yaml") || doc.fullPath.endsWith(".yml")) {
+          try {
+            const parsed = YAML.parse(raw);
+            compactData = {
+              status: parsed?.status ?? doc.status,
+              updated_at: fs.statSync(doc.fullPath).mtime.toISOString(),
+              approved_by: null,
+            };
+          } catch {
+            compactData = {
+              status: doc.status,
+              updated_at: fs.statSync(doc.fullPath).mtime.toISOString(),
+              approved_by: null,
+            };
+          }
+        } else {
+          const { frontmatter } = parseDocumentFrontmatter(raw);
+          compactData = {
+            status: frontmatter.status,
+            updated_at: frontmatter.updated_at,
+            approved_by: frontmatter.approved_by,
+          };
+        }
+
+        if (doc.title) {
+          compactData.title = doc.title;
+        }
+
+        if (format === "json") {
+          console.log(JSON.stringify(compactData, null, 2));
+          return;
+        }
+
+        if (format === "yaml") {
+          console.log(dumpYaml(compactData));
+          return;
+        }
+
+        console.log(`Status:      ${compactData.status}`);
+        if (compactData.title) console.log(`Title:       ${compactData.title}`);
+        if (compactData.updated_at) console.log(`Updated At:  ${compactData.updated_at}`);
+        console.log(`Approved By: ${compactData.approved_by ?? "none"}`);
+        return;
+      }
+
+      if (format === "json") {
+        console.log(
+          JSON.stringify(
+            {
+              id: doc.id,
+              path: doc.path,
+              kind: doc.kind,
+              status: doc.status,
+              title: doc.title,
+              content: raw,
+            },
+            null,
+            2,
+          ),
+        );
+        return;
+      }
+
+      if (format === "yaml") {
+        console.log(
+          dumpYaml({
+            id: doc.id,
+            path: doc.path,
+            kind: doc.kind,
+            status: doc.status,
+            title: doc.title,
+            content: raw,
+          }),
+        );
+        return;
+      }
+
+      process.stdout.write(raw.endsWith("\n") ? raw : raw + "\n");
+    } catch (err: any) {
+      console.error(`Error reading document "${pathOrId}": ${err.message}`);
+      process.exit(1);
+    }
+  });
+
+// 8. dashboard command
 program
   .command("dashboard")
   .description("Start the local Spec-Flow dashboard server")

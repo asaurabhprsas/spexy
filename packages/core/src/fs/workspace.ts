@@ -394,6 +394,157 @@ export function listSpecFiles(projectRoot: string, specId: string): SpecFileInfo
   return results;
 }
 
+export interface DocumentInfo {
+  id: string;
+  path: string;
+  kind: string;
+  status: string;
+  title: string;
+  fullPath: string;
+}
+
+export function listDocuments(projectRoot: string): DocumentInfo[] {
+  const docs: DocumentInfo[] = [];
+
+  // 1. Steering documents
+  const steering = getSteeringStatus(projectRoot);
+  for (const d of steering.documents) {
+    const fullPath = path.join(getSpecflowDir(projectRoot), "steering", d.filename);
+    docs.push({
+      id: d.id,
+      path: d.relativePath.split(path.sep).join("/"),
+      kind: "steering",
+      status: d.status,
+      title: d.title,
+      fullPath,
+    });
+  }
+
+  // Scan steering directory for any extra documents
+  const steeringDir = path.join(getSpecflowDir(projectRoot), "steering");
+  if (fs.existsSync(steeringDir)) {
+    const entries = fs.readdirSync(steeringDir);
+    for (const entry of entries) {
+      if (!entry.endsWith(".md")) continue;
+      const fullPath = path.join(steeringDir, entry);
+      if (docs.some((d) => d.fullPath === fullPath)) continue;
+      const raw = fs.readFileSync(fullPath, "utf-8");
+      const { frontmatter, body } = parseDocumentFrontmatter(raw);
+      const headingMatch = body.match(/^#\s+(.+)$/m);
+      const base = path.basename(entry, ".md");
+      docs.push({
+        id: base,
+        path: path.relative(projectRoot, fullPath).split(path.sep).join("/"),
+        kind: "steering",
+        status: frontmatter.status,
+        title: headingMatch ? headingMatch[1].trim() : base,
+        fullPath,
+      });
+    }
+  }
+
+  // 2. Spec documents
+  const specs = listSpecs(projectRoot);
+  for (const s of specs) {
+    const specDir = path.join(getSpecflowDir(projectRoot), "specs", s.id);
+    const files = listSpecFiles(projectRoot, s.id);
+    for (const f of files) {
+      if (f.kind === "log" || f.kind === "image") continue;
+      const fullPath = path.join(specDir, f.relativePath);
+      let docId = `${s.id}:${f.kind}`;
+      let title = `${s.name} - ${f.name}`;
+      let status = s.status;
+
+      if (f.name === "requirements.md") {
+        docId = `${s.id}:requirements`;
+        title = `${s.name} - Requirements`;
+      } else if (f.name === "design.md") {
+        docId = `${s.id}:design`;
+        title = `${s.name} - Design`;
+      } else if (f.name === "tasks.yaml") {
+        docId = `${s.id}:tasks`;
+        title = `${s.name} - Tasks`;
+      }
+
+      if (f.name.endsWith(".md")) {
+        try {
+          const raw = fs.readFileSync(fullPath, "utf-8");
+          const parsed = parseDocumentFrontmatter(raw);
+          if (parsed.frontmatter?.status) {
+            status = parsed.frontmatter.status;
+          }
+          const headingMatch = parsed.body.match(/^#\s+(.+)$/m);
+          if (headingMatch) {
+            title = headingMatch[1].trim();
+          }
+        } catch {
+          // ignore
+        }
+      }
+
+      docs.push({
+        id: docId,
+        path: path.relative(projectRoot, fullPath).split(path.sep).join("/"),
+        kind: f.kind,
+        status,
+        title,
+        fullPath,
+      });
+    }
+  }
+
+  return docs;
+}
+
+export function findDocument(projectRoot: string, target: string): DocumentInfo {
+  const docs = listDocuments(projectRoot);
+  const normalizedTarget = target.trim();
+  const lowerTarget = normalizedTarget.toLowerCase();
+
+  // 1. Exact ID match (case-insensitive)
+  let found = docs.find((d) => d.id.toLowerCase() === lowerTarget);
+  if (found) return found;
+
+  // 2. Exact relative path match
+  found = docs.find((d) => d.path.toLowerCase() === lowerTarget);
+  if (found) return found;
+
+  // 3. Basename match (e.g. "product.md", "tech.md")
+  found = docs.find((d) => path.basename(d.path).toLowerCase() === lowerTarget);
+  if (found) return found;
+
+  // 4. Basename without extension (e.g. "product" -> "product.md")
+  found = docs.find((d) => path.basename(d.path, path.extname(d.path)).toLowerCase() === lowerTarget);
+  if (found) return found;
+
+  // 5. Ends with target (e.g. "specs/auth/requirements.md" or "steering/product.md")
+  found = docs.find((d) => d.path.toLowerCase().endsWith(lowerTarget));
+  if (found) return found;
+
+  // 6. Direct filesystem path if target exists
+  const absPath = path.isAbsolute(target) ? target : path.resolve(projectRoot, target);
+  if (fs.existsSync(absPath) && fs.statSync(absPath).isFile()) {
+    const rel = path.relative(projectRoot, absPath).split(path.sep).join("/");
+    found = docs.find((d) => d.fullPath === absPath || d.path === rel);
+    if (found) return found;
+
+    const raw = fs.readFileSync(absPath, "utf-8");
+    const { frontmatter, body } = parseDocumentFrontmatter(raw);
+    const headingMatch = body.match(/^#\s+(.+)$/m);
+    const base = path.basename(absPath, path.extname(absPath));
+    return {
+      id: base,
+      path: rel,
+      kind: rel.includes("steering") ? "steering" : "other",
+      status: frontmatter.status,
+      title: headingMatch ? headingMatch[1].trim() : base,
+      fullPath: absPath,
+    };
+  }
+
+  throw new Error(`Document "${target}" not found.`);
+}
+
 export function readTasksYaml(projectRoot: string, specId: string): TasksDocument {
   const tasksPath = path.join(getSpecflowDir(projectRoot), "specs", specId, "tasks.yaml");
   if (!fs.existsSync(tasksPath)) {
