@@ -1,18 +1,24 @@
 {
   "name": "spexy",
   "version": "0.1.0",
+  "private": true,
   "license": "MIT",
+  "workspaces": [
+    "packages/*",
+    "skills/*"
+  ],
   "scripts": {
     "build": "pnpm --filter @workspace/spexy build",
     "typecheck": "tsc --noEmit && tsc -p packages/ui/tsconfig.json --noEmit",
     "publish:local": "bun run ./scripts/publish-local.ts",
     "local:publish": "bun run ./scripts/publish-local.ts",
+    "link:skills": "bun run ./scripts/link-skills.ts",
+    "prepare": "bun run link:skills",
     "test": "bun test",
     "lint": "oxlint .",
     "format": "oxfmt .",
     "format:check": "oxfmt --check ."
   },
-  "private": true,
   "devDependencies": {
     "@types/node": "catalog:",
     "bun-types": "^1.4.3",
@@ -22,9 +28,5 @@
     "turbo": "^2.11.10",
     "typescript": "^7.0.2",
     "vitest": "^5.0.5"
-  },
-  "workspaces": [
-    "packages/*",
-    "skills/*"
-  ]
+  }
 }

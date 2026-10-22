@@ -52,3 +52,4 @@ Thumbs.db
 # Build artifacts
 packages/cli/static/
 
+.agents/skills/spexy
