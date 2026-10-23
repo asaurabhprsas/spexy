@@ -210,14 +210,13 @@ Document body here.`;
     });
   });
 
-  describe("Workspace File Operations (.spexy/ & docs/)", () => {
-    it("initializes directory structure with steering docs and docs/ folder", () => {
+  describe("Workspace File Operations (.spexy/)", () => {
+    it("initializes directory structure with steering docs without root docs folder", () => {
       initSpexyWorkspace(tmpDir);
 
       expect(fs.existsSync(path.join(tmpDir, ".spexy", "config.yaml"))).toBe(true);
       expect(fs.existsSync(path.join(tmpDir, ".spexy", "steering", "product.md"))).toBe(true);
-      expect(fs.existsSync(path.join(tmpDir, "docs", "ARCHITECTURE.md"))).toBe(true);
-      expect(fs.existsSync(path.join(tmpDir, "docs", "PROGRESS.md"))).toBe(true);
+      expect(fs.existsSync(path.join(tmpDir, "docs"))).toBe(false);
 
       const status = getSteeringStatus(tmpDir);
       expect(status.approved).toBe(false);

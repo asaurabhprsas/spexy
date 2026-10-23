@@ -206,6 +206,7 @@ describe("@spexy/cli Comprehensive Test Suite", () => {
 
   it("lists and restores snapshots", () => {
     runCli(["init"]);
+    fs.mkdirSync(path.join(tmpDir, "docs"), { recursive: true });
     const testDoc = path.join(tmpDir, "docs", "PROGRESS.md");
     fs.writeFileSync(testDoc, "Version 1 content", "utf-8");
 

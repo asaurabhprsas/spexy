@@ -18,8 +18,6 @@ approved_by: null
   - `prompts/`: Standardized AI agent prompt guides.
   - `archived/`: Archived steering and specification documents.
   - `.cache/`: Snapshot ring-buffer checkpoints and resolved comment history.
-- **`docs/`**:
-  - Long-term human documentation and architecture reference manuals.
 
 ## 2. Naming Conventions
 - **Files & Directories**:

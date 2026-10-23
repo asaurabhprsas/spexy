@@ -626,7 +626,6 @@ export function updateTaskInDoc(
 
 export function initSpexyWorkspace(projectRoot: string): void {
   const sfDir = getSpecflowDir(projectRoot);
-  const docsDir = path.join(projectRoot, DOCS_DIR);
 
   // In the main spexy monorepo, keep templates at project root; in initialized projects, place inside .spexy/templates
   const isMainSpexyRepo =
@@ -644,7 +643,6 @@ export function initSpexyWorkspace(projectRoot: string): void {
   fs.mkdirSync(path.join(sfDir, "prompts"), { recursive: true });
   fs.mkdirSync(path.join(sfDir, ".cache", "checkpoints"), { recursive: true });
   fs.mkdirSync(path.join(sfDir, ".cache", "history"), { recursive: true });
-  fs.mkdirSync(docsDir, { recursive: true });
 
   const now = new Date().toISOString();
 
@@ -857,8 +855,6 @@ approved_by: null
   - \`prompts/\`: Standardized AI agent prompt guides.
   - \`archived/\`: Archived steering and specification documents.
   - \`.cache/\`: Snapshot ring-buffer checkpoints and resolved comment history.
-- **\`docs/\`**:
-  - Long-term human documentation and architecture reference manuals.
 
 ## 2. Naming Conventions
 - **Files & Directories**:
@@ -1314,57 +1310,5 @@ Review pending anchored comments, apply fixes, and resolve comments with history
       );
       fs.writeFileSync(docPath, formatted, "utf-8");
     }
-  }
-
-  // 7. docs/ folder
-  const archDoc = path.join(docsDir, "ARCHITECTURE.md");
-  if (!fs.existsSync(archDoc)) {
-    fs.writeFileSync(
-      archDoc,
-      `# System Architecture & Documentation
-
-This directory provides project context, system architecture, and onboarding documentation for future developers and AI agents.
-
-## Core Principles
-1. **Steering-First Gate**: Foundational steering documents establish non-negotiable boundaries before coding begins.
-2. **DAG-Enforced Tasks**: Every feature task declares explicit prerequisites with cycle detection.
-3. **Two-Tier HITL Verification**: Autonomous agents advance tasks to \`to-review\`; only human verification transitions work to \`done\`.
-`,
-      "utf-8",
-    );
-  }
-
-  const progressDoc = path.join(docsDir, "PROGRESS.md");
-  if (!fs.existsSync(progressDoc)) {
-    fs.writeFileSync(
-      progressDoc,
-      `# Project Milestones & Progress Log
-
-- **${now.slice(0, 10)}**: Workspace initialized with Spexy SDD methodology.
-`,
-      "utf-8",
-    );
-  }
-
-  const onboardingDoc = path.join(docsDir, "ONBOARDING.md");
-  if (!fs.existsSync(onboardingDoc)) {
-    fs.writeFileSync(
-      onboardingDoc,
-      `# Quickstart & Onboarding Guide
-
-## For AI Agents
-1. Run \`spexy status\` to inspect steering approval state.
-2. List available work: \`spexy task list <spec-id> --available\`.
-3. Claim a task: \`spexy task start <task-id>\`.
-4. When implementation is verified with unit tests, submit for review: \`spexy task complete <task-id> --note "..."\`.
-5. Check for human feedback: \`spexy comment list --pending\`.
-
-## For Human Architects
-1. Launch dashboard: \`spexy --dashboard\`.
-2. Review steering documents and approve them.
-3. Review submitted tasks in the Kanban board and approve or reject them.
-`,
-      "utf-8",
-    );
   }
 }

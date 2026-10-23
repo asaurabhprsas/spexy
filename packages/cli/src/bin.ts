@@ -145,7 +145,7 @@ function findTaskAcrossSpecs(projectRoot: string, taskId: string): {
 // 1. init
 program
   .command("init")
-  .description("Initialize .spexy/ workspace and docs/ directory")
+  .description("Initialize .spexy/ workspace")
   .argument("[dir]", "Target workspace directory", ".")
   .action((dir) => {
     try {
@@ -153,7 +153,6 @@ program
       initSpexyWorkspace(targetDir);
       console.log(`✓ Spexy workspace initialized at: ${targetDir}`);
       console.log(`  • Created .spexy/ (steering, specs, templates, .cache)`);
-      console.log(`  • Created docs/ (ARCHITECTURE.md, PROGRESS.md, ONBOARDING.md)`);
       console.log(`\nNext step: Run "spexy status" to review steering documents.`);
     } catch (err: any) {
       console.error(`Error initializing workspace: ${err.message}`);
