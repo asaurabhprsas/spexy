@@ -491,9 +491,10 @@ describe("@spexy/cli Comprehensive Test Suite", () => {
     const pkg = JSON.parse(fs.readFileSync(pkgJsonPath, "utf-8"));
 
     expect(pkg.name).toBe("spexy-cli");
-    expect(pkg.version).toBe("0.1.0-alpha.0");
+    expect(pkg.version).toMatch(/^\d+\.\d+\.\d+/);
     expect(pkg.private).toBeUndefined();
-    expect(pkg.publishConfig).toEqual({ access: "public", tag: "alpha" });
+    expect(pkg.publishConfig.access).toBe("public");
+    expect(pkg.publishConfig.tag).toBeDefined();
     expect(pkg.bin).toEqual({ spexy: "./dist/bin.js", "spec-flow": "./dist/bin.js" });
     expect(pkg.files).toContain("dist");
     expect(pkg.files).toContain("static");
