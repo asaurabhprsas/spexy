@@ -3,7 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
 import { startServer, ServerInstance } from "./index";
-import { initSpexyWorkspace, createSnapshot } from "./core";
+import { initSpexyWorkspace, createSnapshot } from "@spexy/core";
 import { withFileWriteLock, isFileWriteLocked, startWatcher } from "./watcher";
 
 describe("Spexy Node.js HTTP & WebSocket Server & File Watcher", () => {

@@ -1,6 +1,7 @@
 {
   "name": "@spexy/core",
   "version": "0.1.0-alpha.0",
+  "type": "module",
   "private": true,
   "main": "./src/index.ts",
   "module": "./src/index.ts",

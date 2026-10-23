@@ -41,7 +41,7 @@ import {
   WorkflowActor,
   WorkflowRuleError,
   writeTasksYaml,
-} from "./core";
+} from "@spexy/core";
 import { startWatcher, withFileWriteLock, WatcherHandle } from "./watcher";
 
 export interface ServerOptions {

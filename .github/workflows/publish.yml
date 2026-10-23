@@ -45,11 +45,11 @@ jobs:
       - name: Strict TypeScript typecheck
         run: pnpm run typecheck
 
-      - name: Run test suite
-        run: pnpm test
-
       - name: Build Web UI & CLI distribution
         run: pnpm run build
+
+      - name: Run test suite
+        run: pnpm test
 
       - name: Verify workspace diagnostics
         run: node ./packages/cli/dist/bin.js doctor --compact

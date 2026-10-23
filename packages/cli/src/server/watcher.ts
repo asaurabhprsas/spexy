@@ -9,7 +9,7 @@ import {
   SPEXY_DIR,
   TasksDocumentSchema,
   validateTaskGraph,
-} from "./core";
+} from "@spexy/core";
 
 export type BroadcastFn = (event: { type: string; payload: any }) => void;
 

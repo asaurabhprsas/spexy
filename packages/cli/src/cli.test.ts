@@ -9,7 +9,9 @@ describe("@spexy/cli Comprehensive Test Suite", () => {
   let tmpDir: string;
   const binPath = path.resolve(__dirname, "bin.ts");
   const distPath = path.resolve(__dirname, "../dist/bin.js");
-  const cliExec = fs.existsSync(distPath) ? `node ${distPath}` : `pnpx tsx ${binPath}`;
+  const localTsx = path.resolve(__dirname, "../../../node_modules/.bin/tsx");
+  const tsxCmd = fs.existsSync(localTsx) ? `"${localTsx}"` : "tsx";
+  const cliExec = fs.existsSync(distPath) ? `node "${distPath}"` : `${tsxCmd} "${binPath}"`;
 
   beforeEach(() => {
     tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "spexy-cli-test-"));
