@@ -33,15 +33,23 @@ console.log("\n2/4  Setting executable permissions (0755)...");
 fs.chmodSync(outFile, 0o755);
 
 // 4. Ensure README and LICENSE in packages/cli
-console.log("\n3/4  Syncing README.md and LICENSE to packages/cli/...");
+console.log("\n3/5  Syncing README.md and LICENSE to packages/cli/...");
 const rootLicense = path.join(projectRoot, "LICENSE");
 const cliLicense = path.join(cliDir, "LICENSE");
 if (fs.existsSync(rootLicense)) {
   fs.copyFileSync(rootLicense, cliLicense);
 }
 
-// 5. Verification
-console.log("\n4/4  Verifying compiled CLI binary execution...");
+// 5. Ensure root templates synced to packages/cli/templates/
+console.log("\n4/5  Syncing root templates/ to packages/cli/templates/...");
+const rootTemplates = path.join(projectRoot, "templates");
+const cliTemplates = path.join(cliDir, "templates");
+if (fs.existsSync(rootTemplates)) {
+  fs.cpSync(rootTemplates, cliTemplates, { recursive: true });
+}
+
+// 6. Verification
+console.log("\n5/5  Verifying compiled CLI binary execution...");
 try {
   const version = execSync(`node ${outFile} --version`, { encoding: "utf-8" }).trim();
   const stat = fs.statSync(outFile);

@@ -392,13 +392,12 @@ describe("@spexy/cli Comprehensive Test Suite", () => {
     expect(parsedGetYaml.approved_by).toBeNull();
     expect(parsedGetYaml.title).toBeDefined();
     // Ensure markdown body was completely omitted
-    expect(compactDocGetYaml).not.toContain("## Vision");
-    expect(compactDocGetYaml).not.toContain("## Target Users");
+    expect(compactDocGetYaml).not.toContain("Refer");
 
     // 5. spexy doc get with full content (default text output)
     const fullDocText = runCli(["doc", "get", "product.md"]);
-    expect(fullDocText).toContain("# Product Vision & Direction");
-    expect(fullDocText).toContain("## Vision");
+    expect(fullDocText).toContain("# Product Vision & Strategy");
+    expect(fullDocText).toContain("Refer");
 
     // 6. spexy doc get with nonexistent doc should fail gracefully
     const failOutput = runCli(["doc", "get", "does-not-exist.md"], { expectFail: true });

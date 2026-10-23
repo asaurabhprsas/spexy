@@ -420,6 +420,11 @@ Document body here.`;
       const tasksPrompt = fs.readFileSync(path.join(sfDir, "prompts", "03-create-tasks.md"), "utf-8");
       expect(tasksPrompt).toContain(".spexy/templates/specs/tasks.template.yaml");
 
+      // Verify steering docs reference templates instead of hardcoded demo content
+      expect(fs.readFileSync(path.join(sfDir, "steering", "product.md"), "utf-8")).toContain("Refer `.spexy/templates/steering/product.template.md`");
+      expect(fs.readFileSync(path.join(sfDir, "steering", "tech.md"), "utf-8")).toContain("Refer `.spexy/templates/steering/tech.template.md`");
+      expect(fs.readFileSync(path.join(sfDir, "steering", "structure.md"), "utf-8")).toContain("Refer `.spexy/templates/steering/structure.template.md`");
+
       // Verify createSpec creates references and images dirs
       createSpec(tmpDir, "test-spec", { force: true });
       expect(fs.existsSync(path.join(sfDir, "specs", "test-spec", "references"))).toBe(true);

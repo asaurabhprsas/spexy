@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import YAML from "yaml";
 import { Config, ConfigSchema, DEFAULT_CONFIG } from "../schemas/config";
 import {
@@ -624,6 +625,79 @@ export function updateTaskInDoc(
   return { ...tasksDoc, groups: newGroups };
 }
 
+export function resolveTemplatesSourceDir(): string | null {
+  if (process.env.SPEXY_TEMPLATES_DIR && fs.existsSync(process.env.SPEXY_TEMPLATES_DIR)) {
+    return process.env.SPEXY_TEMPLATES_DIR;
+  }
+
+  const baseDirs: string[] = [];
+
+  // 1. Module directory from import.meta.url
+  try {
+    if (typeof import.meta !== "undefined" && import.meta.url) {
+      baseDirs.push(path.dirname(fileURLToPath(import.meta.url)));
+    }
+  } catch {}
+
+  // 2. Invocation script from process.argv[1] (resolving symlinks)
+  try {
+    if (process.argv[1]) {
+      try {
+        const realScript = fs.realpathSync(process.argv[1]);
+        baseDirs.push(path.dirname(realScript));
+      } catch {}
+      baseDirs.push(path.dirname(process.argv[1]));
+    }
+  } catch {}
+
+  // 3. __dirname fallback
+  try {
+    if (typeof __dirname !== "undefined") {
+      baseDirs.push(__dirname);
+    }
+  } catch {}
+
+  // 4. Current working directory
+  baseDirs.push(process.cwd());
+
+  for (const base of baseDirs) {
+    let curr = path.resolve(base);
+    while (curr && curr !== path.dirname(curr)) {
+      const candidateTemplates = path.join(curr, "templates");
+      if (
+        fs.existsSync(path.join(candidateTemplates, "steering", "product.template.md")) &&
+        fs.existsSync(path.join(candidateTemplates, "specs", "tasks.template.yaml"))
+      ) {
+        return candidateTemplates;
+      }
+      const cliTemplates = path.join(curr, "packages", "cli", "templates");
+      if (
+        fs.existsSync(path.join(cliTemplates, "steering", "product.template.md")) &&
+        fs.existsSync(path.join(cliTemplates, "specs", "tasks.template.yaml"))
+      ) {
+        return cliTemplates;
+      }
+      curr = path.dirname(curr);
+    }
+  }
+  return null;
+}
+
+function copyDirNonDestructive(src: string, dest: string): void {
+  if (!fs.existsSync(src)) return;
+  fs.mkdirSync(dest, { recursive: true });
+  const entries = fs.readdirSync(src, { withFileTypes: true });
+  for (const entry of entries) {
+    const srcPath = path.join(src, entry.name);
+    const destPath = path.join(dest, entry.name);
+    if (entry.isDirectory()) {
+      copyDirNonDestructive(srcPath, destPath);
+    } else if (entry.isFile() && !fs.existsSync(destPath)) {
+      fs.copyFileSync(srcPath, destPath);
+    }
+  }
+}
+
 export function initSpexyWorkspace(projectRoot: string): void {
   const sfDir = getSpecflowDir(projectRoot);
 
@@ -696,371 +770,10 @@ High-level cross-spec roadmap and development milestones.
     );
   }
 
-  // 6. Turnkey Templates in templates/
-  const templates: { subpath: string; content: string }[] = [
-    {
-      subpath: path.join("steering", "product.template.md"),
-      content: `---
-status: draft
-updated_at: 2026-01-01T00:00:00.000Z
-approved_by: null
----
-
-# Product Vision & Strategy: [Project Name]
-
-## 1. Product Purpose
-- **Core Problem**:
-  - What pain points or operational bottlenecks does this project solve?
-  - Why is the existing solution or status quo insufficient?
-- **Value Proposition**:
-  - Primary value delivered to users and stakeholders.
-  - Expected transformative outcome.
-
-## 2. Target Users & Personas
-- **Primary Persona**:
-  - Role, background, and responsibilities.
-  - Daily workflows, key needs, and major frustrations.
-- **Secondary Personas**:
-  - Supporting roles, administrators, reviewers, or executive stakeholders.
-  - Permission levels and reporting requirements.
-
-## 3. Key Features & Capabilities
-- **Core Feature 1**:
-  - Description and expected workflow.
-  - User outcome and acceptance criteria.
-- **Core Feature 2**:
-  - Automation, integration, or intelligence capabilities.
-  - Differentiating characteristics.
-- **Core Feature 3**:
-  - Extension points, reporting, or collaboration tooling.
-
-## 4. Business Objectives & Success Metrics
-- **Business Goals**:
-  - Strategic objective 1 (e.g., efficiency, quality, speed).
-  - Strategic objective 2 (e.g., cost reduction, compliance).
-- **Key Performance Indicators (KPIs)**:
-  - Metric 1: Quantifiable baseline and target threshold.
-  - Metric 2: Adoption, performance, or accuracy targets.
-
-## 5. Product Principles
-- **Principle 1**:
-  - Core philosophy guiding architectural and product trade-offs.
-- **Principle 2**:
-  - Quality, security, or developer experience standard.
-- **Principle 3**:
-  - Simplicity, modularity, or local-first philosophy.
-
-## 6. Monitoring & Visibility
-- **Dashboard Type**:
-  - Web UI, CLI daemon, or embedded terminal interface.
-- **Real-time Observability**:
-  - WebSocket, polling, or event stream notification mechanism.
-- **Surfaced Metrics**:
-  - High-priority state (e.g., task progress, review queue, cycle times).
-- **Sharing & Collaboration**:
-  - Read-only review links, exports, or audit log persistence.
-
-## 7. Future Vision & Roadmap
-- **Short-Term Horizons**:
-  - Immediate milestones following initial release.
-- **Long-Term Horizons**:
-  - Advanced automation, remote synchronization, and analytics capabilities.
-`,
-    },
-    {
-      subpath: path.join("steering", "tech.template.md"),
-      content: `---
-status: draft
-updated_at: 2026-01-01T00:00:00.000Z
-approved_by: null
----
-
-# Technical Architecture & Constraints: [Project Name]
-
-## 1. Project Type & Classification
-- **Archetype**:
-  - Web application, CLI tool, API service, library package, or distributed system.
-- **Target Runtime**:
-  - Bun, Node.js, browser runtime, or multi-platform targets.
-
-## 2. Core Technologies
-- **Primary Language & Tools**:
-  - Language: TypeScript / ECMAScript target.
-  - Package manager and task orchestrator (e.g., Bun, Turborepo).
-- **Frameworks & Libraries**:
-  - Web/Server framework (e.g., Fastify, native Bun HTTP).
-  - Validation engine (e.g., Zod schemas).
-  - Serialization: YAML, JSON, frontmatter.
-- **Application Architecture**:
-  - Layered architecture: Core domain logic vs CLI presentation vs server adapters.
-  - State management: File system as single source of truth (.spexy/).
-  - Event model: Reactive WebSocket broadcasting and file watchers.
-- **Storage & Data Formats**:
-  - Primary storage: Local-first Markdown files and YAML documents.
-  - Cache: Ring-buffer snapshot backups in \`.spexy/.cache/checkpoints/\`.
-- **Integrations & Protocols**:
-  - Local WebSocket server (\`ws://\` and \`http://\`).
-  - Git integration: branch isolation, worktrees, and commit hooks.
-
-## 3. Development Environment & Quality Standards
-- **Build & Dev Tooling**:
-  - Test runner: \`bun test\`.
-  - Type checking: \`tsc --noEmit\`.
-- **Static Analysis & Formatting**:
-  - Linter and formatter configurations.
-  - Zero-warning policy for production branches.
-- **Testing Requirements**:
-  - Unit tests for core domain logic and DAG engines.
-  - Integration tests for CLI commands and HTTP/WebSocket endpoints.
-  - 100% test pass rate required before human review submission.
-
-## 4. Technical Constraints & Security
-- **Performance Benchmarks**:
-  - Sub-second CLI command startup and execution.
-  - Token-optimized outputs (\`--compact\` and \`--json\` modes).
-- **Security & Sandboxing**:
-  - Path traversal validation and sandboxing.
-  - Strict input sanitization and schema parsing.
-- **Reliability & Resilience**:
-  - File locking with mutex inhibitors to avoid watcher echo loops.
-  - Atomic file writes and ring-buffer checkpoint rollback.
-
-## 5. Architectural Decision Log & Limitations
-- **Key Decisions**:
-  - ADR 1: Local-first file-backed storage over remote database.
-  - ADR 2: Two-tier human-in-the-loop (HITL) approval gate for tasks.
-- **Known Limitations**:
-  - Documented technical constraints and planned remediations.
-`,
-    },
-    {
-      subpath: path.join("steering", "structure.template.md"),
-      content: `---
-status: draft
-updated_at: 2026-01-01T00:00:00.000Z
-approved_by: null
----
-
-# Project Structure & Conventions: [Project Name]
-
-## 1. Monorepo Directory Organization
-- **\`packages/\`**:
-  - \`packages/core/\`: Domain logic, DAG workflow engine, Zod schemas, file operations.
-  - \`packages/cli/\`: Command-line interface, server daemon, dashboard runner.
-  - \`packages/ui/\`: Frontend single-page application dashboard.
-- **\`.spexy/\`**:
-  - \`steering/\`: Foundational product, tech, and structure steering documents.
-  - \`specs/\`: Feature specifications with requirements, design, and tasks.yaml.
-  - \`templates/\`: Turnkey templates for steering documents, feature specifications, and task graphs.
-  - \`prompts/\`: Standardized AI agent prompt guides.
-  - \`archived/\`: Archived steering and specification documents.
-  - \`.cache/\`: Snapshot ring-buffer checkpoints and resolved comment history.
-
-## 2. Naming Conventions
-- **Files & Directories**:
-  - Source files: \`kebab-case.ts\` (e.g., \`ring-buffer.ts\`, \`fuzzy-anchor.ts\`).
-  - Test files: \`*.test.ts\` co-located with source or in test suites.
-  - Documentation: \`kebab-case.md\` or \`.spexy/\` standard conventions.
-- **Source Code Symbols**:
-  - Classes, interfaces, types: \`PascalCase\` (e.g., \`TasksDocumentSchema\`, \`TaskItem\`).
-  - Functions, methods, variables: \`camelCase\` (e.g., \`computeTaskAvailability\`).
-  - Constants & Enums: \`UPPER_SNAKE_CASE\` or \`PascalCase\` object enums.
-
-## 3. Import & Export Patterns
-- **Import Ordering**:
-  - 1. Node.js built-ins (\`node:fs\`, \`node:path\`, \`node:crypto\`).
-  - 2. External third-party packages (\`yaml\`, \`zod\`, \`commander\`).
-  - 3. Internal monorepo package imports (\`@spexy/core\`).
-  - 4. Relative file imports (\`./server\`, \`../fs/workspace\`).
-- **Barrel Exports**:
-  - Clean public APIs exported via root \`index.ts\` in each package.
-
-## 4. Code Organization & Modularity Principles
-- **Single Responsibility Principle**:
-  - Each module focuses on a single domain (DAG, checkpoints, comments, workspace).
-- **Service & Utility Decoupling**:
-  - Separation between file-system mutation, data validation, and CLI rendering.
-- **File & Function Size Budgets**:
-  - Target modular files under 400 lines where practical.
-  - Functions should perform a single logical operation with clear return types.
-
-## 5. Branching & Commit Conventions
-- **Branch Strategy**:
-  - Feature task branches: \`feature/<spec-id>/<task-id>\` or \`spec/<spec-id>\`.
-  - Main branch: \`main\` (always protected, verified via CI).
-- **Commit Message Patterns**:
-  - Format: \`<type>(<spec-id>): <task-title> (refs #<task-id>)\`.
-  - Examples:
-    - \`feat(auth): Define Schemas and Interfaces (refs #1)\`
-    - \`fix(auth): Resolve session expiration edge-case (refs #2)\`
-`,
-    },
-    {
-      subpath: path.join("specs", "requirements.template.md"),
-      content: `---
-status: draft
-updated_at: 2026-01-01T00:00:00.000Z
-approved_by: null
----
-
-# Requirements Specification: [Feature Title]
-
-## 1. Introduction & User Value
-- **Feature Overview**:
-  - Executive summary of the feature and problem addressed.
-- **User Goals**:
-  - What users accomplish through this feature.
-- **Alignment with Steering**:
-  - Direct contribution to objectives in \`.spexy/steering/product.md\`.
-
-## 2. Requirements & Acceptance Criteria
-
-### REQ-1: [Core Capability Title]
-- **User Story**:
-  - As a [user role], I want [capability] so that [tangible benefit].
-- **Acceptance Criteria (EARS Format)**:
-  - Criteria 1: WHEN [trigger event occurs] THEN [system] SHALL [expected response].
-  - Criteria 2: IF [precondition is met] THEN [system] SHALL [expected response].
-  - Criteria 3: WHEN [invalid input provided] THEN [system] SHALL [reject with error].
-
-### REQ-2: [Secondary Capability Title]
-- **User Story**:
-  - As a [user role], I want [capability] so that [tangible benefit].
-- **Acceptance Criteria**:
-  - Criteria 1: WHEN [trigger event] THEN [system] SHALL [action].
-  - Criteria 2: IF [precondition] THEN [system] SHALL [action].
-
-## 3. Non-Functional Requirements
-- **Architecture & Modularity**:
-  - Single responsibility principle applied to all new modules.
-  - Clean separation of interface definitions from implementation logic.
-- **Performance**:
-  - Maximum latency and memory overhead constraints.
-- **Security & Authorization**:
-  - Input validation via Zod schemas, sanitization, and permission checks.
-- **Reliability & Resilience**:
-  - Graceful degradation on failure, structured error reporting.
-`,
-    },
-    {
-      subpath: path.join("specs", "design.template.md"),
-      content: `---
-status: draft
-updated_at: 2026-01-01T00:00:00.000Z
-approved_by: null
----
-
-# Technical Design: [Feature Title]
-
-## 1. Overview & Steering Alignment
-- **Architectural Fit**:
-  - How this design integrates with \`.spexy/steering/tech.md\` and \`structure.md\`.
-- **Core Design Patterns**:
-  - Selected patterns (e.g., DAG traversal, reactive state, modular adapters).
-
-## 2. Code Reuse & Integration Analysis
-- **Existing Components to Leverage**:
-  - Shared models, validation utilities, or core services to reuse.
-- **Integration Touchpoints**:
-  - Inter-package APIs, database schema extensions, or CLI commands.
-
-## 3. Architecture & Data Flow
-- **Modular Component Breakdown**:
-  - Component A: Responsibilities and boundaries.
-  - Component B: Responsibilities and boundaries.
-- **Component Interaction Diagram**:
-  \`\`\`mermaid
-  graph TD
-      A[Client Request / CLI] --> B[Validation & DAG Engine]
-      B --> C[File Mutation & Checkpoint]
-      C --> D[WebSocket Broadcast & Log]
-  \`\`\`
-
-## 4. Components & Interfaces
-- **Component 1**:
-  - Public methods, inputs, and return types.
-  - Error conditions and exceptions raised.
-- **Component 2**:
-  - Contract interfaces and dependencies.
-
-## 5. Data Models & Schemas
-- **TypeScript Interfaces & Zod Schemas**:
-  - Schema definitions with validation bounds.
-  - Invariants and serialization mappings.
-
-## 6. Error Handling & Edge Cases
-- **Failure Scenario 1**:
-  - Trigger, detection, and mitigation strategy.
-- **Failure Scenario 2**:
-  - Recovery mechanism and user-facing diagnostic message.
-
-## 7. Testing & Verification Strategy
-- **Unit Tests**:
-  - Scope: Component-level coverage and schema boundary tests.
-- **Integration Tests**:
-  - Scope: End-to-end command or API workflow verification.
-`,
-    },
-    {
-      subpath: path.join("specs", "tasks.template.yaml"),
-      content: `version: "1.0"
-feature: "feature-name"
-status: "in-progress"
-dependency_graph:
-  parallel_tracks:
-    - track: "Track A"
-      sequence: ["1", "2"]
-  cross_dependencies: []
-notes:
-  security:
-    - "Validate all input parameters with Zod schemas"
-  testing:
-    - "Achieve 100% test pass rate with bun test"
-groups:
-  - id: "foundation"
-    name: "Foundation & Schemas"
-    tasks:
-      - id: "1"
-        parent_id: null
-        title: "Define Schemas and Interfaces"
-        description: "Scaffold core data models and validation schemas."
-        status: "todo"
-        priority: "high"
-        depends_on: []
-        branch: "feature/<spec-id>/1"
-        commit_pattern: "feat(<spec-id>): Define Schemas and Interfaces (refs #1)"
-        locked_at: null
-        files: []
-        leverage: ""
-        requirements_ref: ["REQ-1"]
-        notes:
-          security: null
-          testing: null
-      - id: "2"
-        parent_id: null
-        title: "Implement Domain Logic"
-        description: "Implement service methods and business rules."
-        status: "todo"
-        priority: "high"
-        depends_on: ["1"]
-        branch: "feature/<spec-id>/2"
-        commit_pattern: "feat(<spec-id>): Implement Domain Logic (refs #2)"
-        locked_at: null
-        files: []
-        leverage: ""
-        requirements_ref: ["REQ-1"]
-        notes:
-          security: null
-          testing: null
-`,
-    },
-  ];
-
-  for (const tpl of templates) {
-    const tplPath = path.join(templatesDir, tpl.subpath);
-    if (!fs.existsSync(tplPath)) {
-      fs.writeFileSync(tplPath, tpl.content, "utf-8");
-    }
+  // 6. Turnkey Templates: copy from source templates (monorepo root or packaged CLI templates)
+  const sourceTemplatesDir = resolveTemplatesSourceDir();
+  if (sourceTemplatesDir && path.resolve(sourceTemplatesDir) !== path.resolve(templatesDir)) {
+    copyDirNonDestructive(sourceTemplatesDir, templatesDir);
   }
 
   // 7. Actionable Prompts in .spexy/prompts/
@@ -1287,17 +1000,17 @@ Review pending anchored comments, apply fixes, and resolve comments with history
     {
       file: "product.md",
       title: "Product Vision & Strategy",
-      content: `# Product Vision & Direction\n\n## Vision\nProvide human architects and AI agents with a shared, verifiable contract for autonomous development.\n\n## Target Users\nDevelopers, architects, and engineering teams using autonomous coding agents.\n`,
+      content: `# Product Vision & Strategy\n\nRefer \`${templatesPromptPrefix}/steering/product.template.md\`\n`,
     },
     {
       file: "tech.md",
       title: "Technical Architecture & Constraints",
-      content: `# Technical Architecture & Rules\n\n## Stack\n- Monorepo with TypeScript, Bun, and Turborepo.\n- Local-first architecture: state persisted in .spexy/ YAML and Markdown.\n- Embedded Fastify WebSocket server for real-time dashboard updates.\n`,
+      content: `# Technical Architecture & Constraints\n\nRefer \`${templatesPromptPrefix}/steering/tech.template.md\`\n`,
     },
     {
       file: "structure.md",
       title: "Repository Structure & Conventions",
-      content: `# Project Structure & Conventions\n\n## Directory Conventions\n- \`packages/core\`: Domain logic, schemas, and file engine.\n- \`packages/cli\`: Command-line interface and daemon.\n- \`packages/ui\`: Pre-bundled web dashboard.\n- \`skills/\`: Agent skill contracts.\n- \`docs/\`: Long-term project documentation and progress tracking.\n`,
+      content: `# Repository Structure & Conventions\n\nRefer \`${templatesPromptPrefix}/steering/structure.template.md\`\n`,
     },
   ];
 
