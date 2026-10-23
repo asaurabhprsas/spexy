@@ -1,7 +1,8 @@
-#!/usr/bin/env bun
+#!/usr/bin/env node
 import fs from "node:fs";
 import path from "node:path";
 import { execSync } from "node:child_process";
+import * as esbuild from "esbuild";
 
 const projectRoot = path.resolve(import.meta.dirname, "..");
 const cliDir = path.join(projectRoot, "packages", "cli");
@@ -16,12 +17,19 @@ if (!fs.existsSync(cliDistDir)) {
   fs.mkdirSync(cliDistDir, { recursive: true });
 }
 
-// 2. Bundle with Bun targeting node/bun compatibility
+// 2. Bundle with esbuild targeting Node.js
 console.log("1/4  Bundling TypeScript CLI into standalone JS executable...");
 try {
-  execSync(`bun build ${entryFile} --target node --outfile ${outFile}`, {
-    cwd: projectRoot,
-    stdio: "inherit",
+  await esbuild.build({
+    entryPoints: [entryFile],
+    bundle: true,
+    platform: "node",
+    target: "node22",
+    format: "esm",
+    banner: {
+      js: 'import { createRequire } from "node:module"; const require = createRequire(import.meta.url);',
+    },
+    outfile: outFile,
   });
 } catch (err: any) {
   console.error("❌ Failed to bundle CLI:", err.message);

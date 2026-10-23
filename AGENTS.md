@@ -71,6 +71,6 @@ Commit messages must reference the specification and task ID:
 ---
 
 ## 🧪 Testing & Quality Commands
-- **Run Unit & Integration Tests**: `NO_PROXY="*" bun test`
-- **Strict TypeScript Check**: `bun run typecheck`
-- **Build Web UI Assets**: `bun run ./scripts/publish-local.ts` (or `cd packages/ui && bun run build`)
+- **Run Unit & Integration Tests**: `pnpm test`
+- **Strict TypeScript Check**: `pnpm run typecheck`
+- **Build Web UI Assets**: `pnpm run publish:local` (or `cd packages/ui && pnpm run build`)

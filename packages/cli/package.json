@@ -4,6 +4,11 @@
   "description": "Local-first, human-in-the-loop Spec-Driven Development (SDD) orchestration platform",
   "type": "module",
   "license": "MIT",
+  "engines": {
+    "node": ">=22.0.0",
+    "pnpm": ">=11.0.0",
+    "npm": ">=10.0.0"
+  },
   "bin": {
     "spexy": "./dist/bin.js",
     "spec-flow": "./dist/bin.js"
@@ -41,7 +46,11 @@
     "@spexy/core": "workspace:*",
     "chokidar": "^4.0.3",
     "commander": "^15.0.0",
+    "ws": "^8.22.0",
     "yaml": "^2.7.0",
     "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@types/ws": "^8.18.2"
   }
 }

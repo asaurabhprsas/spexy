@@ -33,7 +33,7 @@ approved_by: null
 
 ## 3. Development Environment & Quality Standards
 - **Build & Dev Tooling**:
-  - Test runner: `bun test`.
+  - Test runner: `pnpm test` (or `npm test`).
   - Type checking: `tsc --noEmit`.
 - **Static Analysis & Formatting**:
   - Linter and formatter configurations.

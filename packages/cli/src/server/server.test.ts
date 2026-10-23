@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, afterAll } from "bun:test";
+import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
@@ -6,7 +6,7 @@ import { startServer, ServerInstance } from "./index";
 import { initSpexyWorkspace, createSnapshot } from "./core";
 import { withFileWriteLock, isFileWriteLocked, startWatcher } from "./watcher";
 
-describe("Track B: Fastify/Bun WebSocket Server & File Watcher", () => {
+describe("Spexy Node.js HTTP & WebSocket Server & File Watcher", () => {
   let tmpDir: string;
   let serverInstance: ServerInstance;
   let testPort: number;

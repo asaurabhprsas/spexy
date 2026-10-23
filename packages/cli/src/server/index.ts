@@ -1,5 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
+import http from "node:http";
+import { WebSocketServer, WebSocket } from "ws";
 import {
   addComment,
   archiveDocument,
@@ -999,15 +1001,6 @@ export function createServer(options: ServerOptions = {}): {
           const ext = path.extname(targetFile).toLowerCase();
           const contentType = MIME_TYPES[ext] || "application/octet-stream";
 
-          if (typeof Bun !== "undefined") {
-            return new Response(Bun.file(targetFile), {
-              headers: {
-                "Content-Type": contentType,
-                "Access-Control-Allow-Origin": "*",
-              },
-            });
-          }
-
           const content = fs.readFileSync(targetFile);
           return new Response(content, {
             headers: {
@@ -1538,12 +1531,6 @@ export function createServer(options: ServerOptions = {}): {
         const ext = path.extname(filePath).toLowerCase();
         const contentType = MIME_TYPES[ext] || "application/octet-stream";
 
-        if (typeof Bun !== "undefined") {
-          return new Response(Bun.file(filePath), {
-            headers: { "Content-Type": contentType },
-          });
-        }
-
         const data = fs.readFileSync(filePath);
         return new Response(data, {
           headers: { "Content-Type": contentType },
@@ -1553,11 +1540,6 @@ export function createServer(options: ServerOptions = {}): {
       // SPA fallback: return index.html for non-API routes
       const indexPath = path.join(staticDir, "index.html");
       if (fs.existsSync(indexPath)) {
-        if (typeof Bun !== "undefined") {
-          return new Response(Bun.file(indexPath), {
-            headers: { "Content-Type": "text/html; charset=utf-8" },
-          });
-        }
         const indexHtml = fs.readFileSync(indexPath);
         return new Response(indexHtml, {
           headers: { "Content-Type": "text/html; charset=utf-8" },
@@ -1626,26 +1608,102 @@ export function startServer(
   // Start chokidar file watcher
   const watcherHandle: WatcherHandle = startWatcher(projectRoot, broadcast, logActivity);
 
-  let bunServer: any = null;
+  // WebSocket Server via ws
+  const wss = new WebSocketServer({ noServer: true });
 
-  if (typeof Bun !== "undefined") {
-    bunServer = Bun.serve({
-      port,
-      hostname: host,
-      fetch,
-      websocket,
-    });
-  } else {
-    throw new Error(
-      "Spexy server requires Bun runtime (v1.3+). Please run with 'bunx spexy-cli dashboard' or install Bun from https://bun.sh"
-    );
-  }
+  const httpServer = http.createServer(async (nodeReq, nodeRes) => {
+    try {
+      const hostHeader = nodeReq.headers.host || `${host}:${port}`;
+      const fullUrl = `http://${hostHeader}${nodeReq.url || "/"}`;
+
+      const headers = new Headers();
+      for (const [key, val] of Object.entries(nodeReq.headers)) {
+        if (val !== undefined) {
+          if (Array.isArray(val)) {
+            for (const v of val) headers.append(key, v);
+          } else {
+            headers.set(key, val);
+          }
+        }
+      }
+
+      const hasBody = nodeReq.method !== "GET" && nodeReq.method !== "HEAD";
+      let bodyBuffer: Buffer | undefined = undefined;
+      if (hasBody) {
+        bodyBuffer = await new Promise<Buffer>((resolve, reject) => {
+          const chunks: Buffer[] = [];
+          nodeReq.on("data", (chunk) => chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)));
+          nodeReq.on("end", () => resolve(Buffer.concat(chunks)));
+          nodeReq.on("error", reject);
+        });
+      }
+
+      const reqInit: RequestInit = {
+        method: nodeReq.method,
+        headers,
+        body: bodyBuffer,
+      };
+
+      const webReq = new Request(fullUrl, reqInit);
+      const webRes = await fetch(webReq);
+
+      if (!webRes) {
+        if (!nodeRes.headersSent) {
+          nodeRes.writeHead(404);
+          nodeRes.end();
+        }
+        return;
+      }
+
+      nodeRes.statusCode = webRes.status;
+      nodeRes.statusMessage = webRes.statusText;
+      webRes.headers.forEach((val, key) => {
+        nodeRes.setHeader(key, val);
+      });
+
+      const arrayBuf = await webRes.arrayBuffer();
+      if (arrayBuf.byteLength > 0) {
+        nodeRes.end(Buffer.from(arrayBuf));
+      } else {
+        nodeRes.end();
+      }
+    } catch (err: any) {
+      if (!nodeRes.headersSent) {
+        nodeRes.writeHead(500, { "Content-Type": "application/json" });
+        nodeRes.end(JSON.stringify({ error: err.message || "Internal Server Error" }));
+      }
+    }
+  });
+
+  httpServer.on("upgrade", (req, socket, head) => {
+    const parsed = new URL(req.url || "/", `http://${req.headers.host || "127.0.0.1"}`);
+    if (parsed.pathname === "/ws") {
+      wss.handleUpgrade(req, socket, head, (ws) => {
+        clients.add(ws);
+        websocket.open(ws);
+        ws.on("message", (data) => {
+          websocket.message(ws, data.toString());
+        });
+        ws.on("close", () => {
+          clients.delete(ws);
+          websocket.close(ws);
+        });
+        ws.on("error", () => {
+          clients.delete(ws);
+        });
+      });
+    } else {
+      socket.destroy();
+    }
+  });
+
+  httpServer.listen(port, host);
 
   const url = `http://${host}:${port}`;
   console.log(`[Spexy] Server listening at ${url}`);
 
   return {
-    server: bunServer,
+    server: httpServer,
     port,
     host,
     url,
@@ -1662,9 +1720,11 @@ export function startServer(
         }
       }
       clients.clear();
-      if (bunServer && typeof bunServer.stop === "function") {
-        bunServer.stop(true);
-      }
+      await new Promise<void>((resolve) => {
+        wss.close(() => {
+          httpServer.close(() => resolve());
+        });
+      });
     },
   };
 }

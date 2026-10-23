@@ -8,6 +8,8 @@ import YAML from "yaml";
 describe("@spexy/cli Comprehensive Test Suite", () => {
   let tmpDir: string;
   const binPath = path.resolve(__dirname, "bin.ts");
+  const distPath = path.resolve(__dirname, "../dist/bin.js");
+  const cliExec = fs.existsSync(distPath) ? `node ${distPath}` : `pnpx tsx ${binPath}`;
 
   beforeEach(() => {
     tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "spexy-cli-test-"));
@@ -20,7 +22,7 @@ describe("@spexy/cli Comprehensive Test Suite", () => {
   function runCli(args: string[], options?: { expectFail?: boolean }): string {
     try {
       const quoted = args.map((a) => (a.includes(" ") ? `"${a.replace(/"/g, '\\"')}"` : a)).join(" ");
-      const output = execSync(`bun ${binPath} ${quoted}`, {
+      const output = execSync(`${cliExec} ${quoted}`, {
         cwd: tmpDir,
         encoding: "utf-8",
         stdio: ["ignore", "pipe", "pipe"],

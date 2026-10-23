@@ -18,8 +18,8 @@ Review pending anchored comments, apply fixes, and resolve comments with history
    - Inspect the anchored lines in `target_file`.
    - Make the requested corrections in code or documentation.
    - Verify changes with test suite:
-     `bun test`
-     `bun run typecheck`
+     `pnpm test` (or test runner specified in steering)
+     `pnpm run typecheck`
    - Verify workspace health:
      `spexy doctor`
 3. Resolve the comment:

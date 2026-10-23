@@ -51,10 +51,10 @@ Always follow the Red-Green-Refactor cycle:
 Before committing or submitting:
 ```bash
 # Example: Run unit & integration tests
-NO_PROXY="*" bun test   # or pnpm test / npm test / yarn test
+pnpm test   # or npm test / yarn test
 
 # Example: Strict type check / linting
-bun run typecheck       # or pnpm typecheck / npm run typecheck
+pnpm run typecheck       # or npm run typecheck
 ```
 
 ### 5. Mandatory Pre-Flight Health Check (`doctor`)

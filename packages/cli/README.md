@@ -3,7 +3,7 @@
 > **Local-First, Human-in-the-Loop Spec-Driven Development (SDD) Orchestration Platform for Autonomous AI Agents and Software Architects.**
 
 [![TypeScript](https://img.shields.io/badge/TypeScript-7.0-blue.svg)](https://www.typescriptlang.org/)
-[![Bun](https://img.shields.io/badge/Bun-1.3-black.svg)](https://bun.sh/)
+[![Node.js](https://img.shields.io/badge/Node.js-%3E%3D22-green.svg)](https://nodejs.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 [![Zero-Database](https://img.shields.io/badge/Database-Zero--DB%20Git--Native-purple.svg)](#zero-database-local-first-architecture)
 [![Token-Killer](https://img.shields.io/badge/Token%20Killer-80%25%20Savings-orange.svg)](#token-killer-cli-modes)
@@ -27,20 +27,17 @@ Autonomous AI coding agents (Claude Code, Cursor, Codex, OpenHands) write code f
 
 ### Running without global install:
 ```bash
-# Run doctor check
+# Run doctor check with npx
 npx spexy-cli@alpha doctor --compact
 
-# Or with bunx
-bunx spexy-cli@alpha doctor --compact
+# Or with pnpm dlx
+pnpm dlx spexy-cli@alpha doctor --compact
 ```
 
 ### Global Installation:
 ```bash
 # With npm
 npm install -g spexy-cli@alpha
-
-# With bun
-bun add -g spexy-cli@alpha
 
 # With pnpm
 pnpm add -g spexy-cli@alpha

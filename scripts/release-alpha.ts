@@ -1,4 +1,4 @@
-#!/usr/bin/env bun
+#!/usr/bin/env node
 import fs from "node:fs";
 import path from "node:path";
 import { execSync } from "node:child_process";
@@ -12,19 +12,19 @@ console.log("\n🚀 [Spexy] Preparing Alpha Release Publication...\n");
 
 // 1. Strict Typecheck
 console.log("1/6  Running TypeScript strict typecheck...");
-execSync("bun run typecheck", { cwd: projectRoot, stdio: "inherit" });
+execSync("pnpm run typecheck", { cwd: projectRoot, stdio: "inherit" });
 
 // 2. Automated Tests
 console.log("\n2/6  Running full automated test suite...");
-execSync('NO_PROXY="*" bun test', { cwd: projectRoot, stdio: "inherit" });
+execSync("pnpm test", { cwd: projectRoot, stdio: "inherit" });
 
 // 3. Build UI & CLI
 console.log("\n3/6  Building Web UI bundle and standalone CLI executable...");
-execSync("bun run build", { cwd: projectRoot, stdio: "inherit" });
+execSync("pnpm run build", { cwd: projectRoot, stdio: "inherit" });
 
 // 4. Pre-flight health check on built binary
 console.log("\n4/6  Running pre-flight workspace diagnostic with compiled binary...");
-execSync("./packages/cli/dist/bin.js doctor --compact", { cwd: projectRoot, stdio: "inherit" });
+execSync("node ./packages/cli/dist/bin.js doctor --compact", { cwd: projectRoot, stdio: "inherit" });
 
 // 5. Inspect NPM package tarball
 console.log("\n5/6  Inspecting NPM package contents (dry-run)...");
@@ -38,7 +38,7 @@ console.log(`🌐 Access: ${pkgJson.publishConfig?.access || "public"}`);
 // 6. Publish or Dry Run exit
 if (isDryRun) {
   console.log("\n✅ Dry-run completed successfully! Package is ready for release.");
-  console.log("   To publish to NPM registry, run: bun run release:alpha\n");
+  console.log("   To publish to NPM registry, run: pnpm run release:alpha\n");
   process.exit(0);
 }
 

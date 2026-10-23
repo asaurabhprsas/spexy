@@ -36,28 +36,23 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           registry-url: 'https://registry.npmjs.org'
-
-      - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: latest
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
       - name: Strict TypeScript typecheck
-        run: bun run typecheck
+        run: pnpm run typecheck
 
       - name: Run test suite
-        run: NO_PROXY="*" bun test
+        run: pnpm test
 
       - name: Build Web UI & CLI distribution
-        run: bun run build
+        run: pnpm run build
 
       - name: Verify workspace diagnostics
-        run: ./packages/cli/dist/bin.js doctor --compact
+        run: node ./packages/cli/dist/bin.js doctor --compact
 
       - name: Dry-run package inspection
         run: cd packages/cli && npm pack --dry-run

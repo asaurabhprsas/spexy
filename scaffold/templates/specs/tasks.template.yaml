@@ -10,7 +10,7 @@ notes:
   security:
     - "Validate all input parameters with Zod schemas"
   testing:
-    - "Achieve 100% test pass rate with bun test"
+    - "Achieve 100% test pass rate with test suite"
 groups:
   - id: "foundation"
     name: "Foundation & Schemas"

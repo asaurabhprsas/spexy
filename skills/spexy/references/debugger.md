@@ -30,7 +30,7 @@ flowchart LR
   - Create a focused test case that reproduces the failure deterministically.
   - Run the test to confirm it fails with the exact reported error:
     ```bash
-    NO_PROXY="*" bun test <test-file>   # or pnpm test / npm test / etc.
+    pnpm test <test-file>   # or npm test / etc.
     ```
 * **Surgical Implementation**:
   - Implement the smallest, most focused change that resolves the root cause.
@@ -39,8 +39,8 @@ flowchart LR
   - Re-run the reproduction test: verify it turns green.
   - Re-run the entire test suite to ensure no regressions:
     ```bash
-    NO_PROXY="*" bun test               # or pnpm test / npm test
-    bun run typecheck                   # or pnpm typecheck / npm run typecheck
+    pnpm test               # or npm test
+    pnpm run typecheck      # or npm run typecheck
     ```
 
 ### Phase 3: Review (Regressions & Health Diagnostics)

@@ -107,7 +107,7 @@ spexy task start <task-id>
 - Read referenced requirements and acceptance criteria from `.spexy/specs/<spec-id>/requirements.md`.
 - Read architectural guidance from `.spexy/specs/<spec-id>/design.md`.
 - Consult [`references/executor.md`](./references/executor.md) for TDD cycle.
-- Run tests using the project's test runner (e.g., `bun test`, `pnpm test`, `npm test`).
+- Run tests using the project's test runner (e.g., `pnpm test`, `npm test`).
 - Run pre-flight health diagnostic: `spexy doctor --compact`.
 
 ### 5. Submit for Review

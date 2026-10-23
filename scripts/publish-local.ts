@@ -1,11 +1,11 @@
-#!/usr/bin/env bun
+#!/usr/bin/env node
 import { execSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
 
 const projectRoot = path.resolve(import.meta.dirname, "..");
-const cliBinPath = path.join(projectRoot, "packages", "cli", "src", "bin.ts");
+const cliBinPath = path.join(projectRoot, "packages", "cli", "dist", "bin.js");
 const homeDir = os.homedir();
 const localBinDir = path.join(homeDir, ".local", "bin");
 const symlinkPath = path.join(localBinDir, "spexy");
@@ -14,11 +14,11 @@ console.log("\n📦 [Spexy] Publishing CLI locally...\n");
 
 // 1. Run typecheck
 console.log("1/4  Running typecheck (TypeScript 7)...");
-execSync("bun run typecheck", { cwd: projectRoot, stdio: "inherit" });
+execSync("pnpm run typecheck", { cwd: projectRoot, stdio: "inherit" });
 
-// 2. Build Web UI
-console.log("\n2/4  Building Web UI bundle for CLI dashboard...");
-execSync("cd packages/ui && bun run build", { cwd: projectRoot, stdio: "inherit" });
+// 2. Build Web UI and CLI bundle
+console.log("\n2/4  Building Web UI and CLI bundle...");
+execSync("pnpm run build", { cwd: projectRoot, stdio: "inherit" });
 
 // 3. Ensure CLI executable
 console.log("\n3/4  Configuring CLI executable...");

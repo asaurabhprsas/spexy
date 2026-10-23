@@ -21,8 +21,8 @@ Claim an available task, implement code and tests, follow git commit patterns, a
    - Write clean, modular TypeScript code conforming to tech guidelines.
    - Preserve comments, existing contracts, and error handling patterns.
 6. Write and execute comprehensive unit and integration tests:
-   `bun test`
-   `bun run typecheck`
+   `pnpm test` (or test runner specified in steering)
+   `pnpm run typecheck`
    Ensure 100% test pass rate.
 7. Verify workspace schema and DAG health:
    `spexy doctor`
