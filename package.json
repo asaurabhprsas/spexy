@@ -1,6 +1,6 @@
 {
   "name": "spexy",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "engines": {
     "node": ">=22.0.0",
@@ -16,17 +16,16 @@
   "scripts": {
     "build": "pnpm run build:ui && pnpm run build:cli",
     "build:ui": "pnpm --filter @workspace/spexy run build",
-    "build:cli": "node ./node_modules/tsx/dist/cli.mjs ./scripts/build-cli.ts",
+    "build:cli": "pnpx tsx ./scripts/build-cli.ts",
     "typecheck": "tsc --noEmit && tsc -p packages/ui/tsconfig.json --noEmit",
-    "publish:local": "node ./node_modules/tsx/dist/cli.mjs ./scripts/publish-local.ts",
-    "local:publish": "node ./node_modules/tsx/dist/cli.mjs ./scripts/publish-local.ts",
+    "publish:local": "pnpx tsx ./scripts/publish-local.ts",
+    "local:publish": "pnpx tsx ./scripts/publish-local.ts",
     "link:skills": "node ./scripts/link-skills.ts",
     "prepare": "node ./scripts/link-skills.ts && husky",
     "test": "vitest run",
-    "release": "node ./node_modules/tsx/dist/cli.mjs ./scripts/release.ts",
+    "release": "pnpx tsx ./scripts/release.ts",
     "release:check": "pnpm run typecheck && pnpm test && pnpm run build && node ./packages/cli/dist/bin.js doctor --compact",
     "release:pack": "cd packages/cli && npm pack --dry-run",
-    "release:alpha": "node ./node_modules/tsx/dist/cli.mjs ./scripts/release.ts alpha --publish",
     "lint": "oxlint .",
     "format": "oxfmt .",
     "format:check": "oxfmt --check ."

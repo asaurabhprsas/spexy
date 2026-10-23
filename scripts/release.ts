@@ -36,30 +36,65 @@ function parseSemver(ver: string): Semver {
   };
 }
 
-function bumpVersion(currentVer: string, type: string): string {
-  const parsed = parseSemver(currentVer);
-  switch (type) {
-    case "major":
-      return `${parsed.major + 1}.0.0`;
-    case "minor":
-      return `${parsed.major}.${parsed.minor + 1}.0`;
-    case "patch":
-      if (parsed.prerelease) {
-        return `${parsed.major}.${parsed.minor}.${parsed.patch}`;
-      }
-      return `${parsed.major}.${parsed.minor}.${parsed.patch + 1}`;
-    case "alpha":
-    case "beta":
-    case "rc":
-      if (parsed.prerelease === type && parsed.prereleaseNum !== null) {
-        return `${parsed.major}.${parsed.minor}.${parsed.patch}-${type}.${parsed.prereleaseNum + 1}`;
-      }
-      return `${parsed.major}.${parsed.minor}.${parsed.prerelease ? parsed.patch : parsed.patch + 1}-${type}.0`;
-    default:
-      // If user provided a specific version (e.g. "0.2.0" or "0.2.0-alpha.5")
-      parseSemver(type); // Validate format
-      return type;
+function bumpVersion(currentVer: string, inputType: string): { nextVersion: string; distTag: string } {
+  const cleanType = inputType.trim();
+
+  // Explicit semver provided (e.g. "0.2.0" or "0.2.0-alpha.5")
+  if (/^\d+\.\d+\.\d+/.test(cleanType)) {
+    parseSemver(cleanType);
+    return {
+      nextVersion: cleanType,
+      distTag: detectDistTag(cleanType),
+    };
   }
+
+  const parsed = parseSemver(currentVer);
+
+  // Match syntax: alpha, alpha@next, alpha:next, beta, beta@next, next@next, etc.
+  const match = cleanType.match(/^([a-zA-Z]+)(?:[@:](next|bump|\d+))?$/);
+  if (match) {
+    const tag = match[1].toLowerCase();
+    const modifier = match[2];
+
+    if (tag === "major") {
+      return { nextVersion: `${parsed.major + 1}.0.0`, distTag: "latest" };
+    }
+    if (tag === "minor") {
+      return { nextVersion: `${parsed.major}.${parsed.minor + 1}.0`, distTag: "latest" };
+    }
+    if (tag === "patch") {
+      if (parsed.prerelease) {
+        return { nextVersion: `${parsed.major}.${parsed.minor}.${parsed.patch}`, distTag: "latest" };
+      }
+      return { nextVersion: `${parsed.major}.${parsed.minor}.${parsed.patch + 1}`, distTag: "latest" };
+    }
+
+    // Prerelease tags: alpha, beta, rc, next, canary, dev, etc.
+    // If currently on this prerelease tag (e.g. 0.1.0-alpha.2 and tag is alpha)
+    if (parsed.prerelease === tag && parsed.prereleaseNum !== null) {
+      const nextNum = modifier && /^\d+$/.test(modifier) ? parseInt(modifier, 10) : parsed.prereleaseNum + 1;
+      return {
+        nextVersion: `${parsed.major}.${parsed.minor}.${parsed.patch}-${tag}.${nextNum}`,
+        distTag: tag,
+      };
+    }
+
+    // If currently on another prerelease tag (e.g. 0.1.0-alpha.2 and tag is beta)
+    if (parsed.prerelease && parsed.prerelease !== tag) {
+      return {
+        nextVersion: `${parsed.major}.${parsed.minor}.${parsed.patch}-${tag}.0`,
+        distTag: tag,
+      };
+    }
+
+    // If currently on stable version (e.g. 0.1.0 and tag is alpha)
+    return {
+      nextVersion: `${parsed.major}.${parsed.minor}.${parsed.patch + 1}-${tag}.0`,
+      distTag: tag,
+    };
+  }
+
+  throw new Error(`Unrecognized release type: "${inputType}". Use patch, minor, major, alpha, alpha@next, beta@next, next@next, rc@next, or exact version.`);
 }
 
 function detectDistTag(ver: string, customTag?: string): string {
@@ -73,7 +108,8 @@ function printHelp() {
 Usage: pnpm release <type|version> [options]
 
 Arguments:
-  type           Bump type: patch, minor, major, alpha, beta, rc
+  type           Bump type: patch, minor, major, alpha, beta, rc, next
+                 Supports prerelease bump: alpha@next, beta@next, next@next, rc@next
   version        Specific target version (e.g. 0.2.0, 0.2.0-alpha.1)
 
 Options:
@@ -87,7 +123,9 @@ Options:
 Examples:
   pnpm release patch              # Bump patch (0.1.0 -> 0.1.1, tag: latest)
   pnpm release minor              # Bump minor (0.1.0 -> 0.2.0, tag: latest)
-  pnpm release alpha              # Bump alpha (0.1.0 -> 0.1.1-alpha.0, tag: alpha)
+  pnpm release alpha@next         # Bump alpha (0.1.0 -> 0.1.1-alpha.0, or 0.1.1-alpha.0 -> 0.1.1-alpha.1)
+  pnpm release beta@next          # Bump beta (tag: beta)
+  pnpm release next@next          # Bump next (tag: next)
   pnpm release 0.2.0-beta.1       # Set exact version (tag: beta)
   pnpm release patch --publish    # Bump, build, verify, and publish immediately
 `);
@@ -119,8 +157,8 @@ async function main() {
   const rootPkg = JSON.parse(fs.readFileSync(rootPkgPath, "utf-8"));
   const currentVersion = rootPkg.version || "0.1.0";
 
-  const nextVersion = bumpVersion(currentVersion, targetArg);
-  const distTag = detectDistTag(nextVersion, customTag);
+  const { nextVersion, distTag: detectedTag } = bumpVersion(currentVersion, targetArg);
+  const distTag = customTag || detectedTag;
 
   console.log("\n🚀 [Spexy Unified Release]");
   console.log(`   Current version : v${currentVersion}`);
@@ -155,18 +193,18 @@ async function main() {
     }
   }
 
-  // 2. Strict Typecheck
-  console.log("\n2/5  Running strict TypeScript typecheck...");
-  execSync("pnpm run typecheck", { cwd: projectRoot, stdio: "inherit" });
+  // 2. Strict Typecheck (prefer npx)
+  console.log("\n2/5  Running strict TypeScript typecheck (npx tsc)...");
+  execSync("npx tsc --noEmit && npx tsc -p packages/ui/tsconfig.json --noEmit", { cwd: projectRoot, stdio: "inherit" });
 
   // 3. Build UI & CLI bundle
   console.log("\n3/5  Building UI and CLI distribution bundle...");
   execSync("pnpm run build", { cwd: projectRoot, stdio: "inherit" });
 
-  // 4. Test Suite & Health Check
+  // 4. Test Suite & Health Check (prefer npx)
   if (!isNoTest) {
-    console.log("\n4/5  Running test suite & health diagnostic...");
-    execSync("pnpm test", { cwd: projectRoot, stdio: "inherit" });
+    console.log("\n4/5  Running test suite (npx vitest) & health diagnostic...");
+    execSync("npx vitest run", { cwd: projectRoot, stdio: "inherit" });
     execSync("node ./packages/cli/dist/bin.js doctor --compact", { cwd: projectRoot, stdio: "inherit" });
   } else {
     console.log("\n4/5  Skipping tests (--no-test specified)...");

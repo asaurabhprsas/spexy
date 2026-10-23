@@ -6,7 +6,7 @@
 - **Only write important top level tests and don't add unnecessary tests for micro things.**
 - **Prefer caveman style output for tokens savings**
 - **Use Rust Token Killer (rtk) CLI. To save tokens.**
-
+- **Never commit changes without explicit user approval (unless instructed to execute all tasks autonomously).**
 ---
 
 ## 📚 Project Documentation (`docs/`)
