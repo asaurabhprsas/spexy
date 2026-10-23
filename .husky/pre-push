@@ -1,0 +1,4 @@
+pnpm run typecheck
+pnpm test
+pnpm run build
+node ./packages/cli/dist/bin.js doctor --compact

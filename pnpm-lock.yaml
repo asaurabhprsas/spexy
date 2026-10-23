@@ -80,6 +80,9 @@ importers:
       esbuild:
         specifier: ^0.28.2
         version: 0.28.2
+      husky:
+        specifier: ^9.1.7
+        version: 9.1.7
       oxfmt:
         specifier: ^0.74.0
         version: 0.74.0
@@ -2895,6 +2898,11 @@ packages:
   human-signals@8.0.1:
     resolution: {integrity: sha512-eKCa6bwnJhvxj14kZk5NCPc6Hb6BdsU9DZcOnmQKSnO1VKrfV0zCvtttPZUsBvjmNDn8rpcJfpwSYnHBjc95MQ==}
     engines: {node: '>=18.18.0'}
+
+  husky@9.1.7:
+    resolution: {integrity: sha512-5gs5ytaNjBrh5Ow3zrvdUUY+0VxIuWVL4i9irt6friV+BqdCfmV11CQTWMiBYWHbXhco+J1kHfTOUkePhCDvMA==}
+    engines: {node: '>=18'}
+    hasBin: true
 
   input-otp@1.5.0:
     resolution: {integrity: sha512-3AcfdW1sNG0FmSA5hHMBXG7jNW5CdcdKs8ln8JOmn6S2SRkoXoJx+2UwC+ZvjflfnOdHJx0SfQ9/YjlxVYLtGQ==}
@@ -5806,6 +5814,8 @@ snapshots:
   graceful-fs@4.2.11: {}
 
   human-signals@8.0.1: {}
+
+  husky@9.1.7: {}
 
   input-otp@1.5.0(react-dom@19.1.0(react@19.1.0))(react@19.1.0):
     dependencies:
