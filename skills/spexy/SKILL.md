@@ -41,16 +41,16 @@ All your progress, task management, and document updates **MUST** be coordinated
 
 ## 📋 Turnkey Templates Reference Matrix
 
-When creating or modifying workspace documents, refer to the corresponding turnkey template in `templates/`:
+When creating or modifying workspace documents, refer to the corresponding turnkey template in `.spexy/templates/` (and not project root):
 
 | Target Workspace Document | When to Refer | Turnkey Template to Use |
 | :--- | :--- | :--- |
-| `.spexy/steering/product.md` | Defining vision, target user personas, features, and business metrics | [`templates/steering/product.template.md`](../../templates/steering/product.template.md) |
-| `.spexy/steering/tech.md` | Setting tech stack, persistence model, security policies, and NFRs | [`templates/steering/tech.template.md`](../../templates/steering/tech.template.md) |
-| `.spexy/steering/structure.md` | Defining monorepo packages, directory conventions, and Git branching | [`templates/steering/structure.template.md`](../../templates/steering/structure.template.md) |
-| `.spexy/specs/<id>/requirements.md` | Scaffolding user stories, acceptance criteria (`REQ-*`), boundary conditions | [`templates/specs/requirements.template.md`](../../templates/specs/requirements.template.md) |
-| `.spexy/specs/<id>/design.md` | Scaffolding architecture diagrams, Zod schemas, APIs, UI design system | [`templates/specs/design.template.md`](../../templates/specs/design.template.md) |
-| `.spexy/specs/<id>/tasks.yaml` | Decomposing into DAG-enforced tasks, parallel tracks, and test requirements | [`templates/specs/tasks.template.yaml`](../../templates/specs/tasks.template.yaml) |
+| `.spexy/steering/product.md` | Defining vision, target user personas, features, and business metrics | [`.spexy/templates/steering/product.template.md`](../../.spexy/templates/steering/product.template.md) |
+| `.spexy/steering/tech.md` | Setting tech stack, persistence model, security policies, and NFRs | [`.spexy/templates/steering/tech.template.md`](../../.spexy/templates/steering/tech.template.md) |
+| `.spexy/steering/structure.md` | Defining monorepo packages, directory conventions, and Git branching | [`.spexy/templates/steering/structure.template.md`](../../.spexy/templates/steering/structure.template.md) |
+| `.spexy/specs/<id>/requirements.md` | Scaffolding user stories, acceptance criteria (`REQ-*`), boundary conditions | [`.spexy/templates/specs/requirements.template.md`](../../.spexy/templates/specs/requirements.template.md) |
+| `.spexy/specs/<id>/design.md` | Scaffolding architecture diagrams, Zod schemas, APIs, UI design system | [`.spexy/templates/specs/design.template.md`](../../.spexy/templates/specs/design.template.md) |
+| `.spexy/specs/<id>/tasks.yaml` | Decomposing into DAG-enforced tasks, parallel tracks, and test requirements | [`.spexy/templates/specs/tasks.template.yaml`](../../.spexy/templates/specs/tasks.template.yaml) |
 
 ---
 

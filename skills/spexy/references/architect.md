@@ -7,13 +7,15 @@ Use this guide when bootstrapping project foundations or authoring feature speci
 
 ## 📋 Turnkey Templates to Refer To
 
+When bootstrapping project foundations or authoring specifications, refer to the turnkey templates in `.spexy/templates/` (and not project root):
+
 | Stage | Document Target | Turnkey Template Reference |
 | :--- | :--- | :--- |
-| **Workspace Bootstrapping** | `.spexy/steering/product.md` | [`templates/steering/product.template.md`](../../templates/steering/product.template.md) |
-| **Workspace Bootstrapping** | `.spexy/steering/tech.md` | [`templates/steering/tech.template.md`](../../templates/steering/tech.template.md) |
-| **Workspace Bootstrapping** | `.spexy/steering/structure.md` | [`templates/steering/structure.template.md`](../../templates/steering/structure.template.md) |
-| **Feature Requirements** | `.spexy/specs/<spec-id>/requirements.md` | [`templates/specs/requirements.template.md`](../../templates/specs/requirements.template.md) |
-| **Feature Technical Design** | `.spexy/specs/<spec-id>/design.md` | [`templates/specs/design.template.md`](../../templates/specs/design.template.md) |
+| **Workspace Bootstrapping** | `.spexy/steering/product.md` | [`.spexy/templates/steering/product.template.md`](../../.spexy/templates/steering/product.template.md) |
+| **Workspace Bootstrapping** | `.spexy/steering/tech.md` | [`.spexy/templates/steering/tech.template.md`](../../.spexy/templates/steering/tech.template.md) |
+| **Workspace Bootstrapping** | `.spexy/steering/structure.md` | [`.spexy/templates/steering/structure.template.md`](../../.spexy/templates/steering/structure.template.md) |
+| **Feature Requirements** | `.spexy/specs/<spec-id>/requirements.md` | [`.spexy/templates/specs/requirements.template.md`](../../.spexy/templates/specs/requirements.template.md) |
+| **Feature Technical Design** | `.spexy/specs/<spec-id>/design.md` | [`.spexy/templates/specs/design.template.md`](../../.spexy/templates/specs/design.template.md) |
 
 ---
 

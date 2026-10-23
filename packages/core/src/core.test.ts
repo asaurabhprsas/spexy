@@ -397,28 +397,29 @@ Document body here.`;
   });
 
   describe("Turnkey Templates & Actionable Agent Prompts", () => {
-    it("scaffolds turnkey templates and actionable agent prompts on workspace init", () => {
+    it("scaffolds turnkey templates into .spexy/templates and actionable agent prompts on workspace init in new projects", () => {
       initSpexyWorkspace(tmpDir);
 
       const sfDir = path.join(tmpDir, ".spexy");
-      // Verify templates exist in projectRoot/templates
-      expect(fs.existsSync(path.join(tmpDir, "templates", "steering", "product.template.md"))).toBe(true);
-      expect(fs.existsSync(path.join(tmpDir, "templates", "steering", "tech.template.md"))).toBe(true);
-      expect(fs.existsSync(path.join(tmpDir, "templates", "steering", "structure.template.md"))).toBe(true);
-      expect(fs.existsSync(path.join(tmpDir, "templates", "specs", "requirements.template.md"))).toBe(true);
-      expect(fs.existsSync(path.join(tmpDir, "templates", "specs", "design.template.md"))).toBe(true);
-      expect(fs.existsSync(path.join(tmpDir, "templates", "specs", "tasks.template.yaml"))).toBe(true);
+      // Verify templates exist in .spexy/templates
+      expect(fs.existsSync(path.join(sfDir, "templates", "steering", "product.template.md"))).toBe(true);
+      expect(fs.existsSync(path.join(sfDir, "templates", "steering", "tech.template.md"))).toBe(true);
+      expect(fs.existsSync(path.join(sfDir, "templates", "steering", "structure.template.md"))).toBe(true);
+      expect(fs.existsSync(path.join(sfDir, "templates", "specs", "requirements.template.md"))).toBe(true);
+      expect(fs.existsSync(path.join(sfDir, "templates", "specs", "design.template.md"))).toBe(true);
+      expect(fs.existsSync(path.join(sfDir, "templates", "specs", "tasks.template.yaml"))).toBe(true);
 
-      // Verify legacy .spexy/templates does not exist
-      expect(fs.existsSync(path.join(sfDir, "templates"))).toBe(false);
+      // Verify root templates does not exist in new project
+      expect(fs.existsSync(path.join(tmpDir, "templates"))).toBe(false);
 
-      // Verify prompts exist
+      // Verify prompts exist and reference .spexy/templates
       expect(fs.existsSync(path.join(sfDir, "prompts", "README.md"))).toBe(true);
-      expect(fs.existsSync(path.join(sfDir, "prompts", "01-create-steering.md"))).toBe(true);
-      expect(fs.existsSync(path.join(sfDir, "prompts", "02-create-spec.md"))).toBe(true);
-      expect(fs.existsSync(path.join(sfDir, "prompts", "03-create-tasks.md"))).toBe(true);
-      expect(fs.existsSync(path.join(sfDir, "prompts", "04-execute-task.md"))).toBe(true);
-      expect(fs.existsSync(path.join(sfDir, "prompts", "05-address-comments.md"))).toBe(true);
+      const steeringPrompt = fs.readFileSync(path.join(sfDir, "prompts", "01-create-steering.md"), "utf-8");
+      expect(steeringPrompt).toContain(".spexy/templates/steering/");
+      const specPrompt = fs.readFileSync(path.join(sfDir, "prompts", "02-create-spec.md"), "utf-8");
+      expect(specPrompt).toContain(".spexy/templates/specs/");
+      const tasksPrompt = fs.readFileSync(path.join(sfDir, "prompts", "03-create-tasks.md"), "utf-8");
+      expect(tasksPrompt).toContain(".spexy/templates/specs/tasks.template.yaml");
 
       // Verify createSpec creates references and images dirs
       createSpec(tmpDir, "test-spec", { force: true });
@@ -426,15 +427,18 @@ Document body here.`;
       expect(fs.existsSync(path.join(sfDir, "specs", "test-spec", "images"))).toBe(true);
     });
 
-    it("cleans up legacy .spexy/templates directory on init", () => {
-      const legacyDir = path.join(tmpDir, ".spexy", "templates");
-      fs.mkdirSync(legacyDir, { recursive: true });
-      fs.writeFileSync(path.join(legacyDir, "legacy.txt"), "legacy");
-      expect(fs.existsSync(legacyDir)).toBe(true);
+    it("preserves root templates in main spexy repo context on init", () => {
+      // Simulate main spexy monorepo layout (root templates + packages/core)
+      fs.mkdirSync(path.join(tmpDir, "templates", "steering"), { recursive: true });
+      fs.writeFileSync(path.join(tmpDir, "templates", "steering", "product.template.md"), "root template");
+      fs.mkdirSync(path.join(tmpDir, "packages", "core"), { recursive: true });
 
       initSpexyWorkspace(tmpDir);
-      expect(fs.existsSync(legacyDir)).toBe(false);
+
+      // Root templates preserved
       expect(fs.existsSync(path.join(tmpDir, "templates", "steering", "product.template.md"))).toBe(true);
+      // .spexy/templates should not be created
+      expect(fs.existsSync(path.join(tmpDir, ".spexy", "templates"))).toBe(false);
     });
   });
 

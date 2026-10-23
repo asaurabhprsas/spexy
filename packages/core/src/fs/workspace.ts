@@ -627,7 +627,15 @@ export function updateTaskInDoc(
 export function initSpexyWorkspace(projectRoot: string): void {
   const sfDir = getSpecflowDir(projectRoot);
   const docsDir = path.join(projectRoot, DOCS_DIR);
-  const templatesDir = path.join(projectRoot, "templates");
+
+  // In the main spexy monorepo, keep templates at project root; in initialized projects, place inside .spexy/templates
+  const isMainSpexyRepo =
+    fs.existsSync(path.join(projectRoot, "templates")) &&
+    fs.existsSync(path.join(projectRoot, "packages", "core"));
+  const templatesDir = isMainSpexyRepo
+    ? path.join(projectRoot, "templates")
+    : path.join(sfDir, "templates");
+  const templatesPromptPrefix = isMainSpexyRepo ? "templates" : ".spexy/templates";
 
   fs.mkdirSync(path.join(sfDir, "steering"), { recursive: true });
   fs.mkdirSync(path.join(sfDir, "specs"), { recursive: true });
@@ -637,12 +645,6 @@ export function initSpexyWorkspace(projectRoot: string): void {
   fs.mkdirSync(path.join(sfDir, ".cache", "checkpoints"), { recursive: true });
   fs.mkdirSync(path.join(sfDir, ".cache", "history"), { recursive: true });
   fs.mkdirSync(docsDir, { recursive: true });
-
-  // Clean up legacy .spexy/templates if it exists
-  const legacyTemplatesDir = path.join(sfDir, "templates");
-  if (fs.existsSync(legacyTemplatesDir)) {
-    fs.rmSync(legacyTemplatesDir, { recursive: true, force: true });
-  }
 
   const now = new Date().toISOString();
 
@@ -851,12 +853,10 @@ approved_by: null
 - **\`.spexy/\`**:
   - \`steering/\`: Foundational product, tech, and structure steering documents.
   - \`specs/\`: Feature specifications with requirements, design, and tasks.yaml.
+  - \`templates/\`: Turnkey templates for steering documents, feature specifications, and task graphs.
   - \`prompts/\`: Standardized AI agent prompt guides.
   - \`archived/\`: Archived steering and specification documents.
   - \`.cache/\`: Snapshot ring-buffer checkpoints and resolved comment history.
-- **\`templates/\`**:
-  - \`steering/\`: Turnkey templates for steering documents.
-  - \`specs/\`: Turnkey templates for feature specifications and task graphs.
 - **\`docs/\`**:
   - Long-term human documentation and architecture reference manuals.
 
@@ -1107,7 +1107,7 @@ Draft or update foundational steering documents (\`product.md\`, \`tech.md\`, \`
 ## Instructions
 1. Inspect current steering status:
    \`spexy status\`
-2. Refer to the turnkey templates in \`templates/steering/\`:
+2. Refer to the turnkey templates in \`${templatesPromptPrefix}/steering/\`:
    - \`product.template.md\`: Product vision, target users, features, principles, metrics.
    - \`tech.template.md\`: Technology stack, patterns, security, and quality constraints.
    - \`structure.template.md\`: Monorepo structure, naming conventions, branching rules.
@@ -1155,7 +1155,7 @@ Scaffold and author \`requirements.md\` and \`design.md\` for a new feature.
    - \`.spexy/specs/<spec-id>/tasks.yaml\`
    - \`.spexy/specs/<spec-id>/references/\`
    - \`.spexy/specs/<spec-id>/images/\`
-3. Reference templates in \`templates/specs/\`:
+3. Reference templates in \`${templatesPromptPrefix}/specs/\`:
    - \`requirements.template.md\`: User story, functional requirements with acceptance criteria, and non-functional requirements.
    - \`design.template.md\`: Architecture, components, interfaces, data models, integration contracts, and error handling.
 4. Author \`requirements.md\` and \`design.md\` thoroughly:
@@ -1182,7 +1182,7 @@ Generate a valid, DAG-enforced \`tasks.yaml\` in \`.spexy/specs/<spec-id>/tasks.
 
 ## Instructions
 1. Analyze \`.spexy/specs/<spec-id>/requirements.md\` and \`design.md\`.
-2. Reference the template in \`templates/specs/tasks.template.yaml\`.
+2. Reference the template in \`${templatesPromptPrefix}/specs/tasks.template.yaml\`.
 3. Organize tasks into sequential phases (Foundation, Implementation, Integration, Verification).
 4. Each task item must define:
    - \`id\`: Unique alphanumeric ID (e.g., "1", "2", "3").

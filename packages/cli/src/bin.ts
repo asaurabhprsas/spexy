@@ -152,7 +152,7 @@ program
       const targetDir = path.resolve(process.cwd(), dir);
       initSpexyWorkspace(targetDir);
       console.log(`✓ Spexy workspace initialized at: ${targetDir}`);
-      console.log(`  • Created .spexy/ (steering, specs, .cache) and templates/`);
+      console.log(`  • Created .spexy/ (steering, specs, templates, .cache)`);
       console.log(`  • Created docs/ (ARCHITECTURE.md, PROGRESS.md, ONBOARDING.md)`);
       console.log(`\nNext step: Run "spexy status" to review steering documents.`);
     } catch (err: any) {

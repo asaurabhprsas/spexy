@@ -8,7 +8,7 @@ All query commands support `--json` and `--yaml` (or `--format <json|yaml>`), as
 ## Command Catalog
 
 ### `spexy init [dir]`
-Scaffolds the `.spexy/` structure (config, steering, specs, .cache), root `templates/`, and companion `docs/` folder in the target directory.
+Scaffolds the `.spexy/` structure (config, steering, specs, templates, .cache) and companion `docs/` folder in the target directory.
 - `[dir]`: Target directory (defaults to current directory `.`).
 
 ### `spexy status [--json]`

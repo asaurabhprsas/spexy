@@ -6,9 +6,11 @@ You are an expert engineering planner. Your responsibility is to translate appro
 
 ## 📋 Turnkey Templates to Refer To
 
+When decomposing specifications, refer to the turnkey template in `.spexy/templates/` (and not project root):
+
 | Stage | Document Target | Turnkey Template Reference |
 | :--- | :--- | :--- |
-| **Task Decomposition** | `.spexy/specs/<spec-id>/tasks.yaml` | [`templates/specs/tasks.template.yaml`](../../templates/specs/tasks.template.yaml) |
+| **Task Decomposition** | `.spexy/specs/<spec-id>/tasks.yaml` | [`.spexy/templates/specs/tasks.template.yaml`](../../.spexy/templates/specs/tasks.template.yaml) |
 
 ---
 

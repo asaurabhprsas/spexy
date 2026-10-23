@@ -14,12 +14,10 @@ approved_by: null
 - **`.spexy/`**:
   - `steering/`: Foundational product, tech, and structure steering documents.
   - `specs/`: Feature specifications with requirements, design, and tasks.yaml.
+  - `templates/`: Turnkey templates for steering documents, feature specifications, and task graphs.
   - `prompts/`: Standardized AI agent prompt guides.
   - `archived/`: Archived steering and specification documents.
   - `.cache/`: Snapshot ring-buffer checkpoints and resolved comment history.
-- **`templates/`**:
-  - `steering/`: Turnkey templates for steering documents.
-  - `specs/`: Turnkey templates for feature specifications and task graphs.
 - **`docs/`**:
   - Long-term human documentation and architecture reference manuals.
 
