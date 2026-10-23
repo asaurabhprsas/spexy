@@ -1231,14 +1231,23 @@ function DocumentsPage() {
                           confirmDiscard(() => setSelected(doc.id));
                         }}
                         className={cx(
-                          'block w-full p-3 text-left transition rounded-lg hover:bg-secondary/40',
-                          currentId === doc.id && 'bg-accent/40 border-l-2 border-primary font-medium'
+                          'block w-full p-3 text-left transition rounded-lg border cursor-pointer',
+                          currentId === doc.id
+                            ? 'bg-primary/10 border-primary/50 text-foreground ring-1 ring-primary/20 shadow-xs font-medium'
+                            : 'border-transparent hover:bg-secondary/40 text-muted-foreground hover:text-foreground'
                         )}
                         data-testid={`select-document-${doc.id}`}
                       >
                         <div className="mb-1 flex items-center justify-between gap-2">
-                          <span className="truncate text-xs font-semibold">{doc.title}</span>
-                          <StatusPill value={doc.status} />
+                          <span className={cx('truncate text-xs font-semibold', currentId === doc.id ? 'text-primary font-bold' : 'text-foreground')}>{doc.title}</span>
+                          <div className="flex items-center gap-1.5 shrink-0">
+                            {currentId === doc.id && (
+                              <Badge className="font-mono text-[9px] uppercase tracking-wider h-4 px-1.5 bg-primary text-primary-foreground">
+                                Active
+                              </Badge>
+                            )}
+                            <StatusPill value={doc.status} />
+                          </div>
                         </div>
                         <div className="truncate font-mono text-[9px] text-muted-foreground">{doc.path}</div>
                       </button>
@@ -1246,30 +1255,42 @@ function DocumentsPage() {
                   </div>
                 ))
               ) : (
-                filtered.map((doc: DocumentSummary) => (
-                  <button
-                    key={doc.id}
-                    onClick={() => {
-                      if (currentId === doc.id) return;
-                      confirmDiscard(() => setSelected(doc.id));
-                    }}
-                    className={cx(
-                      'block w-full p-4 text-left transition hover:bg-secondary/40',
-                      currentId === doc.id && 'bg-accent/40 border-l-2 border-primary'
-                    )}
-                    data-testid={`select-document-${doc.id}`}
-                  >
-                    <div className="mb-2 flex items-center justify-between gap-2">
-                      <span className="truncate text-[13px] font-semibold">{doc.title}</span>
-                      <StatusPill value={doc.status} />
-                    </div>
+                filtered.map((doc: DocumentSummary) => {
+                  const isSelected = currentId === doc.id;
+                  return (
+                    <button
+                      key={doc.id}
+                      onClick={() => {
+                        if (isSelected) return;
+                        confirmDiscard(() => setSelected(doc.id));
+                      }}
+                      className={cx(
+                        'block w-full p-3.5 text-left rounded-lg transition border cursor-pointer',
+                        isSelected
+                          ? 'bg-primary/10 border-primary/50 text-foreground ring-1 ring-primary/20 shadow-xs font-medium'
+                          : 'border-transparent hover:bg-secondary/40 text-muted-foreground hover:text-foreground'
+                      )}
+                      data-testid={`select-document-${doc.id}`}
+                    >
+                      <div className="mb-2 flex items-center justify-between gap-2">
+                        <span className={cx('truncate text-[13px] font-semibold', isSelected ? 'text-primary font-bold' : 'text-foreground')}>{doc.title}</span>
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          {isSelected && (
+                            <Badge className="font-mono text-[9px] uppercase tracking-wider h-4 px-1.5 bg-primary text-primary-foreground">
+                              Active
+                            </Badge>
+                          )}
+                          <StatusPill value={doc.status} />
+                        </div>
+                      </div>
                     <div className="truncate font-mono text-[9px] text-muted-foreground">{doc.path}</div>
                     <div className="mt-3 flex items-center justify-between">
                       <span className="font-mono text-[9px] uppercase text-muted-foreground">{doc.kind}</span>
                       <span className="font-mono text-[9px] text-muted-foreground">r{doc.revision}</span>
                     </div>
-                  </button>
-                ))
+                    </button>
+                  );
+                })
               )}
             </div>
           </Surface>

@@ -96,4 +96,4 @@ spexy --dashboard
 ---
 
 ## 📄 License
-MIT © Saurabh Prasad
+MIT © Saurabh Pardeshi

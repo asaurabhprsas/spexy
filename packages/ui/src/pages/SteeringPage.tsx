@@ -126,38 +126,52 @@ export function SteeringPage() {
               </div>
             </div>
 
-            <div className="divide-y divide-border/60 max-h-[calc(100vh-280px)] overflow-y-auto">
-              {steeringDocs.map((doc: DocumentSummary) => (
-                <button
-                  key={doc.id}
-                  onClick={() => {
-                    if (currentId === doc.id) return;
-                    confirmDiscard(() => setSelectedId(doc.id));
-                  }}
-                  className={cx(
-                    'block w-full p-4 text-left transition hover:bg-secondary/40 cursor-pointer',
-                    currentId === doc.id && 'bg-accent/40 border-l-2 border-primary font-medium'
-                  )}
-                  data-testid={`select-steering-${doc.id}`}
-                >
-                  <div className="mb-1 flex items-center justify-between gap-2">
-                    <span className="truncate text-xs font-semibold text-foreground">{doc.title}</span>
-                    <Badge
-                      variant="outline"
-                      className="font-mono text-[9px] uppercase tracking-wider text-muted-foreground"
-                    >
-                      {doc.status}
-                    </Badge>
-                  </div>
-                  <div className="truncate font-mono text-[9px] text-muted-foreground">{doc.path}</div>
-                  <div className="mt-2.5 flex items-center justify-between">
-                    <span className="font-mono text-[9px] uppercase tracking-wider text-primary font-semibold">
-                      steering
-                    </span>
-                    <span className="font-mono text-[9px] text-muted-foreground">r{doc.revision}</span>
-                  </div>
-                </button>
-              ))}
+            <div className="p-2 space-y-1.5 max-h-[calc(100vh-280px)] overflow-y-auto">
+              {steeringDocs.map((doc: DocumentSummary) => {
+                const isSelected = currentId === doc.id;
+                return (
+                  <button
+                    key={doc.id}
+                    onClick={() => {
+                      if (isSelected) return;
+                      confirmDiscard(() => setSelectedId(doc.id));
+                    }}
+                    className={cx(
+                      'block w-full p-3.5 text-left rounded-lg transition-all cursor-pointer border',
+                      isSelected
+                        ? 'bg-primary/10 border-primary/50 text-foreground ring-1 ring-primary/20 shadow-xs'
+                        : 'border-transparent hover:bg-muted/60 text-muted-foreground hover:text-foreground'
+                    )}
+                    data-testid={`select-steering-${doc.id}`}
+                  >
+                    <div className="mb-1 flex items-center justify-between gap-2">
+                      <span className={cx('truncate text-xs font-semibold', isSelected ? 'text-primary font-bold' : 'text-foreground')}>
+                        {doc.title}
+                      </span>
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        {isSelected && (
+                          <Badge className="font-mono text-[9px] uppercase tracking-wider h-4 px-1.5 bg-primary text-primary-foreground">
+                            Active
+                          </Badge>
+                        )}
+                        <Badge
+                          variant="outline"
+                          className="font-mono text-[9px] uppercase tracking-wider text-muted-foreground"
+                        >
+                          {doc.status}
+                        </Badge>
+                      </div>
+                    </div>
+                    <div className="truncate font-mono text-[9px] text-muted-foreground">{doc.path}</div>
+                    <div className="mt-2.5 flex items-center justify-between">
+                      <span className="font-mono text-[9px] uppercase tracking-wider text-primary font-semibold">
+                        steering
+                      </span>
+                      <span className="font-mono text-[9px] text-muted-foreground">r{doc.revision}</span>
+                    </div>
+                  </button>
+                );
+              })}
             </div>
           </div>
 

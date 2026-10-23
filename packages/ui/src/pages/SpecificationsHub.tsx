@@ -438,7 +438,7 @@ export function SpecificationsHub() {
               />
             </div>
 
-              <div className="rounded-xl border border-border/80 bg-card/90 overflow-hidden shadow-xs divide-y divide-border/60 max-h-[calc(100vh-250px)] overflow-y-auto">
+              <div className="rounded-xl border border-border/80 bg-card/90 overflow-hidden shadow-xs p-2 space-y-1.5 max-h-[calc(100vh-250px)] overflow-y-auto">
                 {filteredFeatures.map((f: Feature) => {
                   const isSelected = f.id === selectedSpecId;
                   const progressPct =
@@ -449,26 +449,38 @@ export function SpecificationsHub() {
                       key={f.id}
                       onClick={() => handleSelectSpec(f.id)}
                       className={cx(
-                        'block w-full p-4 text-left transition hover:bg-secondary/40 cursor-pointer',
-                        isSelected && 'bg-accent/40 border-l-2 border-primary'
+                        'block w-full p-3.5 text-left rounded-lg transition-all cursor-pointer border',
+                        isSelected
+                          ? 'bg-primary/10 border-primary/50 text-foreground ring-1 ring-primary/20 shadow-xs'
+                          : 'border-transparent hover:bg-muted/60 text-muted-foreground hover:text-foreground'
                       )}
                     >
                       <div className="flex items-center justify-between gap-2 mb-1">
-                        <span className="font-serif text-sm font-semibold truncate text-foreground">
+                        <span className={cx(
+                          'font-serif text-sm font-semibold truncate',
+                          isSelected ? 'text-primary font-bold' : 'text-foreground'
+                        )}>
                           {f.name}
                         </span>
-                        <Badge
-                          variant="outline"
-                          className={`font-mono text-[9px] uppercase tracking-wider ${
-                            f.status === 'completed'
-                              ? 'bg-emerald-500/10 text-emerald-600 border-emerald-500/30'
-                              : f.status === 'in-progress'
-                              ? 'bg-sky-500/10 text-sky-600 border-sky-500/30'
-                              : 'bg-muted text-muted-foreground'
-                          }`}
-                        >
-                          {f.status}
-                        </Badge>
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          {isSelected && (
+                            <Badge className="font-mono text-[9px] uppercase tracking-wider h-4 px-1.5 bg-primary text-primary-foreground">
+                              Active
+                            </Badge>
+                          )}
+                          <Badge
+                            variant="outline"
+                            className={`font-mono text-[9px] uppercase tracking-wider ${
+                              f.status === 'completed'
+                                ? 'bg-emerald-500/10 text-emerald-600 border-emerald-500/30'
+                                : f.status === 'in-progress'
+                                ? 'bg-sky-500/10 text-sky-600 border-sky-500/30'
+                                : 'bg-muted text-muted-foreground'
+                            }`}
+                          >
+                            {f.status}
+                          </Badge>
+                        </div>
                       </div>
 
                       <div className="font-mono text-[10px] text-muted-foreground truncate mb-2">
