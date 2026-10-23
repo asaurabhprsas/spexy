@@ -167,10 +167,13 @@ importers:
         version: 3.25.76
 
   packages/cli:
-    dependencies:
+    devDependencies:
       '@spexy/core':
         specifier: workspace:*
         version: link:../core
+      '@types/ws':
+        specifier: ^8.18.2
+        version: 8.18.2
       chokidar:
         specifier: ^4.0.3
         version: 4.0.3
@@ -184,12 +187,8 @@ importers:
         specifier: ^2.7.0
         version: 2.9.0
       zod:
-        specifier: 'catalog:'
+        specifier: ^3.25.76
         version: 3.25.76
-    devDependencies:
-      '@types/ws':
-        specifier: ^8.18.2
-        version: 8.18.2
 
   packages/core:
     dependencies:

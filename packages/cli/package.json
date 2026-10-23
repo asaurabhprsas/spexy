@@ -1,6 +1,6 @@
 {
   "name": "spexy-cli",
-  "version": "0.1.0-alpha.1",
+  "version": "0.1.0-alpha.2",
   "description": "Local-first, human-in-the-loop Spec-Driven Development (SDD) orchestration platform",
   "type": "module",
   "license": "MIT",
@@ -42,15 +42,14 @@
     "url": "https://github.com/asaurabhprsas/spexy/issues"
   },
   "homepage": "https://github.com/asaurabhprsas/spexy#readme",
-  "dependencies": {
+  "dependencies": {},
+  "devDependencies": {
     "@spexy/core": "workspace:*",
+    "@types/ws": "^8.18.2",
     "chokidar": "^4.0.3",
     "commander": "^15.0.0",
     "ws": "^8.22.0",
     "yaml": "^2.7.0",
-    "zod": "catalog:"
-  },
-  "devDependencies": {
-    "@types/ws": "^8.18.2"
+    "zod": "^3.25.76"
   }
 }
