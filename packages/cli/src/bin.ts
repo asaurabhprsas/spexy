@@ -78,7 +78,7 @@ const program = new Command();
 program
   .name("spexy")
   .description("Spexy CLI: Spec-Driven Development orchestration for AI agents and human architects")
-  .version(packageJson.version || "0.1.0-alpha.0")
+  .version(packageJson.version || "0.1.0-alpha.1")
   .option("--dashboard", "Start the local dashboard server")
   .option("--port <port>", "Port for dashboard server", (v) => parseInt(v, 10))
   .option("--host <host>", "Host for dashboard server")
