@@ -40,12 +40,12 @@ if (fs.existsSync(rootLicense)) {
   fs.copyFileSync(rootLicense, cliLicense);
 }
 
-// 5. Ensure root templates synced to packages/cli/templates/
-console.log("\n4/5  Syncing root templates/ to packages/cli/templates/...");
-const rootTemplates = path.join(projectRoot, "templates");
-const cliTemplates = path.join(cliDir, "templates");
-if (fs.existsSync(rootTemplates)) {
-  fs.cpSync(rootTemplates, cliTemplates, { recursive: true });
+// 5. Ensure root scaffold/ synced to packages/cli/scaffold/
+console.log("\n4/5  Syncing root scaffold/ to packages/cli/scaffold/...");
+const rootScaffold = path.join(projectRoot, "scaffold");
+const cliScaffold = path.join(cliDir, "scaffold");
+if (fs.existsSync(rootScaffold)) {
+  fs.cpSync(rootScaffold, cliScaffold, { recursive: true });
 }
 
 // 6. Verification
