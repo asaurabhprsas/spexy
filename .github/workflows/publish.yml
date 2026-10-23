@@ -1,12 +1,12 @@
-name: Publish Alpha Release to NPM
+name: Publish Release to NPM
 
 on:
   workflow_dispatch:
     inputs:
       tag:
-        description: 'NPM dist-tag (e.g. alpha, beta, latest)'
-        required: true
-        default: 'alpha'
+        description: 'NPM dist-tag override (e.g. latest, alpha, beta). Leave empty for auto-detection.'
+        required: false
+        default: ''
         type: string
       dry_run:
         description: 'Dry run (validate without publishing)'
@@ -15,7 +15,6 @@ on:
         type: boolean
   push:
     tags:
-      - 'v*-alpha*'
       - 'v*'
 
 jobs:
@@ -62,7 +61,20 @@ jobs:
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
-          DIST_TAG="${{ github.event.inputs.tag || 'alpha' }}"
-          echo "Publishing spexy-cli to NPM with tag: ${DIST_TAG}..."
+          PKG_VERSION=$(node -p "require('./packages/cli/package.json').version")
+          echo "Discovered package version: ${PKG_VERSION}"
+
+          # Auto-detect dist-tag: Manual input > Git tag suffix > Package version suffix > 'latest'
+          if [ -n "${{ github.event.inputs.tag }}" ]; then
+            DIST_TAG="${{ github.event.inputs.tag }}"
+          elif [[ "${{ github.ref_name }}" =~ -([a-zA-Z]+) ]]; then
+            DIST_TAG="${BASH_REMATCH[1]}"
+          elif [[ "${PKG_VERSION}" =~ -([a-zA-Z]+) ]]; then
+            DIST_TAG="${BASH_REMATCH[1]}"
+          else
+            DIST_TAG="latest"
+          fi
+
+          echo "Publishing spexy-cli@${PKG_VERSION} to NPM with tag: ${DIST_TAG}..."
           cd packages/cli
           npm publish --tag "${DIST_TAG}" --access public

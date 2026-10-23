@@ -12,9 +12,16 @@ const outFile = path.join(cliDistDir, "bin.js");
 
 console.log("\n🔨 [Spexy] Building standalone CLI distribution bundle...\n");
 
-// 1. Ensure dist directory exists
+// 1. Ensure dist directory exists & sync version from root package.json
 if (!fs.existsSync(cliDistDir)) {
   fs.mkdirSync(cliDistDir, { recursive: true });
+}
+const rootPkg = JSON.parse(fs.readFileSync(path.join(projectRoot, "package.json"), "utf-8"));
+const cliPkgPath = path.join(cliDir, "package.json");
+const cliPkg = JSON.parse(fs.readFileSync(cliPkgPath, "utf-8"));
+if (cliPkg.version !== rootPkg.version) {
+  cliPkg.version = rootPkg.version;
+  fs.writeFileSync(cliPkgPath, JSON.stringify(cliPkg, null, 2) + "\n", "utf-8");
 }
 
 // 2. Bundle with esbuild targeting Node.js
