@@ -38,6 +38,9 @@
   "homepage": "https://github.com/asaurabhprsas/spexy#readme",
   "dependencies": {
     "@spexy/core": "workspace:*",
-    "commander": "^15.0.0"
+    "chokidar": "^4.0.3",
+    "commander": "^15.0.0",
+    "yaml": "^2.7.0",
+    "zod": "catalog:"
   }
 }
