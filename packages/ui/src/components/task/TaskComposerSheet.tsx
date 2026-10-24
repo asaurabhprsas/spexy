@@ -39,6 +39,7 @@ export interface TaskComposerSheetProps {
   onSubmit: (data: CreateTaskFormData) => void;
   isPending?: boolean;
   defaultGroupId?: string;
+  defaultParentId?: string | null;
 }
 
 export function TaskComposerSheet({
@@ -47,10 +48,17 @@ export function TaskComposerSheet({
   onSubmit,
   isPending = false,
   defaultGroupId = '',
+  defaultParentId = null,
 }: TaskComposerSheetProps) {
   const [id, setId] = useState('');
   const [groupId, setGroupId] = useState(defaultGroupId);
-  const [parentId, setParentId] = useState('');
+  const [parentId, setParentId] = useState(defaultParentId || '');
+
+  React.useEffect(() => {
+    if (defaultParentId) {
+      setParentId(defaultParentId);
+    }
+  }, [defaultParentId, open]);
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [priority, setPriority] = useState<'low' | 'medium' | 'high'>('medium');

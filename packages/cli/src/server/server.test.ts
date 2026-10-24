@@ -1053,5 +1053,50 @@ describe("Spexy Node.js HTTP & WebSocket Server & File Watcher", () => {
     expect(body4.success).toBe(true);
     expect(body4.preferences).toEqual({ theme: "light", compactView: true, fontSize: 16 });
   });
+
+  it("POST /api/specs/:id/upload and POST /api/specs/:id/preserve-file manages temporary and preserved files", async () => {
+    // 1. Upload temporary file to .temp
+    const uploadRes = await fetch(`${baseUrl}/api/specs/auth-system/upload`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        filename: "test-diagram.png",
+        content: "fake-image-bytes",
+        target: "temp",
+      }),
+    });
+    expect(uploadRes.status).toBe(200);
+    const uploadBody: any = await uploadRes.json();
+    expect(uploadBody.success).toBe(true);
+    expect(uploadBody.is_temp).toBe(true);
+
+    const tempPath = path.join(tmpDir, ".spexy", "specs", "auth-system", ".temp", "test-diagram.png");
+    expect(fs.existsSync(tempPath)).toBe(true);
+
+    // 2. Preserve temporary file to images
+    const preserveRes = await fetch(`${baseUrl}/api/specs/auth-system/preserve-file`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        filename: "test-diagram.png",
+        target: "images",
+      }),
+    });
+    expect(preserveRes.status).toBe(200);
+    const preserveBody: any = await preserveRes.json();
+    expect(preserveBody.success).toBe(true);
+    expect(preserveBody.is_temp).toBe(false);
+
+    const preservedPath = path.join(tmpDir, ".spexy", "specs", "auth-system", "images", "test-diagram.png");
+    expect(fs.existsSync(preservedPath)).toBe(true);
+    expect(fs.existsSync(tempPath)).toBe(false);
+  });
+
+  it("appends task transitions to implementation.log in spec folder", async () => {
+    const logPath = path.join(tmpDir, ".spexy", "specs", "auth-system", "implementation.log");
+    expect(fs.existsSync(logPath)).toBe(true);
+    const logContent = fs.readFileSync(logPath, "utf-8");
+    expect(logContent).toContain("Task 1");
+  });
 });
 

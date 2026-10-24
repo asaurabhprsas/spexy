@@ -11,17 +11,29 @@ export const CommentAnchorSchema = z.object({
 });
 export type CommentAnchor = z.infer<typeof CommentAnchorSchema>;
 
+export const CommentAttachmentSchema = z.object({
+  name: z.string(),
+  path: z.string(),
+  is_temp: z.boolean().default(true),
+  size: z.number().optional(),
+  mime: z.string().optional(),
+});
+export type CommentAttachment = z.infer<typeof CommentAttachmentSchema>;
+
 export const CommentItemSchema = z.object({
   id: z.string().min(1),
-  target_file: z.string().min(1),
+  target_file: z.string().default(""),
+  target_type: z.enum(["document", "task", "general", "spec"]).default("document"),
+  target_id: z.string().nullable().optional().default(null),
   status: CommentStatusSchema.default("pending"),
   author: z.enum(["human", "agent"]).default("human"),
   created_at: z.string().datetime().or(z.string()),
-  anchor: CommentAnchorSchema,
+  anchor: CommentAnchorSchema.nullable().optional().default(null),
   instruction: z.string().min(1),
   resolution_note: z.string().nullable().default(null),
   resolved_at: z.string().datetime().or(z.string()).optional(),
   resolved_by: z.string().optional(),
+  attachments: z.array(CommentAttachmentSchema).default([]),
 });
 export type CommentItem = z.infer<typeof CommentItemSchema>;
 

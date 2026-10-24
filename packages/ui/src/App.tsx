@@ -140,6 +140,11 @@ function Shell({ children }: { children: ReactNode }) {
   const filter = useWorkflowUiStore((state) => state.documentFilter);
   const isInspectorFullWidth = useWorkflowUiStore((state) => state.isInspectorFullWidth);
   const dashboard = useGetDashboard();
+
+  useEffect(() => {
+    const projName = dashboard.data?.projectName;
+    document.title = projName ? `Spexy Dashboard - ${projName}` : 'Spexy Dashboard';
+  }, [dashboard.data?.projectName]);
   const health = useHealthCheck({
     query: { queryKey: getHealthCheckQueryKey(), refetchInterval: 45_000 },
   });

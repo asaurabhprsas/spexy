@@ -1,0 +1,49 @@
+version: "1.0"
+feature: "feature-name"
+status: "in-progress"
+dependency_graph:
+  parallel_tracks:
+    - track: "Track A"
+      sequence: ["1", "2"]
+  cross_dependencies: []
+notes:
+  security:
+    - "Validate all input parameters with Zod schemas"
+  testing:
+    - "Achieve 100% test pass rate with test suite"
+groups:
+  - id: "foundation"
+    name: "Foundation & Schemas"
+    tasks:
+      - id: "1"
+        parent_id: null
+        title: "Define Schemas and Interfaces"
+        description: "Scaffold core data models and validation schemas."
+        status: "todo"
+        priority: "high"
+        depends_on: []
+        branch: "feature/<spec-id>/1"
+        commit_pattern: "feat(<spec-id>): Define Schemas and Interfaces (refs #1)"
+        locked_at: null
+        files: []
+        leverage: ""
+        requirements_ref: ["REQ-1"]
+        notes:
+          security: null
+          testing: null
+      - id: "2"
+        parent_id: null
+        title: "Implement Domain Logic"
+        description: "Implement service methods and business rules."
+        status: "todo"
+        priority: "high"
+        depends_on: ["1"]
+        branch: "feature/<spec-id>/2"
+        commit_pattern: "feat(<spec-id>): Implement Domain Logic (refs #2)"
+        locked_at: null
+        files: []
+        leverage: ""
+        requirements_ref: ["REQ-1"]
+        notes:
+          security: null
+          testing: null

@@ -300,6 +300,36 @@ Document body here.`;
       expect(none.length).toBe(0);
     });
 
+    it("supports general and task comments with file attachments", () => {
+      initSpexyWorkspace(tmpDir);
+      const generalComment = addComment(tmpDir, {
+        target_type: "general",
+        author: "human",
+        instruction: "Please review the overall architecture and performance benchmarks.",
+        attachments: [
+          { name: "benchmark.png", path: ".spexy/specs/demo/.temp/benchmark.png", is_temp: true },
+        ],
+      });
+
+      const taskComment = addComment(tmpDir, {
+        target_type: "task",
+        target_id: "1.2",
+        author: "agent",
+        instruction: "Task blocked due to missing dependency",
+      });
+
+      const pendingGeneral = listComments(tmpDir, { target_type: "general" });
+      expect(pendingGeneral.length).toBe(1);
+      expect(pendingGeneral[0].id).toBe(generalComment.id);
+      expect(pendingGeneral[0].attachments.length).toBe(1);
+      expect(pendingGeneral[0].attachments[0].name).toBe("benchmark.png");
+
+      const pendingTask = listComments(tmpDir, { target_type: "task", target_id: "1.2" });
+      expect(pendingTask.length).toBe(1);
+      expect(pendingTask[0].id).toBe(taskComment.id);
+      expect(pendingTask[0].target_id).toBe("1.2");
+    });
+
     it("deletes and updates pending comments", () => {
       initSpexyWorkspace(tmpDir);
       const comment = addComment(tmpDir, {
@@ -320,8 +350,8 @@ Document body here.`;
         anchor: { start_line: 8, end_line: 9 },
       });
       expect(updated.instruction).toBe("Clarify API gateway and rate limits");
-      expect(updated.anchor.start_line).toBe(8);
-      expect(updated.anchor.anchor_text).toBe("Original architecture");
+      expect(updated.anchor?.start_line).toBe(8);
+      expect(updated.anchor?.anchor_text).toBe("Original architecture");
 
       // Delete comment
       deleteComment(tmpDir, comment.id);

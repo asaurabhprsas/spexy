@@ -33,6 +33,7 @@ import {
   findDocument,
   archiveDocument,
   parseDocumentFrontmatter,
+  serializeDocumentWithFrontmatter,
   runHealthCheck,
   formatHealthReport,
   WorkflowRuleError,
@@ -412,8 +413,11 @@ taskCmd
 
 taskCmd
   .command("start <task-id>")
+  .alias("claim")
   .description("Claim task and lock Git worktree lease (transitions to in-progress)")
-  .action((taskId) => {
+  .option("--actor <actor>", "Actor claiming the task: agent or human", "agent")
+  .option("--force", "Bypass AI spec approval checks", false)
+  .action((taskId, options) => {
     try {
       const projectRoot = getRoot();
       const { specId, tasksDoc, task, specDir } = findTaskAcrossSpecs(projectRoot, taskId);
@@ -437,8 +441,44 @@ taskCmd
         );
       }
 
+      // AI Gate: agents cannot claim tasks if steering or parent spec requirements/design are not approved
+      const actor = options.actor || "agent";
+      if (actor === "agent" && !options.force) {
+        const steering = getSteeringStatus(projectRoot);
+        if (!steering.approved) {
+          throw new WorkflowRuleError(
+            "STEERING_NOT_APPROVED",
+            `Cannot claim task "${taskId}": Workspace steering documents are not approved. Steering docs must be approved before feature tasks can be executed. Check status with: spexy status`,
+          );
+        }
+
+        const reqPath = path.join(specDir, "requirements.md");
+        const desPath = path.join(specDir, "design.md");
+        let reqApproved = false;
+        let desApproved = false;
+
+        if (fs.existsSync(reqPath)) {
+          const { frontmatter } = parseDocumentFrontmatter(fs.readFileSync(reqPath, "utf-8"));
+          reqApproved = frontmatter.status === "approved";
+        }
+        if (fs.existsSync(desPath)) {
+          const { frontmatter } = parseDocumentFrontmatter(fs.readFileSync(desPath, "utf-8"));
+          desApproved = frontmatter.status === "approved";
+        }
+
+        if (!reqApproved || !desApproved) {
+          const unapprovedDocs: string[] = [];
+          if (!reqApproved) unapprovedDocs.push("requirements.md");
+          if (!desApproved) unapprovedDocs.push("design.md");
+          throw new WorkflowRuleError(
+            "SPEC_NOT_APPROVED",
+            `Cannot claim task "${taskId}": Spec "${specId}" has draft document(s): ${unapprovedDocs.join(", ")}. Requirements and design must be approved by a human before AI execution. Check status with: spexy doc get ${specId}:requirements or approve with: spexy doc approve ${specId}:requirements`,
+          );
+        }
+      }
+
       // Check state machine
-      transitionTask(task.status, "claim", "agent");
+      transitionTask(task.status, "claim", actor as any);
 
       const git = resolveGitContext(process.cwd());
       const leasedTask = acquireTaskLease(task, git.currentWorktree, git.branch);
@@ -604,7 +644,7 @@ commentCmd
             status: c.status,
             author: c.author,
             target_file: c.target_file,
-            lines: `${c.anchor.start_line}-${c.anchor.end_line}`,
+            lines: c.anchor ? `${c.anchor.start_line}-${c.anchor.end_line}` : "-",
             instruction: c.instruction,
           }))
         : comments;
@@ -634,7 +674,7 @@ commentCmd
       );
       console.log(`-`.repeat(95));
       for (const c of comments) {
-        const lines = `${c.anchor.start_line}-${c.anchor.end_line}`;
+        const lines = c.anchor ? `${c.anchor.start_line}-${c.anchor.end_line}` : "-";
         console.log(
           c.id.padEnd(14) +
             c.status.padEnd(12) +
@@ -976,6 +1016,27 @@ docCmd
   });
 
 docCmd
+  .command("approve <path-or-id>")
+  .description("Approve a steering or specification document as a human")
+  .action((pathOrId) => {
+    try {
+      const projectRoot = getRoot();
+      const doc = findDocument(projectRoot, pathOrId);
+      const raw = fs.readFileSync(doc.fullPath, "utf-8");
+      const { frontmatter, body } = parseDocumentFrontmatter(raw);
+      frontmatter.status = "approved";
+      frontmatter.approved_by = "human";
+      frontmatter.updated_at = new Date().toISOString();
+      const serialized = serializeDocumentWithFrontmatter(frontmatter, body);
+      fs.writeFileSync(doc.fullPath, serialized, "utf-8");
+      console.log(`✓ Document "${doc.id}" approved successfully by human.`);
+    } catch (err: any) {
+      console.error(`Error approving document "${pathOrId}": ${err.message}`);
+      process.exit(1);
+    }
+  });
+
+docCmd
   .command("archive <path-or-id>")
   .description("Archive a document into .spexy/archived/ and remove the source file")
   .action((pathOrId) => {
@@ -995,17 +1056,55 @@ program
   .description("Start the local Spexy dashboard server")
   .option("--port <port>", "Port to listen on", (v) => parseInt(v, 10))
   .option("--host <host>", "Host interface to bind")
+  .option("-l, --logs", "Stream server activity and watcher logs to stdout")
   .action(async (options) => {
     try {
       const projectRoot = getRoot();
-      await startServer(projectRoot, { port: options.port, host: options.host });
+      await startServer(projectRoot, { port: options.port, host: options.host, logs: options.logs });
     } catch (err: any) {
       console.error(`Error starting dashboard: ${err.message}`);
       process.exit(1);
     }
   });
 
-// 9. doctor and check commands
+// 9. logs command
+program
+  .command("logs")
+  .description("Display recent workspace activity, task transitions, and error logs")
+  .option("-s, --spec <spec-id>", "Filter logs by specification ID")
+  .option("-n, --limit <number>", "Number of log lines to show", (v) => parseInt(v, 10), 30)
+  .action((options) => {
+    try {
+      const projectRoot = getRoot();
+      const specs = options.spec ? [{ id: options.spec }] : listSpecs(projectRoot);
+      const allEntries: Array<{ specId: string; entry: string }> = [];
+
+      for (const s of specs) {
+        const logFile = path.join(getSpecflowDir(projectRoot), "specs", s.id, "implementation.log");
+        if (fs.existsSync(logFile)) {
+          const lines = fs.readFileSync(logFile, "utf-8").split("\n").filter((l) => l.trim().startsWith("- [") || l.trim().startsWith("- "));
+          for (const line of lines) {
+            allEntries.push({ specId: s.id, entry: line.trim().replace(/^-\s*/, "") });
+          }
+        }
+      }
+
+      if (allEntries.length === 0) {
+        console.log("No implementation logs found.");
+        return;
+      }
+
+      const recent = allEntries.slice(-options.limit);
+      for (const item of recent) {
+        console.log(`[${item.specId}] ${item.entry}`);
+      }
+    } catch (err: any) {
+      console.error(`Error fetching logs: ${err.message}`);
+      process.exit(1);
+    }
+  });
+
+// 10. doctor and check commands
 program
   .command("doctor")
   .description("Run comprehensive health and diagnostic checks on the Spexy workspace")
@@ -1032,7 +1131,8 @@ if (rawArgs.includes("--dashboard")) {
   const hostIdx = rawArgs.indexOf("--host");
   const port = portIdx !== -1 && rawArgs[portIdx + 1] ? parseInt(rawArgs[portIdx + 1], 10) : undefined;
   const host = hostIdx !== -1 && rawArgs[hostIdx + 1] ? rawArgs[hostIdx + 1] : undefined;
-  startServer(projectRoot, { port, host }).catch((err) => {
+  const logs = rawArgs.includes("--logs") || rawArgs.includes("-l");
+  startServer(projectRoot, { port, host, logs }).catch((err) => {
     console.error(`Error starting dashboard: ${err.message}`);
     process.exit(1);
   });

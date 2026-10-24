@@ -69,34 +69,59 @@ export function writePendingCommentsDoc(
 
 export function listComments(
   projectRoot: string,
-  filters?: { target_file?: string; pendingOnly?: boolean },
+  filters?: {
+    target_file?: string;
+    target_type?: string;
+    target_id?: string;
+    pendingOnly?: boolean;
+  },
 ): CommentItem[] {
   const doc = readPendingCommentsDoc(projectRoot);
   return doc.comments.filter((c) => {
     if (filters?.pendingOnly && c.status !== "pending") return false;
+    if (filters?.target_type && c.target_type !== filters.target_type) return false;
+    if (filters?.target_id && c.target_id !== filters.target_id) return false;
     if (filters?.target_file && c.target_file !== filters.target_file) return false;
     return true;
   });
 }
 
+export type AddCommentInput = {
+  id?: string;
+  target_file?: string;
+  target_type?: "document" | "task" | "general" | "spec";
+  target_id?: string | null;
+  author?: "human" | "agent";
+  anchor?: CommentAnchor | null;
+  instruction: string;
+  attachments?: Array<{ name: string; path: string; is_temp?: boolean; size?: number; mime?: string }>;
+};
+
 export function addComment(
   projectRoot: string,
-  input: Omit<CommentItem, "id" | "created_at" | "status" | "resolution_note"> & {
-    id?: string;
-  },
+  input: AddCommentInput,
 ): CommentItem {
   const doc = readPendingCommentsDoc(projectRoot);
   const id = input.id || `cmt-${Math.random().toString(36).substring(2, 9)}`;
 
   const newComment: CommentItem = {
     id,
-    target_file: input.target_file,
+    target_file: input.target_file || "",
+    target_type: input.target_type || "document",
+    target_id: input.target_id ?? null,
     status: "pending",
-    author: input.author,
+    author: input.author || "human",
     created_at: new Date().toISOString(),
-    anchor: input.anchor,
+    anchor: input.anchor ?? null,
     instruction: input.instruction,
     resolution_note: null,
+    attachments: (input.attachments || []).map((a) => ({
+      name: a.name,
+      path: a.path,
+      is_temp: a.is_temp ?? true,
+      size: a.size,
+      mime: a.mime,
+    })),
   };
 
   doc.comments.push(newComment);
@@ -134,8 +159,10 @@ export function updateComment(
   }
   if (updates.anchor) {
     comment.anchor = {
-      ...comment.anchor,
-      ...updates.anchor,
+      start_line: updates.anchor.start_line ?? comment.anchor?.start_line ?? 1,
+      end_line: updates.anchor.end_line ?? comment.anchor?.end_line ?? 1,
+      anchor_text: updates.anchor.anchor_text ?? comment.anchor?.anchor_text ?? "",
+      context_before: updates.anchor.context_before ?? comment.anchor?.context_before ?? "",
     };
   }
 

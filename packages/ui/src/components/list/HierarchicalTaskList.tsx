@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import type { Task } from '@workspace/api-client-react';
 import {
   Accordion,
@@ -9,6 +9,12 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import {
   GitBranch,
   Shield,
@@ -24,37 +30,59 @@ import {
   CornerDownRight,
   FileText,
   ListTree,
+  MoreHorizontal,
+  ChevronsUpDown,
+  Maximize2,
+  CheckCircle2,
+  Clock,
+  PlayCircle,
+  CircleDot,
+  Plus,
+  MessageSquare,
 } from 'lucide-react';
 import { TaskDetailSheet } from '@/components/task/TaskDetailSheet';
 
 export type ExtendedTask = Task & {
+  parent_id?: string | null;
   notes?: {
     security?: string | null;
     testing?: string | null;
   };
 };
 
+export function getTaskParentId(task: Task | ExtendedTask): string | null {
+  return (task as any).parent_id || (task as any).parentId || null;
+}
+
 interface HierarchicalTaskListProps {
   tasks: ExtendedTask[];
+  specId?: string;
   onClaim?: (task: Task, worktree?: string, actor?: string) => void;
   onSubmitReview?: (task: Task, note?: string) => void;
   onApprove?: (task: Task, note?: string) => void;
   onRequestChanges?: (task: Task, note?: string) => void;
   onSetStatus?: (task: Task, status: Task['status']) => void;
+  onCreateSubtask?: (parentId: string, specId?: string) => void;
 }
 
 export function HierarchicalTaskList({
   tasks,
+  specId,
   onClaim,
   onSubmitReview,
   onApprove,
   onRequestChanges,
   onSetStatus,
+  onCreateSubtask,
 }: HierarchicalTaskListProps) {
   const [detailTask, setDetailTask] = useState<Task | null>(null);
+  const [detailTab, setDetailTab] = useState<'overview' | 'dependencies' | 'files' | 'notes' | 'comments'>('overview');
+  const [allExpanded, setAllExpanded] = useState(false);
+  // Default to collapsed so parent tasks show right arrow to expand sub-tasks down
+  const [expandedTaskIds, setExpandedTaskIds] = useState<Set<string>>(new Set());
 
   // Group tasks by groupId (Phase)
-  const groupedTasks = React.useMemo(() => {
+  const groupedTasks = useMemo(() => {
     const groups: Record<string, ExtendedTask[]> = {};
     for (const task of tasks) {
       const gid = task.groupId || 'general';
@@ -65,6 +93,31 @@ export function HierarchicalTaskList({
   }, [tasks]);
 
   const groupKeys = Object.keys(groupedTasks);
+
+  const toggleTaskExpansion = (taskId: string) => {
+    setExpandedTaskIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(taskId)) {
+        next.delete(taskId);
+      } else {
+        next.add(taskId);
+      }
+      return next;
+    });
+  };
+
+  const handleExpandAll = () => {
+    if (allExpanded) {
+      setExpandedTaskIds(new Set());
+      setAllExpanded(false);
+    } else {
+      const allParentIds = new Set(
+        tasks.filter((t) => tasks.some((child) => getTaskParentId(child) === t.id)).map((t) => t.id)
+      );
+      setExpandedTaskIds(allParentIds);
+      setAllExpanded(true);
+    }
+  };
 
   if (tasks.length === 0) {
     return (
@@ -78,6 +131,31 @@ export function HierarchicalTaskList({
 
   return (
     <div className="space-y-4">
+      {/* Global List Toolbar */}
+      <div className="flex items-center justify-between px-1">
+        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+          <span className="font-semibold text-foreground">{tasks.length} Total Tasks</span>
+          <span>•</span>
+          <span className="text-emerald-600 dark:text-emerald-400 font-medium">
+            {tasks.filter((t) => t.status === 'done').length} Completed
+          </span>
+          <span>•</span>
+          <span className="text-sky-600 dark:text-sky-400 font-medium">
+            {tasks.filter((t) => t.status === 'in-progress').length} In Progress
+          </span>
+        </div>
+
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={handleExpandAll}
+          className="h-7 text-xs font-mono text-muted-foreground hover:text-foreground gap-1.5"
+        >
+          <ChevronsUpDown size={13} />
+          {allExpanded ? 'Collapse All Subtasks' : 'Expand All Subtasks'}
+        </Button>
+      </div>
+
       <Accordion
         type="multiple"
         defaultValue={groupKeys}
@@ -86,10 +164,11 @@ export function HierarchicalTaskList({
         {groupKeys.map((groupKey) => {
           const groupTasks = groupedTasks[groupKey];
           const completedCount = groupTasks.filter((t) => t.status === 'done').length;
+          const progressPercent = Math.round((completedCount / groupTasks.length) * 100) || 0;
 
-          // Build tree: roots have parentId === null or parentId not in this group
+          // Build tree roots (parentId === null or parentId not in group)
           const roots = groupTasks.filter(
-            (t) => !t.parentId || !groupTasks.some((p) => p.id === t.parentId)
+            (t) => !getTaskParentId(t) || !groupTasks.some((p) => p.id === getTaskParentId(t))
           );
 
           return (
@@ -98,31 +177,54 @@ export function HierarchicalTaskList({
               value={groupKey}
               className="rounded-xl border border-border/80 bg-card overflow-hidden shadow-xs"
             >
-              <AccordionTrigger className="px-5 py-3.5 hover:no-underline bg-muted/20 hover:bg-muted/40 transition-colors">
-                <div className="flex items-center gap-3">
-                  <span className="font-serif text-sm font-semibold tracking-tight text-foreground">
-                    Phase: {groupKey.replace(/-/g, ' ').toUpperCase()}
-                  </span>
-                  <Badge variant="secondary" className="font-mono text-[10px] h-5">
-                    {completedCount} / {groupTasks.length} Done
-                  </Badge>
+              <AccordionTrigger className="px-5 py-3 hover:no-underline bg-muted/20 hover:bg-muted/40 transition-colors">
+                <div className="flex flex-wrap items-center justify-between gap-3 w-full pr-4">
+                  <div className="flex items-center gap-3">
+                    <span className="font-serif text-sm font-semibold tracking-tight text-foreground">
+                      Phase: {groupKey.replace(/-/g, ' ').toUpperCase()}
+                    </span>
+                    <Badge variant="secondary" className="font-mono text-[10px] h-5">
+                      {completedCount} / {groupTasks.length} Done ({progressPercent}%)
+                    </Badge>
+                  </div>
+
+                  {/* Progress Bar */}
+                  <div className="w-28 sm:w-36 h-1.5 bg-muted rounded-full overflow-hidden hidden sm:block">
+                    <div
+                      className="h-full bg-emerald-500 transition-all duration-300 rounded-full"
+                      style={{ width: `${progressPercent}%` }}
+                    />
+                  </div>
                 </div>
               </AccordionTrigger>
-              <AccordionContent className="p-4 pt-2">
-                <div className="space-y-3">
+
+              <AccordionContent className="p-3 pt-2">
+                <div className="space-y-2">
                   {roots.map((rootTask) => {
-                    const children = groupTasks.filter((t) => t.parentId === rootTask.id);
+                    const children = groupTasks.filter((t) => getTaskParentId(t) === rootTask.id);
                     return (
-                      <TaskTreeNode
+                      <TaskRowItem
                         key={rootTask.id}
                         task={rootTask}
                         childrenTasks={children}
                         allTasks={groupTasks}
-                        onSelectTask={(t) => setDetailTask(t)}
+                        level={0}
+                        expandedTaskIds={expandedTaskIds}
+                        onToggleExpand={toggleTaskExpansion}
+                        onSelectTask={(t) => {
+                          setDetailTab('overview');
+                          setDetailTask(t);
+                        }}
+                        onOpenComments={(t) => {
+                          setDetailTab('comments');
+                          setDetailTask(t);
+                        }}
                         onClaim={onClaim}
                         onSubmitReview={onSubmitReview}
                         onApprove={onApprove}
                         onRequestChanges={onRequestChanges}
+                        onSetStatus={onSetStatus}
+                        onCreateSubtask={onCreateSubtask}
                       />
                     );
                   })}
@@ -136,10 +238,15 @@ export function HierarchicalTaskList({
       {/* Task Detail Sheet */}
       <TaskDetailSheet
         task={detailTask}
+        specId={specId}
+        initialTab={detailTab}
         open={detailTask !== null}
         onOpenChange={(open) => !open && setDetailTask(null)}
         allTasks={tasks}
-        onSelectTask={(t) => setDetailTask(t)}
+        onSelectTask={(t) => {
+          setDetailTab('overview');
+          setDetailTask(t);
+        }}
         onClaim={(t, wt, act) => {
           onClaim?.(t, wt, act);
           setDetailTask((prev) => (prev ? { ...prev, status: 'in-progress', worktree: wt ?? null, actor: act ?? null } : null));
@@ -165,33 +272,43 @@ export function HierarchicalTaskList({
   );
 }
 
-interface TaskTreeNodeProps {
+interface TaskRowItemProps {
   task: ExtendedTask;
   childrenTasks: ExtendedTask[];
   allTasks: ExtendedTask[];
-  level?: number;
+  level: number;
+  expandedTaskIds: Set<string>;
+  onToggleExpand: (taskId: string) => void;
   onSelectTask?: (task: Task) => void;
+  onOpenComments?: (task: Task) => void;
   onClaim?: (task: Task, worktree?: string, actor?: string) => void;
   onSubmitReview?: (task: Task, note?: string) => void;
   onApprove?: (task: Task, note?: string) => void;
   onRequestChanges?: (task: Task, note?: string) => void;
+  onSetStatus?: (task: Task, status: Task['status']) => void;
+  onCreateSubtask?: (parentId: string, specId?: string) => void;
 }
 
-function TaskTreeNode({
+function TaskRowItem({
   task,
   childrenTasks,
   allTasks,
-  level = 0,
+  level,
+  expandedTaskIds,
+  onToggleExpand,
   onSelectTask,
+  onOpenComments,
   onClaim,
   onSubmitReview,
   onApprove,
   onRequestChanges,
-}: TaskTreeNodeProps) {
-  // Chevron controls subtask expansion (default expanded)
-  const [isSubtasksOpen, setIsSubtasksOpen] = useState(true);
-  // Separate toggle for task description/details
-  const [isDetailsOpen, setIsDetailsOpen] = useState(false);
+  onSetStatus,
+  onCreateSubtask,
+}: TaskRowItemProps) {
+  const isExpanded = expandedTaskIds.has(task.id);
+  const hasSubtasks = childrenTasks.length > 0;
+  const completedSubtasks = childrenTasks.filter((t) => t.status === 'done').length;
+  const isBlocked = task.availability === 'blocked' || (task.blockers && task.blockers.length > 0);
 
   const getPriorityBadge = (priority: string) => {
     switch (priority) {
@@ -217,151 +334,190 @@ function TaskTreeNode({
     }
   };
 
-  const isBlocked = task.availability === 'blocked' || (task.blockers && task.blockers.length > 0);
-  const completedSubtasks = childrenTasks.filter((t) => t.status === 'done').length;
-  const hasSubtasks = childrenTasks.length > 0;
-  const hasDetails = Boolean(
-    task.description ||
-    task.notes?.security ||
-    task.notes?.testing ||
-    (task.files && task.files.length > 0) ||
-    (task.dependsOn && task.dependsOn.length > 0) ||
-    task.submissionNote
-  );
+  const getStatusIcon = (status: string) => {
+    switch (status) {
+      case 'done':
+        return <CheckCircle2 size={14} className="text-emerald-600" />;
+      case 'to-review':
+        return <Clock size={14} className="text-amber-600" />;
+      case 'in-progress':
+        return <PlayCircle size={14} className="text-sky-600" />;
+      default:
+        return <CircleDot size={14} className="text-muted-foreground" />;
+    }
+  };
 
   return (
-    <div className={`relative ${level > 0 ? 'mt-2' : ''}`}>
-      {/* Horizontal branch line connecting from parent's vertical line */}
+    <div className={`relative ${level > 0 ? 'mt-1.5' : ''}`}>
+      {/* Horizontal connector line for nested sub-tasks */}
       {level > 0 && (
         <div
-          className="absolute -left-4 sm:-left-5 top-5 w-4 sm:w-5 h-0.5 bg-border/80"
+          className="absolute -left-3.5 sm:-left-4 top-4 w-3.5 sm:w-4 h-0.5 bg-border/80"
           aria-hidden="true"
         />
       )}
 
-      {/* Main Task Item Card (ClickUp style) */}
+      {/* Main Task Row Card */}
       <div
-        onClick={() => onSelectTask?.(task)}
-        className="rounded-lg border border-border/75 bg-card/95 hover:bg-accent/15 p-3 sm:p-3.5 shadow-xs transition hover:border-primary/50 cursor-pointer group"
+        className={`rounded-lg border transition-all ${
+          task.status === 'done'
+            ? 'bg-card/60 border-border/50 opacity-90'
+            : isBlocked
+            ? 'bg-card border-rose-500/30'
+            : 'bg-card/95 border-border/80 hover:border-primary/50'
+        } p-2.5 sm:p-3 shadow-2xs group`}
       >
-        <div className="flex flex-wrap items-start justify-between gap-2.5">
-          {/* Left section: Chevron, Subtask Indicator, Badges, Title */}
-          <div className="flex items-start gap-2 min-w-0 flex-1">
-            {/* Chevron toggle button for subtasks */}
+        <div className="flex flex-wrap items-center justify-between gap-2.5">
+          {/* Left section: Expand Toggle + Status Dropdown + Title + Badges */}
+          <div className="flex items-center gap-2 min-w-0 flex-1">
+            {/* ClickUp-style Expand/Collapse Chevron Button */}
             {hasSubtasks ? (
               <button
                 type="button"
                 onClick={(e) => {
                   e.stopPropagation();
-                  setIsSubtasksOpen(!isSubtasksOpen);
+                  onToggleExpand(task.id);
                 }}
-                className="mt-0.5 size-6 grid place-items-center rounded-md hover:bg-muted text-muted-foreground hover:text-foreground transition-colors cursor-pointer shrink-0"
-                title={isSubtasksOpen ? 'Collapse subtasks' : 'Expand subtasks'}
-                aria-label={isSubtasksOpen ? 'Collapse subtasks' : 'Expand subtasks'}
+                className="size-6 grid place-items-center rounded border border-border/80 bg-muted/40 hover:bg-muted text-foreground transition-all cursor-pointer shrink-0 shadow-2xs"
+                title={isExpanded ? `Collapse ${childrenTasks.length} subtasks` : `Expand ${childrenTasks.length} subtasks`}
+                aria-label={isExpanded ? 'Collapse subtasks' : 'Expand subtasks'}
               >
-                {isSubtasksOpen ? <ChevronDown size={15} /> : <ChevronRight size={15} />}
+                {isExpanded ? (
+                  <ChevronDown size={14} className="text-primary font-bold" />
+                ) : (
+                  <ChevronRight size={14} className="text-foreground/70" />
+                )}
               </button>
             ) : level > 0 ? (
-              <span className="mt-1 size-5 grid place-items-center text-muted-foreground/70 shrink-0">
+              <span className="size-6 grid place-items-center text-muted-foreground/60 shrink-0" title="Subtask">
                 <CornerDownRight size={13} />
               </span>
             ) : (
-              <span className="mt-1 size-6 grid place-items-center text-muted-foreground/30 text-xs shrink-0 select-none">
+              <span className="size-6 grid place-items-center text-muted-foreground/30 text-xs shrink-0 select-none">
                 •
               </span>
             )}
 
-            <div className="min-w-0 flex-1">
-              <div className="flex flex-wrap items-center gap-1.5 sm:gap-2 mb-1.5">
-                <span className="font-mono text-[10px] text-muted-foreground bg-muted px-1.5 py-0.5 rounded border border-border/50">
-                  {task.id}
-                </span>
-
-                <Badge
-                  variant="outline"
-                  className={`font-mono text-[9px] uppercase tracking-wider ${getPriorityBadge(task.priority)}`}
-                >
-                  {task.priority}
-                </Badge>
-
-                <Badge
-                  variant="outline"
-                  className={`font-mono text-[9px] uppercase tracking-wider ${getStatusBadge(task.status)}`}
-                >
-                  {task.status.replace('-', ' ')}
-                </Badge>
-
-                {/* Subtask Count Pill/Badge on parent task */}
-                {hasSubtasks && (
-                  <Badge
-                    variant="secondary"
-                    className="font-mono text-[9px] px-2 py-0.5 rounded-full border border-border/70 flex items-center gap-1 bg-muted/70 text-muted-foreground"
-                    title={`${childrenTasks.length} nested subtasks (${completedSubtasks} completed)`}
-                  >
-                    <ListTree size={10} className="text-primary" />
-                    <span>
-                      {childrenTasks.length} {childrenTasks.length === 1 ? 'subtask' : 'subtasks'} • {completedSubtasks}/{childrenTasks.length} done
-                    </span>
-                  </Badge>
-                )}
-
-                {/* Blocked Badge with Tooltip */}
-                {isBlocked && (
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <span>
-                        <Badge variant="destructive" className="font-mono text-[9px] uppercase tracking-wider gap-1 cursor-help">
-                          <AlertCircle size={10} />
-                          Blocked
-                        </Badge>
-                      </span>
-                    </TooltipTrigger>
-                    <TooltipContent side="top">
-                      <p className="text-xs">
-                        {task.blockers && task.blockers.length > 0
-                          ? `Blocked by: ${task.blockers.join(', ')}`
-                          : 'Waiting on dependent tasks to finish'}
-                      </p>
-                    </TooltipContent>
-                  </Tooltip>
-                )}
-
-                {/* Worktree Lease Badge */}
-                {task.worktree && (
-                  <Badge variant="secondary" className="font-mono text-[9px] gap-1 bg-primary/10 text-primary border-primary/20">
-                    <GitBranch size={10} />
-                    {task.worktree}
-                  </Badge>
-                )}
-
-                {/* Separate details expand/collapse button */}
-                {hasDetails && (
+            {/* Quick Status Selector Dropdown */}
+            {onSetStatus ? (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
                   <button
                     type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setIsDetailsOpen(!isDetailsOpen);
-                    }}
-                    className="ml-auto text-[10px] font-mono text-muted-foreground hover:text-foreground flex items-center gap-1 px-1.5 py-0.5 rounded hover:bg-muted transition-colors cursor-pointer"
-                    title={isDetailsOpen ? 'Hide description and details' : 'Show description and details'}
+                    className="size-6 grid place-items-center rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors cursor-pointer shrink-0"
+                    title={`Status: ${task.status}. Click to change`}
                   >
-                    <FileText size={11} />
-                    <span>{isDetailsOpen ? 'Hide' : 'Details'}</span>
+                    {getStatusIcon(task.status)}
                   </button>
-                )}
-              </div>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start" className="w-36">
+                  <DropdownMenuItem onClick={() => onSetStatus(task, 'todo')} className="text-xs gap-2">
+                    <CircleDot size={12} className="text-muted-foreground" />
+                    <span>To Do</span>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => onSetStatus(task, 'in-progress')} className="text-xs gap-2">
+                    <PlayCircle size={12} className="text-sky-600" />
+                    <span>In Progress</span>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => onSetStatus(task, 'to-review')} className="text-xs gap-2">
+                    <Clock size={12} className="text-amber-600" />
+                    <span>To Review</span>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => onSetStatus(task, 'done')} className="text-xs gap-2">
+                    <CheckCircle2 size={12} className="text-emerald-600" />
+                    <span>Done</span>
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            ) : (
+              <span className="size-6 grid place-items-center shrink-0">
+                {getStatusIcon(task.status)}
+              </span>
+            )}
 
-              <h4 className="text-xs font-semibold text-foreground leading-snug group-hover:text-primary transition-colors">
-                {task.title}
-              </h4>
-            </div>
+            {/* Task ID */}
+            <span className="font-mono text-[10px] text-muted-foreground bg-muted/80 px-1.5 py-0.5 rounded border border-border/60 shrink-0">
+              {task.id}
+            </span>
+
+            {/* Task Title (Click opens details) */}
+            <span
+              onClick={() => onSelectTask?.(task)}
+              className={`text-xs font-medium text-foreground hover:text-primary transition-colors cursor-pointer truncate ${
+                task.status === 'done' ? 'line-through text-muted-foreground' : ''
+              }`}
+              title={task.title}
+            >
+              {task.title}
+            </span>
+
+            {/* Priority Badge */}
+            <Badge
+              variant="outline"
+              className={`font-mono text-[9px] uppercase tracking-wider hidden sm:inline-flex shrink-0 ${getPriorityBadge(task.priority)}`}
+            >
+              {task.priority}
+            </Badge>
+
+            {/* Subtask count pill (Clicking also toggles expansion!) */}
+            {hasSubtasks && (
+              <Badge
+                variant="secondary"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onToggleExpand(task.id);
+                }}
+                className="font-mono text-[9px] px-2 py-0.5 rounded-full border border-border/70 flex items-center gap-1 bg-muted/80 text-muted-foreground hover:text-foreground hover:border-primary/40 transition-colors cursor-pointer shrink-0"
+                title={`${childrenTasks.length} subtasks (${completedSubtasks} done). Click to ${isExpanded ? 'collapse' : 'expand'}`}
+              >
+                <ListTree size={10} className="text-primary" />
+                <span>
+                  {childrenTasks.length} {childrenTasks.length === 1 ? 'subtask' : 'subtasks'} ({completedSubtasks}/{childrenTasks.length})
+                </span>
+              </Badge>
+            )}
+
+            {/* Blocked Badge */}
+            {isBlocked && (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <span>
+                    <Badge variant="destructive" className="font-mono text-[9px] uppercase tracking-wider gap-1 cursor-help shrink-0">
+                      <AlertCircle size={10} />
+                      Blocked
+                    </Badge>
+                  </span>
+                </TooltipTrigger>
+                <TooltipContent side="top">
+                  <p className="text-xs">
+                    {task.blockers && task.blockers.length > 0
+                      ? `Blocked by: ${task.blockers.join(', ')}`
+                      : 'Waiting on dependent tasks to finish'}
+                  </p>
+                </TooltipContent>
+              </Tooltip>
+            )}
+
+            {/* Worktree Lease */}
+            {task.worktree && (
+              <Badge variant="secondary" className="font-mono text-[9px] gap-1 bg-primary/10 text-primary border-primary/20 hidden md:inline-flex shrink-0">
+                <GitBranch size={10} />
+                {task.worktree}
+              </Badge>
+            )}
+
+            {/* Files Badge */}
+            {task.files && task.files.length > 0 && (
+              <span className="font-mono text-[9px] text-muted-foreground hidden lg:inline-flex items-center gap-1 shrink-0">
+                <FileCode size={10} />
+                {task.files.length} {task.files.length === 1 ? 'file' : 'files'}
+              </span>
+            )}
           </div>
 
           {/* Right Action Buttons */}
-          <div
-            className="flex items-center gap-1.5 self-center shrink-0"
-            onClick={(e) => e.stopPropagation()}
-          >
+          <div className="flex items-center gap-1.5 self-center shrink-0">
+            {/* Contextual Action Button */}
             {task.status === 'todo' && task.availability === 'available' && onClaim && (
               <Button
                 size="sm"
@@ -404,118 +560,77 @@ function TaskTreeNode({
                     onClick={() => onRequestChanges(task, 'Changes requested')}
                   >
                     <RotateCcw size={12} />
-                    Request Changes
+                    Changes
                   </Button>
                 )}
               </div>
             )}
+
+            {/* Quick Add Subtask Button */}
+            {onCreateSubtask && (
+              <Button
+                size="sm"
+                variant="ghost"
+                className="h-7 px-2 text-xs text-muted-foreground hover:text-foreground"
+                onClick={() => onCreateSubtask(task.id, task.groupId || undefined)}
+                title="Add subtask"
+              >
+                <Plus size={13} />
+              </Button>
+            )}
+
+            {/* Quick Comments & Attachments Button */}
+            {onOpenComments && (
+              <Button
+                size="sm"
+                variant="ghost"
+                className="h-7 px-2 text-xs text-muted-foreground hover:text-foreground"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onOpenComments(task);
+                }}
+                title="Task comments & attachments"
+              >
+                <MessageSquare size={13} />
+              </Button>
+            )}
+
+            {/* Open Detail Sheet Button */}
+            <Button
+              size="sm"
+              variant="ghost"
+              className="h-7 px-2 text-xs text-muted-foreground hover:text-foreground"
+              onClick={() => onSelectTask?.(task)}
+              title="Open task details"
+            >
+              <Maximize2 size={13} />
+            </Button>
           </div>
         </div>
-
-        {/* Expandable Details Section (Inline) */}
-        {isDetailsOpen && (
-          <div className="mt-3 pt-3 border-t border-border/60 space-y-2.5 text-xs animate-in fade-in duration-150">
-            {/* Description */}
-            {task.description && (
-              <div>
-                <span className="font-mono text-[9px] uppercase tracking-wider text-muted-foreground block mb-1">
-                  Description
-                </span>
-                <p className="text-muted-foreground text-[11px] leading-relaxed whitespace-pre-wrap">
-                  {task.description}
-                </p>
-              </div>
-            )}
-
-            {/* Notes: Security & Testing */}
-            {(task.notes?.security || task.notes?.testing) && (
-              <div className="grid sm:grid-cols-2 gap-2 pt-1">
-                {task.notes?.security && (
-                  <div className="rounded border border-amber-500/20 bg-amber-500/5 p-2 text-[11px]">
-                    <span className="flex items-center gap-1 font-semibold text-amber-700 dark:text-amber-400 mb-1 font-mono text-[10px]">
-                      <Shield size={12} />
-                      Security Note
-                    </span>
-                    <p className="text-muted-foreground">{task.notes.security}</p>
-                  </div>
-                )}
-                {task.notes?.testing && (
-                  <div className="rounded border border-sky-500/20 bg-sky-500/5 p-2 text-[11px]">
-                    <span className="flex items-center gap-1 font-semibold text-sky-700 dark:text-sky-400 mb-1 font-mono text-[10px]">
-                      <TestTube size={12} />
-                      Testing Note
-                    </span>
-                    <p className="text-muted-foreground">{task.notes.testing}</p>
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* Affected Files */}
-            {task.files && task.files.length > 0 && (
-              <div>
-                <span className="font-mono text-[9px] uppercase tracking-wider text-muted-foreground block mb-1 flex items-center gap-1">
-                  <FileCode size={11} />
-                  Affected Files ({task.files.length})
-                </span>
-                <div className="flex flex-wrap gap-1">
-                  {task.files.map((file: string, i: number) => (
-                    <span
-                      key={i}
-                      className="font-mono text-[10px] bg-muted/60 text-muted-foreground px-2 py-0.5 rounded border border-border/60"
-                    >
-                      {file}
-                    </span>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* Dependencies & Requirements */}
-            {((task.dependsOn && task.dependsOn.length > 0) || (task.requirementsRef && task.requirementsRef.length > 0)) && (
-              <div className="flex flex-wrap gap-3 pt-1 text-[10px] font-mono text-muted-foreground">
-                {task.dependsOn && task.dependsOn.length > 0 && (
-                  <div className="flex items-center gap-1">
-                    <LinkIcon size={10} />
-                    <span>Depends on: {task.dependsOn.join(', ')}</span>
-                  </div>
-                )}
-                {task.requirementsRef && task.requirementsRef.length > 0 && (
-                  <div className="flex items-center gap-1">
-                    <span>Requirements: {task.requirementsRef.join(', ')}</span>
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* Submission Note */}
-            {task.submissionNote && (
-              <div className="rounded bg-accent/40 p-2 text-[11px] border border-border/50">
-                <span className="font-semibold text-foreground">Submission Note: </span>
-                <span className="text-muted-foreground">{task.submissionNote}</span>
-              </div>
-            )}
-          </div>
-        )}
       </div>
 
-      {/* Recursive Sub-tasks with modern tree connector indentation */}
-      {hasSubtasks && isSubtasksOpen && (
-        <div className="relative ml-4 sm:ml-5 pl-4 sm:pl-5 border-l-2 border-border/70 space-y-2 mt-2">
+      {/* Recursive Nested Sub-tasks */}
+      {hasSubtasks && isExpanded && (
+        <div className="relative ml-3.5 sm:ml-4 pl-3.5 sm:pl-4 border-l-2 border-border/70 space-y-1.5 mt-1.5 animate-in fade-in duration-150">
           {childrenTasks.map((childTask) => {
-            const grandChildren = allTasks.filter((t) => t.parentId === childTask.id);
+            const grandChildren = allTasks.filter((t) => getTaskParentId(t) === childTask.id);
             return (
-              <TaskTreeNode
+              <TaskRowItem
                 key={childTask.id}
                 task={childTask}
                 childrenTasks={grandChildren}
                 allTasks={allTasks}
                 level={level + 1}
+                expandedTaskIds={expandedTaskIds}
+                onToggleExpand={onToggleExpand}
                 onSelectTask={onSelectTask}
+                onOpenComments={onOpenComments}
                 onClaim={onClaim}
                 onSubmitReview={onSubmitReview}
                 onApprove={onApprove}
                 onRequestChanges={onRequestChanges}
+                onSetStatus={onSetStatus}
+                onCreateSubtask={onCreateSubtask}
               />
             );
           })}

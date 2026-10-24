@@ -55,24 +55,45 @@ spexy dashboard
 - **Inline Line-Anchored Comments**: Click any line in the document inspector to pin feedback or architectural questions. AI agents can read, address, and resolve comments directly (`spexy comment list` / `spexy comment resolve`).
 - **Instant Live Updates**: Built-in file watcher and WebSocket server automatically broadcast file changes to the UI instantaneously with zero manual polling.
 
-### 📊 Three-Way Synchronized Task Views
+### 📊 Three-Way Synchronized Task Views & Hierarchical Sub-Tasks
+- **Hierarchical List View (ClickUp / TickTick Style)**:
+  - Multi-level nested task hierarchies (`parent_id`) allowing main tasks to be broken down into granular sub-tasks.
+  - Interactive collapsible trees with progress badges (`1/3 subtasks`), visual progress bars, priority badges, and quick status action menus.
+  - Direct 1-click subtask creation (`+ Subtask`) on any parent or child task.
+- **DAG Dependency-Based Blocking**:
+  - Full directed acyclic graph resolution (`depends_on`). If any prerequisite task is not `done`, dependent tasks and sub-tasks are marked as blocked with visual lock indicators.
+  - Real-time dynamic availability calculation (`spexy task list` and dashboard) guarantees agents and humans only work on unblocked, actionable items.
 - **Kanban Board**: Drag-and-drop workflow across `todo`, `in-progress`, `to-review`, and `done` columns, complete with a dedicated blocked dependencies queue.
-- **Hierarchical List View (ClickUp / Linear style)**: Parent tasks with collapsible subtask trees, subtask progress meters (e.g. `1/3 done`), priority indicators, and quick status action buttons.
-- **DAG Dependency Visualizer**: Interactive node-based directed acyclic graph diagram showing prerequisite chains, dynamic availability, and topological execution order.
+- **DAG Dependency Visualizer**: Interactive node-based graph showing prerequisite chains, dynamic availability, and topological execution order.
 
-### 📝 Zero-Database & Transparent YAML Tasks
-- All tasks are stored cleanly in human-readable `tasks.yaml` under `.spexy/specs/<spec-id>/`.
-- Even when the dashboard is closed, human developers can easily inspect, track, and edit task graphs directly in their favorite code editor or Git diff.
-- Complete version control: all tasks, specs, comments, and steering guidelines are committed directly to your repository.
-
-### 🛡️ Two-Tier Human-in-the-Loop (HITL) State Machine
+### 🛡️ Spec Approval Gate & Two-Tier HITL Safety
+- **Drafting Freedom with AI Guardrails**:
+  - Architects can generate and decompose tasks into `tasks.yaml` even while `requirements.md` and `design.md` are in `draft` mode.
+  - However, **AI agents (`--actor agent`) are strictly blocked** from claiming or starting tasks until human architects formally approve the steering guidelines, requirements, and design docs via `spexy doc approve <spec-id>`.
 - **Role-Guarded Transitions**:
   ```
   [todo]  ──(agent: claim)──>  [in-progress]  ──(agent: submit)──>  [to-review]  ──(human: approve)──>  [done]
                                                                                 └──(human: reject)───>  [todo]
   ```
-- **Autonomous Safe Execution**: AI agents can claim tasks (`spexy task claim`) and submit them with implementation notes (`spexy task submit`), but **agents are strictly forbidden from approving tasks to `done`**.
-- Only human reviewers can approve tasks to `done` or request changes back to `todo`.
+- **Autonomous Safe Execution**: AI agents can claim unblocked tasks (`spexy task claim`) and submit them with implementation notes (`spexy task submit`), but **agents are strictly forbidden from approving tasks to `done`**. Only human reviewers can approve tasks or request revisions.
+
+### 💬 Unified Comments, Document Uploads & Temp-to-Permanent Staging
+- **Targeted Line, Task & General Comments**:
+  - Add inline line-anchored comments directly on markdown specs, task-specific feedback on task detail sheets, or general spec-level architectural discussions.
+  - Review comments support file attachments directly uploaded from the browser or CLI.
+- **Smart Staging (`.temp`) & 1-Click Preservation**:
+  - Uploaded reference documents and images default to `.temp/` subdirectories (automatically git-ignored to prevent repo bloat).
+  - A 1-click **"Preserve in repo" / "Keep"** action allows humans to permanently promote important assets into tracked `references/` or `images/` directories.
+
+### 🔍 Background Error Observability & Real-Time Logs
+- **Instant Corrupted-File & Background Alerts**:
+  - If a file watcher detects invalid YAML syntax, broken markdown frontmatter, or background runtime errors, a destructive toast notification pops up in the bottom-right corner of the dashboard immediately.
+- **CLI Log Streaming**:
+  - Launch dashboard with live output via `spexy dashboard --logs` or inspect recent server activity anytime using `spexy logs`.
+
+### 📜 Immutable Audit Trail (`implementation.log`)
+- Every task transition (`claim`, `submit`, `approve`, `reject`, `set_status`), document edit, and file upload is automatically recorded to `.spexy/specs/<spec-id>/implementation.log`.
+- Tracks exact ISO timestamps, actors (`human` or `agent`), Git worktrees, and review feedback notes, providing an audit trail for autonomous agent development.
 
 ### 🚀 Lightweight TDD Skills vs Heavy MCP
 - **Zero Heavy MCP Overhead**: Rather than running bloated MCP server daemons that waste system memory and clutter LLM context windows, Spexy provides a fast, native single-binary CLI and portable Agent Skills (`SKILL.md`).
@@ -118,45 +139,36 @@ Track upcoming architectural milestones and planned enhancements:
 | Command | Purpose |
 | :--- | :--- |
 | `spexy init` | Initialize `.spexy/` directory with steering templates and configuration |
-| `spexy dashboard` | Launch the real-time local web UI (`http://127.0.0.1:4200`) |
-| `spexy doctor` | Run comprehensive health check on specs, schemas, and DAG graph integrity |
+| `spexy dashboard [--port N] [--logs]` | Launch the real-time local web UI (`http://127.0.0.1:4200`) with optional live server log output |
+| `spexy logs [--lines N]` | Tail and view recent dashboard and server background logs from terminal |
+| `spexy doctor` / `spexy check` | Comprehensive health check on specs, Zod schemas, steering, and DAG graph integrity |
 | `spexy status` | Display workspace summary, steering status, and specification progress |
 | `spexy spec create <id>` | Create a new specification with requirements, design, and task templates |
 | `spexy spec list` | List all active specifications (`--compact` for token-killer output) |
+| `spexy doc approve <path-or-id>` | Human approval of steering or spec documents (unlocks AI execution) |
+| `spexy doc archive <path-or-id>` | Archive specifications or documents into `.spexy/archive/` |
 | `spexy task list <spec>` | Display task graph in formatted table or `--compact` token-killer mode |
-| `spexy task claim <spec> <id>` | Claim a task (`todo` $\to$ `in-progress`) |
+| `spexy task claim <spec> <id>` | Claim a task (`todo` $\to$ `in-progress`, enforces approval gate for agents) |
 | `spexy task submit <spec> <id>` | Submit completed work for review (`in-progress` $\to$ `to-review`) |
 | `spexy task approve <spec> <id>` | Approve task (**human only**, `to-review` $\to$ `done`) |
 | `spexy task reject <spec> <id>` | Reject task with feedback (**human only**, `to-review` $\to$ `todo`) |
-| `spexy comment add <spec>` | Add context-anchored line comment on requirements or design |
+| `spexy comment add <spec>` | Add context-anchored line comment, task comment, or general comment |
 | `spexy comment list <spec>` | List active review comments (`--compact` for token-killer output) |
 | `spexy comment resolve <spec> <id>` | Resolve a review comment |
 | `spexy checkpoint list` | List automatic rollback snapshots in the ring-buffer cache |
 | `spexy checkpoint restore <id>` | Safely restore workspace state from a snapshot |
 
-For full CLI documentation, flags, and options, see [**`docs/CLI_REFERENCE.md`**](docs/CLI_REFERENCE.md).
-
----
-
-## 📁 Repository Layout
-
-```text
-spexy/
-├── packages/
-│   ├── core/              # Domain logic, Zod schemas, DAG engine, and filesystem I/O
-│   ├── cli/               # Single-binary CLI (`spexy`) and HTTP/WebSocket server
-│   └── ui/                # React 19 SPA dashboard (Shadcn UI, Tailwind, Lucide, @dnd-kit)
-├── skills/
-│   └── spexy/             # Portable Agent Skill (SKILL.md) for Claude Code, Cursor, Antigravity
-├── templates/             # Starter templates for steering documents and specifications
-├── docs/                  # In-depth architectural and developer documentation
-│   ├── ARCHITECTURE.md    # System architecture and domain model
-│   ├── CLI_REFERENCE.md   # Complete CLI manual and command guide
-│   ├── WORKFLOW_GUIDE.md  # SDD stages, branching, and commit conventions
-│   ├── API_REFERENCE.md   # REST and WebSocket API contracts
-│   └── DASHBOARD_GUIDE.md # Web dashboard feature manual
-└── AGENTS.md              # AI agent operating directives and rules
+### CLI Help & Introspection
+Every command and subcommand features built-in self-documenting help:
+```bash
+spexy --help
+spexy doc --help
+spexy task --help
+spexy dashboard --help
 ```
+
+For full CLI documentation, flags, and options, see [**`docs/CLI_REFERENCE.md`**](docs/CLI_REFERENCE.md).
+For architectural details and monorepo structure, see [**`docs/ARCHITECTURE.md`**](docs/ARCHITECTURE.md).
 
 ---
 

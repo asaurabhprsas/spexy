@@ -10,6 +10,9 @@ import {
   getGetDashboardQueryKey,
   useListTasks,
   getListTasksQueryKey,
+  useClaimTask,
+  useSubmitTask,
+  useReviewTask,
   type Feature,
   type DocumentSummary,
   type Task,
@@ -18,6 +21,7 @@ import {
   Layers3,
   Layers,
   LayoutGrid,
+  ListOrdered,
   Plus,
   ArrowRight,
   Sparkles,
@@ -35,6 +39,8 @@ import {
   Calendar,
   Database,
   Search,
+  Upload,
+  BookmarkCheck,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -48,11 +54,13 @@ import { useWorkflowUiStore } from '@/store/ui';
 import { DocumentInspector } from '@/components/inspector/DocumentInspector';
 import { MarkdownRenderer } from '@/components/inspector/MarkdownRenderer';
 import { UnsavedChangesDialog } from '@/components/inspector/UnsavedChangesDialog';
+import { HierarchicalTaskList } from '@/components/list/HierarchicalTaskList';
+import { toast } from '@/hooks/use-toast';
 
 export interface SpecFileInfo {
   name: string;
   relativePath: string;
-  kind: 'requirements' | 'design' | 'tasks' | 'reference' | 'image' | 'log' | 'other';
+  kind: 'requirements' | 'design' | 'tasks' | 'reference' | 'image' | 'log' | 'other' | 'temp';
   sizeBytes: number;
   extension: string;
   updatedAt: string;
@@ -70,7 +78,9 @@ function formatBytes(bytes: number) {
 
 export function SpecificationsHub() {
   const [, setLocation] = useLocation();
+  const searchString = useSearch();
   const qc = useQueryClient();
+  const queryClient = qc;
 
   const featuresQuery = useListFeatures({ query: { queryKey: getListFeaturesQueryKey() } });
   const docsQuery = useListDocuments({ query: { queryKey: getListDocumentsQueryKey() } });
@@ -79,11 +89,25 @@ export function SpecificationsHub() {
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [activeSpecFilterTab, setActiveSpecFilterTab] = useState<
     'requirements' | 'design' | 'tasks' | 'references' | 'images' | 'all-files'
-  >('requirements');
+  >(() => {
+    const params = new URLSearchParams(typeof window !== 'undefined' ? window.location.search : '');
+    const t = params.get('tab');
+    if (t === 'requirements' || t === 'design' || t === 'tasks' || t === 'references' || t === 'images' || t === 'all-files') {
+      return t;
+    }
+    return 'requirements';
+  });
+
+  useEffect(() => {
+    const params = new URLSearchParams(searchString);
+    const t = params.get('tab');
+    if (t === 'requirements' || t === 'design' || t === 'tasks' || t === 'references' || t === 'images' || t === 'all-files') {
+      setActiveSpecFilterTab(t);
+    }
+  }, [searchString]);
   const [selectedReferenceFile, setSelectedReferenceFile] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
 
-  const searchString = useSearch();
   const isInspectorFullWidth = useWorkflowUiStore((state) => state.isInspectorFullWidth);
   const isDocumentDirty = useWorkflowUiStore((state) => state.isDocumentDirty);
   const setIsDocumentDirty = useWorkflowUiStore((state) => state.setIsDocumentDirty);
@@ -200,6 +224,132 @@ export function SpecificationsHub() {
       (d.featureId === selectedSpecId && d.kind === 'design') ||
       (d.path.includes(`/${selectedSpecId}/`) && d.path.endsWith('design.md'))
   );
+
+  const tasksDoc = allDocs.find(
+    (d: DocumentSummary) =>
+      d.id === `${selectedSpecId}:tasks` ||
+      (d.featureId === selectedSpecId && (d.kind as string) === 'tasks') ||
+      (d.path.includes(`/${selectedSpecId}/`) && d.path.endsWith('tasks.yaml'))
+  );
+
+  const [tasksViewMode, setTasksViewMode] = useState<'doc' | 'list'>('list');
+  const [isUploading, setIsUploading] = useState(false);
+
+  const claimTask = useClaimTask();
+  const submitTask = useSubmitTask();
+  const reviewTask = useReviewTask();
+
+  const handleTaskTransition = async (
+    task: Task,
+    action: string,
+    params: { note?: string; worktree?: string; actor?: string; decision?: string; status?: string } = {}
+  ) => {
+    if (!selectedSpecId) return;
+    const actor = params.actor || 'human';
+    const note = params.note || '';
+    const worktree = params.worktree || task.worktree || `worktree/${task.id}`;
+
+    if (action === 'set_status') {
+      try {
+        await fetch(
+          `/api/specs/${encodeURIComponent(selectedSpecId)}/tasks/${encodeURIComponent(task.id)}/transition`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action: 'set_status', status: params.status, actor: 'human' }),
+          }
+        );
+        void queryClient.invalidateQueries({ queryKey: getListTasksQueryKey(selectedSpecId) });
+        void queryClient.invalidateQueries({ queryKey: getListFeaturesQueryKey() });
+      } catch {}
+      return;
+    }
+
+    if (action === 'claim') {
+      claimTask.mutate(
+        { featureId: selectedSpecId, taskId: task.id, data: { worktree, actor } },
+        {
+          onSuccess: () => {
+            void queryClient.invalidateQueries({ queryKey: getListTasksQueryKey(selectedSpecId) });
+            void queryClient.invalidateQueries({ queryKey: getListFeaturesQueryKey() });
+          },
+        }
+      );
+    } else if (action === 'submit') {
+      submitTask.mutate(
+        { featureId: selectedSpecId, taskId: task.id, data: { note: note || 'Submitted for review' } },
+        {
+          onSuccess: () => {
+            void queryClient.invalidateQueries({ queryKey: getListTasksQueryKey(selectedSpecId) });
+            void queryClient.invalidateQueries({ queryKey: getListFeaturesQueryKey() });
+          },
+        }
+      );
+    } else if (action === 'approve') {
+      reviewTask.mutate(
+        { featureId: selectedSpecId, taskId: task.id, data: { decision: 'approve', note: note || 'Verified and approved' } },
+        {
+          onSuccess: () => {
+            void queryClient.invalidateQueries({ queryKey: getListTasksQueryKey(selectedSpecId) });
+            void queryClient.invalidateQueries({ queryKey: getListFeaturesQueryKey() });
+          },
+        }
+      );
+    } else if (action === 'reject') {
+      reviewTask.mutate(
+        { featureId: selectedSpecId, taskId: task.id, data: { decision: 'reject', note: note || 'Changes requested' } },
+        {
+          onSuccess: () => {
+            void queryClient.invalidateQueries({ queryKey: getListTasksQueryKey(selectedSpecId) });
+            void queryClient.invalidateQueries({ queryKey: getListFeaturesQueryKey() });
+          },
+        }
+      );
+    }
+  };
+
+  const handleUploadFile = async (e: React.ChangeEvent<HTMLInputElement>, targetDir: 'references' | 'images' | 'temp') => {
+    const file = e.target.files?.[0];
+    if (!file || !selectedSpecId) return;
+    setIsUploading(true);
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('target', targetDir);
+
+    try {
+      const res = await fetch(`/api/specs/${encodeURIComponent(selectedSpecId)}/upload`, {
+        method: 'POST',
+        body: formData,
+      });
+      if (res.ok) {
+        toast({ title: 'File Uploaded', description: `Uploaded "${file.name}" to ${targetDir}.` });
+        void queryClient.invalidateQueries({ queryKey: ['spec-files', selectedSpecId] });
+      } else {
+        const errData = await res.json().catch(() => ({}));
+        toast({ title: 'Upload Failed', description: errData.error || 'Failed to upload file.', variant: 'destructive' });
+      }
+    } catch (err: any) {
+      toast({ title: 'Upload Error', description: err.message, variant: 'destructive' });
+    } finally {
+      setIsUploading(false);
+      e.target.value = '';
+    }
+  };
+
+  const handlePreserveFile = async (filename: string, target?: 'references' | 'images') => {
+    if (!selectedSpecId) return;
+    try {
+      const res = await fetch(`/api/specs/${encodeURIComponent(selectedSpecId)}/preserve-file`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ filename, target }),
+      });
+      if (res.ok) {
+        toast({ title: 'File Preserved', description: `Promoted "${filename}" into permanent repo references.` });
+        void queryClient.invalidateQueries({ queryKey: ['spec-files', selectedSpecId] });
+      }
+    } catch {}
+  };
 
   const handleSelectSpec = (specId: string) => {
     if (specId === selectedSpecId) return;
@@ -628,87 +778,98 @@ export function SpecificationsHub() {
                 {/* 3. TASKS OVERVIEW TAB */}
                 <TabsContent value="tasks" className="m-0 focus-visible:outline-none">
                   <div className="space-y-4">
-                    <div className="rounded-xl border border-border/80 bg-card/90 p-5 flex flex-wrap items-center justify-between gap-4">
-                      <div className="space-y-1">
-                        <h3 className="font-serif text-lg font-semibold text-foreground">
-                          Task Breakdown ({specTasks.length} tasks)
-                        </h3>
+                    <div className="rounded-xl border border-border/80 bg-card/90 p-4 flex flex-wrap items-center justify-between gap-3">
+                      <div className="space-y-0.5">
+                        <div className="flex items-center gap-2">
+                          <h3 className="font-serif text-base font-semibold text-foreground">
+                            Tasks ({specTasks.length})
+                          </h3>
+                          <Badge variant="outline" className="font-mono text-[9px]">
+                            tasks.yaml
+                          </Badge>
+                        </div>
                         <p className="text-xs text-muted-foreground">
-                          Tasks defined in <code className="font-mono text-primary">tasks.yaml</code> for this specification.
+                          Inspect specification tasks YAML with line comments, or toggle hierarchical list view.
                         </p>
                       </div>
 
-                      <Button
-                        onClick={() => setLocation(`/tasks?spec=${encodeURIComponent(selectedSpec.id)}`)}
-                        className="gap-2"
-                      >
-                        <LayoutGrid size={14} />
-                        Open Interactive Board
-                      </Button>
-                    </div>
+                      <div className="flex items-center gap-2">
+                        <div className="flex items-center border border-border/80 rounded-lg p-0.5 bg-muted/60">
+                          <Button
+                            variant={tasksViewMode === 'doc' ? 'secondary' : 'ghost'}
+                            size="sm"
+                            className="h-7 text-xs gap-1.5 px-2.5"
+                            onClick={() => setTasksViewMode('doc')}
+                          >
+                            <FileCode size={13} />
+                            Document Inspector
+                          </Button>
+                          <Button
+                            variant={tasksViewMode === 'list' ? 'secondary' : 'ghost'}
+                            size="sm"
+                            className="h-7 text-xs gap-1.5 px-2.5"
+                            onClick={() => setTasksViewMode('list')}
+                          >
+                            <ListOrdered size={13} />
+                            List View
+                          </Button>
+                        </div>
 
-                    {specTasks.length === 0 ? (
-                      <div className="rounded-xl border border-dashed border-border/80 bg-card/50 p-8 text-center text-xs text-muted-foreground">
-                        <LayoutGrid size={24} className="mx-auto mb-2 text-primary opacity-60" />
-                        <p className="font-semibold text-foreground">No tasks defined in tasks.yaml yet.</p>
                         <Button
                           variant="outline"
                           size="sm"
                           onClick={() => setLocation(`/tasks?spec=${encodeURIComponent(selectedSpec.id)}`)}
-                          className="mt-3 gap-1.5"
+                          className="h-7 text-xs gap-1.5"
                         >
-                          <Plus size={13} />
-                          Add Task
+                          <LayoutGrid size={13} />
+                          Full Board
                         </Button>
                       </div>
+                    </div>
+
+                    {tasksViewMode === 'doc' ? (
+                      <DocumentInspector
+                        key={tasksDoc?.id || `${selectedSpecId}:tasks`}
+                        documentId={tasksDoc?.id || `${selectedSpecId}:tasks`}
+                      />
                     ) : (
-                      <div className="grid gap-2.5 sm:grid-cols-2 lg:grid-cols-3">
-                        {specTasks.map((t: Task) => (
-                          <div
-                            key={t.id}
-                            onClick={() => setLocation(`/tasks?spec=${encodeURIComponent(selectedSpec.id)}`)}
-                            className="rounded-lg border border-border/70 bg-card p-3 hover:border-primary/50 transition-colors cursor-pointer group"
-                          >
-                            <div className="flex items-center justify-between gap-2 mb-1.5">
-                              <span className="font-mono text-[10px] text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
-                                {t.id}
-                              </span>
-                              <Badge
-                                variant="outline"
-                                className={`font-mono text-[9px] uppercase ${
-                                  t.status === 'done'
-                                    ? 'bg-emerald-500/10 text-emerald-600 border-emerald-500/30'
-                                    : t.status === 'in-progress'
-                                    ? 'bg-sky-500/10 text-sky-600 border-sky-500/30'
-                                    : 'bg-muted text-muted-foreground'
-                                }`}
-                              >
-                                {t.status}
-                              </Badge>
-                            </div>
-                            <h4 className="text-xs font-semibold text-foreground line-clamp-1 group-hover:text-primary transition-colors">
-                              {t.title}
-                            </h4>
-                            {t.description && (
-                              <p className="mt-1 text-[11px] text-muted-foreground line-clamp-2">
-                                {t.description}
-                              </p>
-                            )}
-                          </div>
-                        ))}
-                      </div>
+                      <HierarchicalTaskList
+                        tasks={specTasks}
+                        specId={selectedSpecId || undefined}
+                        onClaim={(t, wt, act) => handleTaskTransition(t, 'claim', { worktree: wt, actor: act })}
+                        onSubmitReview={(t, note) => handleTaskTransition(t, 'submit', { note })}
+                        onApprove={(t, note) => handleTaskTransition(t, 'approve', { note })}
+                        onRequestChanges={(t, note) => handleTaskTransition(t, 'reject', { note })}
+                        onSetStatus={(t, status) => handleTaskTransition(t, 'set_status', { status })}
+                      />
                     )}
                   </div>
                 </TabsContent>
 
                 {/* 4. REFERENCES TAB */}
                 <TabsContent value="references" className="m-0 focus-visible:outline-none">
+                  <div className="flex items-center justify-between pb-3 mb-2">
+                    <span className="font-serif text-sm font-semibold">Reference Documents ({referenceFiles.length})</span>
+                    <label className="cursor-pointer">
+                      <input
+                        type="file"
+                        className="hidden"
+                        onChange={(e) => handleUploadFile(e, 'references')}
+                        disabled={isUploading}
+                      />
+                      <span className="inline-flex items-center gap-1.5 h-7 px-2.5 rounded-md border border-border bg-card hover:bg-muted text-xs font-medium text-foreground transition-colors shadow-2xs">
+                        <Upload size={12} />
+                        {isUploading ? 'Uploading...' : 'Upload Reference'}
+                      </span>
+                    </label>
+                  </div>
+
                   {referenceFiles.length === 0 ? (
                     <div className="rounded-xl border border-dashed border-border/80 bg-card/50 p-8 text-center text-xs text-muted-foreground">
                       <FileCode size={24} className="mx-auto mb-2 text-primary opacity-60" />
                       <p className="font-semibold text-foreground">No reference documents discovered.</p>
                       <p className="mt-1">
-                        Add architecture or research files inside <code className="font-mono">.spexy/specs/{selectedSpec.id}/references/</code>.
+                        Upload or add architecture/research files inside <code className="font-mono">.spexy/specs/{selectedSpec.id}/references/</code>.
                       </p>
                     </div>
                   ) : (
@@ -718,21 +879,48 @@ export function SpecificationsHub() {
                         <span className="font-mono text-[9px] uppercase tracking-wider text-muted-foreground font-semibold px-2 block mb-1">
                           Reference Corpus ({referenceFiles.length})
                         </span>
-                        {referenceFiles.map((f) => (
-                          <button
-                            key={f.relativePath}
-                            onClick={() => setSelectedReferenceFile(f.relativePath)}
-                            className={cx(
-                              'w-full text-left px-2.5 py-2 rounded-lg text-xs font-mono transition flex items-center justify-between gap-2 cursor-pointer',
-                              selectedReferenceFile === f.relativePath
-                                ? 'bg-primary/10 text-primary font-semibold border border-primary/30'
-                                : 'text-foreground/80 hover:bg-muted/50'
-                            )}
-                          >
-                            <span className="truncate">{f.name}</span>
-                            <span className="text-[9px] text-muted-foreground">{formatBytes(f.sizeBytes)}</span>
-                          </button>
-                        ))}
+                        {referenceFiles.map((f) => {
+                          const isTemp = f.kind === 'temp' || f.relativePath.includes('.temp');
+                          return (
+                            <div
+                              key={f.relativePath}
+                              onClick={() => setSelectedReferenceFile(f.relativePath)}
+                              className={cx(
+                                'w-full text-left px-2.5 py-2 rounded-lg text-xs font-mono transition flex items-center justify-between gap-2 cursor-pointer',
+                                selectedReferenceFile === f.relativePath
+                                  ? 'bg-primary/10 text-primary font-semibold border border-primary/30'
+                                  : 'text-foreground/80 hover:bg-muted/50'
+                              )}
+                            >
+                              <div className="min-w-0 flex-1 truncate">
+                                <span className="truncate block">{f.name}</span>
+                                {isTemp && (
+                                  <span className="text-[9px] text-amber-600 dark:text-amber-400 font-sans block">
+                                    Temporary asset
+                                  </span>
+                                )}
+                              </div>
+                              <div className="flex items-center gap-1 shrink-0">
+                                {isTemp && (
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    className="h-5 px-1.5 text-[9px] text-primary gap-1"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      void handlePreserveFile(f.name, 'references');
+                                    }}
+                                    title="Keep in permanent repository"
+                                  >
+                                    <BookmarkCheck size={10} />
+                                    Keep
+                                  </Button>
+                                )}
+                                <span className="text-[9px] text-muted-foreground">{formatBytes(f.sizeBytes)}</span>
+                              </div>
+                            </div>
+                          );
+                        })}
                       </div>
 
                       {/* Reference Content Preview */}
@@ -766,18 +954,36 @@ export function SpecificationsHub() {
 
                 {/* 5. IMAGES TAB */}
                 <TabsContent value="images" className="m-0 focus-visible:outline-none">
+                  <div className="flex items-center justify-between pb-3 mb-2">
+                    <span className="font-serif text-sm font-semibold">Image Assets ({imageFiles.length})</span>
+                    <label className="cursor-pointer">
+                      <input
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        onChange={(e) => handleUploadFile(e, 'images')}
+                        disabled={isUploading}
+                      />
+                      <span className="inline-flex items-center gap-1.5 h-7 px-2.5 rounded-md border border-border bg-card hover:bg-muted text-xs font-medium text-foreground transition-colors shadow-2xs">
+                        <Upload size={12} />
+                        {isUploading ? 'Uploading...' : 'Upload Image'}
+                      </span>
+                    </label>
+                  </div>
+
                   {imageFiles.length === 0 ? (
                     <div className="rounded-xl border border-dashed border-border/80 bg-card/50 p-8 text-center text-xs text-muted-foreground">
                       <ImageIcon size={24} className="mx-auto mb-2 text-primary opacity-60" />
                       <p className="font-semibold text-foreground">No image assets discovered.</p>
                       <p className="mt-1">
-                        Add screenshots or architecture diagrams inside <code className="font-mono">.spexy/specs/{selectedSpec.id}/images/</code>.
+                        Upload or add screenshots inside <code className="font-mono">.spexy/specs/{selectedSpec.id}/images/</code>.
                       </p>
                     </div>
                   ) : (
                     <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-3">
                       {imageFiles.map((img) => {
                         const imgUrl = `/api/specs/${encodeURIComponent(selectedSpec.id)}/files/${img.relativePath}`;
+                        const isTemp = img.kind === 'temp' || img.relativePath.includes('.temp');
                         return (
                           <div
                             key={img.relativePath}
@@ -792,7 +998,7 @@ export function SpecificationsHub() {
                               />
                             </div>
                             <div className="p-3 border-t border-border/60 bg-muted/10 flex items-center justify-between gap-2">
-                              <div className="min-w-0">
+                              <div className="min-w-0 flex-1">
                                 <span className="font-mono text-xs font-semibold text-foreground truncate block">
                                   {img.name}
                                 </span>
@@ -800,15 +1006,29 @@ export function SpecificationsHub() {
                                   {formatBytes(img.sizeBytes)}
                                 </span>
                               </div>
-                              <a
-                                href={imgUrl}
-                                target="_blank"
-                                rel="noreferrer"
-                                className="text-muted-foreground hover:text-primary transition-colors p-1"
-                                title="Open full resolution"
-                              >
-                                <ExternalLink size={14} />
-                              </a>
+                              <div className="flex items-center gap-1 shrink-0">
+                                {isTemp && (
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    className="h-6 px-1.5 text-[9px] text-primary gap-1"
+                                    onClick={() => handlePreserveFile(img.name, 'images')}
+                                    title="Keep in permanent images"
+                                  >
+                                    <BookmarkCheck size={10} />
+                                    Keep
+                                  </Button>
+                                )}
+                                <a
+                                  href={imgUrl}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="text-muted-foreground hover:text-primary transition-colors p-1"
+                                  title="Open full resolution"
+                                >
+                                  <ExternalLink size={14} />
+                                </a>
+                              </div>
                             </div>
                           </div>
                         );

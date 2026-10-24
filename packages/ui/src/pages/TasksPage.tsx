@@ -23,7 +23,9 @@ import {
   Sparkles,
   AlertCircle,
   RefreshCw,
+  Upload,
 } from 'lucide-react';
+import { toast } from '@/hooks/use-toast';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import {
@@ -107,8 +109,64 @@ export function TasksPage() {
     },
   });
 
-  const [activeTab, setActiveTab] = useState<'kanban' | 'list' | 'dag'>('kanban');
+  const [activeTab, setActiveTab] = useState<'kanban' | 'list' | 'dag'>(() => {
+    const params = new URLSearchParams(typeof window !== 'undefined' ? window.location.search : '');
+    const t = params.get('tab') || params.get('view');
+    if (t === 'list' || t === 'dag') return t;
+    return 'kanban';
+  });
+
+  useEffect(() => {
+    const params = new URLSearchParams(searchString);
+    const t = params.get('tab') || params.get('view');
+    if (t === 'list' || t === 'dag' || t === 'kanban') {
+      setActiveTab(t);
+    }
+  }, [searchString]);
   const [isComposerOpen, setIsComposerOpen] = useState(false);
+  const [composerParentId, setComposerParentId] = useState<string | null>(null);
+  const [isUploadingDoc, setIsUploadingDoc] = useState(false);
+
+  const handleTasksUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const fileList = e.target.files;
+    const targetSpec = isAllSpecs ? (featuresList[0]?.id || 'demo-spec') : (selectedSpecId || 'demo-spec');
+    if (!fileList || fileList.length === 0 || !targetSpec) return;
+
+    const files = Array.from(fileList);
+    setIsUploadingDoc(true);
+
+    try {
+      const uploadPromises = files.map(async (file) => {
+        const formData = new FormData();
+        formData.append('file', file);
+        formData.append('target', 'temp');
+        formData.append('specId', targetSpec);
+
+        const res = await fetch(`/api/specs/${encodeURIComponent(targetSpec)}/upload`, {
+          method: 'POST',
+          body: formData,
+        });
+
+        if (!res.ok) {
+          throw new Error(`Upload failed for "${file.name}"`);
+        }
+
+        return await res.json();
+      });
+
+      const results = await Promise.all(uploadPromises);
+      toast({
+        title: `${results.length} ${results.length === 1 ? 'document' : 'documents'} uploaded`,
+        description: `Uploaded ${results.map((r: any) => `"${r.filename}"`).join(', ')} to spec "${targetSpec}". You can reference or preserve them anytime.`,
+      });
+      void qc.invalidateQueries({ queryKey: ['spec-files', targetSpec] });
+    } catch (err: any) {
+      toast({ title: 'Upload error', description: err.message, variant: 'destructive' });
+    } finally {
+      setIsUploadingDoc(false);
+      e.target.value = '';
+    }
+  };
 
   const createTask = useCreateTask();
   const claimTask = useClaimTask();
@@ -364,24 +422,42 @@ export function TasksPage() {
           </p>
         </div>
 
-        <Button
-          onClick={() => setIsComposerOpen(true)}
-          className="gap-1.5 shadow-md"
-          data-testid="button-new-task"
-          disabled={!isAllSpecs && !selectedSpecId}
-        >
-          <Plus size={15} />
-          Add Task
-        </Button>
+        <div className="flex items-center gap-2">
+          <label className="cursor-pointer inline-flex items-center gap-1.5 h-9 px-3 rounded-md border border-border bg-card hover:bg-muted text-xs font-medium text-foreground transition-all shadow-xs hover:border-primary/50">
+            <input
+              type="file"
+              multiple
+              className="hidden"
+              onChange={handleTasksUpload}
+              disabled={isUploadingDoc}
+            />
+            <Upload size={14} className="text-primary" />
+            <span>{isUploadingDoc ? 'Uploading...' : 'Upload Document'}</span>
+          </label>
+
+          <Button
+            onClick={() => setIsComposerOpen(true)}
+            className="gap-1.5 shadow-md"
+            data-testid="button-new-task"
+            disabled={!isAllSpecs && !selectedSpecId}
+          >
+            <Plus size={15} />
+            Add Task
+          </Button>
+        </div>
       </header>
 
       {/* Task Creation Right Sheet */}
       <TaskComposerSheet
         open={isComposerOpen}
-        onOpenChange={setIsComposerOpen}
+        onOpenChange={(open) => {
+          setIsComposerOpen(open);
+          if (!open) setComposerParentId(null);
+        }}
         onSubmit={handleCreateTask}
         isPending={createTask.isPending}
         defaultGroupId={selectedFeature?.id || ''}
+        defaultParentId={composerParentId}
       />
 
       {/* Main Content Area */}
@@ -478,6 +554,7 @@ export function TasksPage() {
           <TabsContent value="kanban" className="m-0 focus-visible:outline-none">
             <KanbanBoard
               tasks={taskList}
+              specId={selectedSpecId || undefined}
               onClaim={(t, wt, act) => handleClaim(t, wt, act)}
               onSubmitReview={(t, note) => handleSubmit(t, note)}
               onApproveDone={(t, note) => handleApprove(t, note)}
@@ -489,11 +566,16 @@ export function TasksPage() {
           <TabsContent value="list" className="m-0 focus-visible:outline-none">
             <HierarchicalTaskList
               tasks={taskList}
+              specId={selectedSpecId || undefined}
               onClaim={(t, wt, act) => handleClaim(t, wt, act)}
               onSubmitReview={(t, note) => handleSubmit(t, note)}
               onApprove={(t, note) => handleApprove(t, note)}
               onRequestChanges={(t, note) => handleReject(t, note)}
               onSetStatus={(t, status) => handleSetStatus(t, status)}
+              onCreateSubtask={(parentId) => {
+                setComposerParentId(parentId);
+                setIsComposerOpen(true);
+              }}
             />
           </TabsContent>
 

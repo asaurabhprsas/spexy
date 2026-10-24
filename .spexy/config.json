@@ -1,7 +1,7 @@
 {
   "preferences": {
-    "themeId": "default",
-    "colorMode": "dark",
+    "themeId": "emerald",
+    "colorMode": "light",
     "compactMode": false,
     "isInspectorFullWidth": true,
     "fontId": "jetbrains",

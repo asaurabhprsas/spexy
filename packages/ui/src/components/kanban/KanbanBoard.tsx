@@ -28,6 +28,7 @@ import { TaskDetailSheet } from '@/components/task/TaskDetailSheet';
 
 interface KanbanBoardProps {
   tasks: Task[];
+  specId?: string;
   onClaim: (task: Task, worktree?: string, actor?: string) => void;
   onSubmitReview: (task: Task, note?: string) => void;
   onApproveDone: (task: Task, note?: string) => void;
@@ -37,6 +38,7 @@ interface KanbanBoardProps {
 
 export function KanbanBoard({
   tasks,
+  specId,
   onClaim,
   onSubmitReview,
   onApproveDone,
@@ -157,6 +159,7 @@ export function KanbanBoard({
       {/* Task Detail Sheet on the Right */}
       <TaskDetailSheet
         task={detailTask}
+        specId={specId}
         open={detailTask !== null}
         onOpenChange={(open) => !open && setDetailTask(null)}
         allTasks={tasks}

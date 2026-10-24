@@ -133,6 +133,16 @@ export function useWebSocketSync() {
               break;
             }
 
+            case 'BACKGROUND_ERROR': {
+              const payload = data.payload || {};
+              toast({
+                title: payload.title || 'Workspace Error',
+                description: payload.message || data.error || data.message || 'An error occurred in the background.',
+                variant: 'destructive',
+              });
+              break;
+            }
+
             default:
               break;
           }

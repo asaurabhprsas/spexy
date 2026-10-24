@@ -341,6 +341,7 @@ export type SpecFileKind =
   | "tasks"
   | "reference"
   | "image"
+  | "temp"
   | "log"
   | "other";
 
@@ -371,6 +372,7 @@ export function listSpecFiles(projectRoot: string, specId: string): SpecFileInfo
         if (!childKind) {
           if (entry.name === "references") childKind = "reference";
           else if (entry.name === "images") childKind = "image";
+          else if (entry.name === ".temp" || entry.name === "temp") childKind = "temp";
           else childKind = "other";
         }
         scanDir(fullPath, baseDir, childKind);

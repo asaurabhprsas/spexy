@@ -11,7 +11,7 @@ describe("@spexy/cli Comprehensive Test Suite", () => {
   const distPath = path.resolve(__dirname, "../dist/bin.js");
   const localTsx = path.resolve(__dirname, "../../../node_modules/.bin/tsx");
   const tsxCmd = fs.existsSync(localTsx) ? `"${localTsx}"` : "tsx";
-  const cliExec = fs.existsSync(distPath) ? `node "${distPath}"` : `${tsxCmd} "${binPath}"`;
+  const cliExec = `${tsxCmd} "${binPath}"`;
 
   beforeEach(() => {
     tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "spexy-cli-test-"));
@@ -96,7 +96,24 @@ describe("@spexy/cli Comprehensive Test Suite", () => {
     const taskId = tasksJson[0].id;
     expect(tasksJson[0].availability).toBe("available");
 
-    // task start
+    // AI Gate: Attempting to claim before steering documents are approved must be blocked
+    const steeringBlocked = runCli(["task", "start", taskId], { expectFail: true });
+    expect(steeringBlocked).toContain("Workspace steering documents are not approved");
+
+    // Human approves steering
+    runCli(["doc", "approve", "product.md"]);
+    runCli(["doc", "approve", "tech.md"]);
+    runCli(["doc", "approve", "structure.md"]);
+
+    // AI Gate: Attempting to claim before spec requirements/design are approved must be blocked
+    const specBlocked = runCli(["task", "start", taskId], { expectFail: true });
+    expect(specBlocked).toContain("must be approved by a human before AI execution");
+
+    // Human approves spec requirements & design
+    runCli(["doc", "approve", "specs/payment-gateway/requirements.md"]);
+    runCli(["doc", "approve", "specs/payment-gateway/design.md"]);
+
+    // task start now succeeds
     const startOutput = runCli(["task", "start", taskId]);
     expect(startOutput).toContain(`Task "${taskId}" claimed successfully`);
 
@@ -131,7 +148,7 @@ describe("@spexy/cli Comprehensive Test Suite", () => {
     // Spec completion should now be 100%
     const specList = JSON.parse(runCli(["spec", "list", "--json"]));
     expect(specList[0].completionPercentage).toBe(100);
-  });
+  }, 25000);
 
   it("lists and resolves comments with auto-purging", () => {
     runCli(["init"]);

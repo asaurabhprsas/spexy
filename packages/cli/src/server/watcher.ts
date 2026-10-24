@@ -140,6 +140,15 @@ export function startWatcher(
             error: err.message,
           },
         });
+        broadcast({
+          type: "BACKGROUND_ERROR",
+          payload: {
+            title: "Corrupted tasks.yaml",
+            message: `Syntax or schema error in ${path.relative(projectRoot, filePath)}: ${err.message}`,
+            file: path.relative(projectRoot, filePath),
+            timestamp: new Date().toISOString(),
+          },
+        });
 
         if (onLog) {
           onLog({
@@ -275,6 +284,17 @@ export function startWatcher(
   watcher.on("add", (filePath) => handleFileChange(filePath, "add"));
   watcher.on("change", (filePath) => handleFileChange(filePath, "change"));
   watcher.on("unlink", handleFileRemove);
+  watcher.on("error", (err: any) => {
+    console.error("[Watcher Error]", err);
+    broadcast({
+      type: "BACKGROUND_ERROR",
+      payload: {
+        title: "File Watcher Error",
+        message: err?.message || String(err),
+        timestamp: new Date().toISOString(),
+      },
+    });
+  });
 
   return {
     watcher,

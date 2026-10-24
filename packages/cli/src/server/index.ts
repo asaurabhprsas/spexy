@@ -23,6 +23,7 @@ import {
   parseDocumentFrontmatter,
   readConfig,
   readPendingCommentsDoc,
+  writePendingCommentsDoc,
   readTasksYaml,
   resolveComment,
   restoreSnapshot,
@@ -49,6 +50,8 @@ export interface ServerOptions {
   host?: string;
   openBrowser?: boolean;
   projectRoot?: string;
+  logs?: boolean;
+  verbose?: boolean;
 }
 
 export interface ActivityLogEntry {
@@ -165,6 +168,16 @@ export function findTaskAcrossSpecs(projectRoot: string, taskId: string): {
   throw new Error(`Task "${taskId}" not found in any active spec.`);
 }
 
+function appendToImplementationLog(specDir: string, message: string): void {
+  const logPath = path.join(specDir, "implementation.log");
+  const entry = `- [${new Date().toISOString()}] ${message}\n`;
+  try {
+    fs.appendFileSync(logPath, entry, "utf-8");
+  } catch {
+    // ignore
+  }
+}
+
 export function createServer(options: ServerOptions = {}): {
   fetch: (req: Request, server?: any) => Promise<Response | undefined> | Response | undefined;
   websocket: any;
@@ -203,6 +216,10 @@ export function createServer(options: ServerOptions = {}): {
     activityLogs.push(logEntry);
     if (activityLogs.length > 200) {
       activityLogs.shift();
+    }
+    if (options.logs || options.verbose) {
+      const time = new Date().toISOString().substring(11, 19);
+      console.log(`[${time}] [${logEntry.category.toUpperCase()}] ${logEntry.message}`);
     }
     broadcast({
       type: "LOG_EVENT",
@@ -779,6 +796,19 @@ export function createServer(options: ServerOptions = {}): {
             writeTasksYaml(projectRoot, specId, updatedDoc);
           });
 
+          const specDir = path.join(getSpecflowDir(projectRoot), "specs", specId);
+          let logMsg = `Task ${taskId} status transitioned to ${nextStatus} by ${actor}.`;
+          if (action === "claim") {
+            logMsg = `Task ${taskId} claimed by ${updatedTask.worktree ? `worktree "${updatedTask.worktree}"` : actor}. Status: in-progress.`;
+          } else if (action === "submit") {
+            logMsg = `Task ${taskId} submitted for review by ${actor}. Status: to-review.${reqBody.note ? ` Note: ${reqBody.note}` : ""}`;
+          } else if (action === "approve") {
+            logMsg = `Task ${taskId} verified and approved by ${actor}. Status: done.${reqBody.note ? ` Note: ${reqBody.note}` : ""}`;
+          } else if (action === "reject") {
+            logMsg = `Task ${taskId} changes requested by ${actor}. Status: todo.${reqBody.note ? ` Note: ${reqBody.note}` : ""}`;
+          }
+          appendToImplementationLog(specDir, logMsg);
+
           logActivity({
             category: "task",
             action,
@@ -872,6 +902,9 @@ export function createServer(options: ServerOptions = {}): {
             writeTasksYaml(projectRoot, specId, updatedDoc);
           });
 
+          const specDir = path.join(getSpecflowDir(projectRoot), "specs", specId);
+          appendToImplementationLog(specDir, `Task ${newTask.id} created ("${newTask.title}"). Status: todo.`);
+
           logActivity({
             category: "task",
             action: "create",
@@ -948,6 +981,19 @@ export function createServer(options: ServerOptions = {}): {
             writeTasksYaml(projectRoot, specId, updatedDoc);
           });
 
+          const specDir = path.join(getSpecflowDir(projectRoot), "specs", specId);
+          let logMsg = `Task ${taskId} status transitioned to ${nextStatus} by ${actor}.`;
+          if (action === "claim") {
+            logMsg = `Task ${taskId} claimed by ${updatedTask.worktree ? `worktree "${updatedTask.worktree}"` : actor}. Status: in-progress.`;
+          } else if (action === "submit") {
+            logMsg = `Task ${taskId} submitted for review by ${actor}. Status: to-review.${reqBody.note ? ` Note: ${reqBody.note}` : ""}`;
+          } else if (action === "approve") {
+            logMsg = `Task ${taskId} verified and approved by ${actor}. Status: done.${reqBody.note ? ` Note: ${reqBody.note}` : ""}`;
+          } else if (action === "reject") {
+            logMsg = `Task ${taskId} changes requested by ${actor}. Status: todo.${reqBody.note ? ` Note: ${reqBody.note}` : ""}`;
+          }
+          appendToImplementationLog(specDir, logMsg);
+
           logActivity({
             category: "task",
             action,
@@ -1007,6 +1053,291 @@ export function createServer(options: ServerOptions = {}): {
               "Content-Type": contentType,
               "Access-Control-Allow-Origin": "*",
             },
+          });
+        }
+
+        // GET /api/files/raw?path=... (Direct file view/download for attached documents)
+        if (pathname === "/api/files/raw" && (method === "GET" || method === "HEAD")) {
+          const rawRelPath = url.searchParams.get("path");
+          if (!rawRelPath) {
+            return json({ error: "Missing 'path' query parameter" }, 400);
+          }
+          const targetFile = path.resolve(projectRoot, rawRelPath);
+          if (!targetFile.startsWith(path.resolve(projectRoot)) || !fs.existsSync(targetFile) || !fs.statSync(targetFile).isFile()) {
+            return json({ error: `File not found or access denied: ${rawRelPath}` }, 404);
+          }
+
+          const ext = path.extname(targetFile).toLowerCase();
+          const contentType = MIME_TYPES[ext] || "application/octet-stream";
+          const content = fs.readFileSync(targetFile);
+          return new Response(content, {
+            headers: {
+              "Content-Type": contentType,
+              "Access-Control-Allow-Origin": "*",
+            },
+          });
+        }
+
+        // POST /api/upload (General upload for steering docs, specs, comments)
+        if (pathname === "/api/upload" && method === "POST") {
+          let filename = "";
+          let fileBuffer: Buffer | null = null;
+          let target = "temp";
+          let specId = "";
+          let documentId = "";
+
+          const contentType = req.headers.get("content-type") || "";
+          if (contentType.includes("multipart/form-data")) {
+            const formData = await req.formData();
+            const file = formData.get("file") as File | null;
+            if (!file) {
+              return json({ error: "Missing 'file' form data" }, 400);
+            }
+            filename = (formData.get("filename")?.toString() || file.name).replace(/[^a-zA-Z0-9._-]/g, "_");
+            target = (formData.get("target")?.toString() || "temp").toLowerCase();
+            specId = formData.get("specId")?.toString() || "";
+            documentId = formData.get("documentId")?.toString() || "";
+            fileBuffer = Buffer.from(await file.arrayBuffer());
+          } else {
+            const body = await parseBody(req);
+            if (!body.filename || !body.content) {
+              return json({ error: "Missing required 'filename' or 'content'" }, 400);
+            }
+            filename = body.filename.replace(/[^a-zA-Z0-9._-]/g, "_");
+            target = (body.target || "temp").toLowerCase();
+            specId = body.specId || "";
+            documentId = body.documentId || "";
+            const encoding = body.encoding === "base64" ? "base64" : "utf-8";
+            fileBuffer = Buffer.from(body.content, encoding);
+          }
+
+          // Determine target directory
+          let baseDir = path.join(getSpecflowDir(projectRoot), "steering");
+          if (specId) {
+            baseDir = path.join(getSpecflowDir(projectRoot), "specs", specId);
+          } else if (documentId && documentId.includes(":")) {
+            const extractedSpec = documentId.split(":")[0];
+            const candidate = path.join(getSpecflowDir(projectRoot), "specs", extractedSpec);
+            if (fs.existsSync(candidate)) {
+              baseDir = candidate;
+            }
+          }
+
+          const subDir = target === "references" ? "references" : target === "images" ? "images" : ".temp";
+          const destDir = path.join(baseDir, subDir);
+          fs.mkdirSync(destDir, { recursive: true });
+
+          const destPath = path.join(destDir, filename);
+          fs.writeFileSync(destPath, fileBuffer);
+
+          const relPath = path.relative(projectRoot, destPath).split(path.sep).join("/");
+          logActivity({
+            category: "document",
+            action: "upload",
+            actor: "human",
+            message: `Uploaded file ${filename} (${subDir})`,
+            details: { filename, target: subDir, path: relPath },
+          });
+
+          return json({
+            success: true,
+            filename,
+            path: relPath,
+            is_temp: subDir === ".temp",
+            target: subDir,
+          });
+        }
+
+        // POST /api/preserve-file (General preserve for temporary files)
+        if (pathname === "/api/preserve-file" && method === "POST") {
+          const body = await parseBody(req);
+          const filename = body.filename;
+          const filepath = body.filepath || body.path;
+          const targetDir = body.target_dir === "images" ? "images" : "references";
+
+          let tempFile = filepath ? path.resolve(projectRoot, filepath) : "";
+          if (!tempFile || !fs.existsSync(tempFile)) {
+            const sfDir = getSpecflowDir(projectRoot);
+            const candidates = [
+              path.join(sfDir, "steering", ".temp", filename),
+              path.join(sfDir, ".temp", filename),
+            ];
+            const specsDir = path.join(sfDir, "specs");
+            if (fs.existsSync(specsDir)) {
+              for (const s of fs.readdirSync(specsDir)) {
+                candidates.push(path.join(specsDir, s, ".temp", filename));
+              }
+            }
+            tempFile = candidates.find((c) => fs.existsSync(c)) || "";
+          }
+
+          if (!tempFile || !fs.existsSync(tempFile)) {
+            return json({ error: `Temporary file not found: ${filename}` }, 404);
+          }
+
+          const parentDir = path.dirname(path.dirname(tempFile));
+          const targetFolder = path.join(parentDir, targetDir);
+          fs.mkdirSync(targetFolder, { recursive: true });
+          const targetPath = path.join(targetFolder, filename);
+          fs.renameSync(tempFile, targetPath);
+
+          try {
+            const commentsDoc = readPendingCommentsDoc(projectRoot);
+            let changed = false;
+            for (const c of commentsDoc.comments) {
+              if (c.attachments) {
+                for (const a of c.attachments) {
+                  if (a.name === filename || a.path.includes(filename)) {
+                    a.path = path.relative(projectRoot, targetPath).split(path.sep).join("/");
+                    a.is_temp = false;
+                    changed = true;
+                  }
+                }
+              }
+            }
+            if (changed) {
+              writePendingCommentsDoc(projectRoot, commentsDoc);
+              broadcast({ type: "COMMENTS_UPDATED", payload: {} });
+            }
+          } catch {}
+
+          const relPath = path.relative(projectRoot, targetPath).split(path.sep).join("/");
+          return json({ success: true, filename, path: relPath, target: targetDir });
+        }
+
+        // POST /api/specs/:id/upload & POST /api/features/:id/upload
+        const specUploadMatch = pathname.match(/^\/api\/(?:specs|features)\/([^/]+)\/upload$/);
+        if (specUploadMatch && method === "POST") {
+          const specId = decodeURIComponent(specUploadMatch[1]);
+          const specDir = path.resolve(getSpecflowDir(projectRoot), "specs", specId);
+          if (!fs.existsSync(specDir)) {
+            return json({ error: `Spec "${specId}" not found` }, 404);
+          }
+
+          let filename = "";
+          let fileBuffer: Buffer | null = null;
+          let target = "temp";
+
+          const contentType = req.headers.get("content-type") || "";
+          if (contentType.includes("multipart/form-data")) {
+            const formData = await req.formData();
+            const file = formData.get("file") as File | null;
+            if (!file) {
+              return json({ error: "Missing 'file' form data" }, 400);
+            }
+            filename = (formData.get("filename")?.toString() || file.name).replace(/[^a-zA-Z0-9._-]/g, "_");
+            target = (formData.get("target")?.toString() || "temp").toLowerCase();
+            fileBuffer = Buffer.from(await file.arrayBuffer());
+          } else {
+            const body = await parseBody(req);
+            if (!body.filename || !body.content) {
+              return json({ error: "Missing required 'filename' or 'content'" }, 400);
+            }
+            filename = body.filename.replace(/[^a-zA-Z0-9._-]/g, "_");
+            target = (body.target || "temp").toLowerCase();
+            const encoding = body.encoding === "base64" ? "base64" : "utf-8";
+            fileBuffer = Buffer.from(body.content, encoding);
+          }
+
+          const subDir = target === "references" ? "references" : target === "images" ? "images" : ".temp";
+          const destDir = path.join(specDir, subDir);
+          fs.mkdirSync(destDir, { recursive: true });
+
+          const destPath = path.join(destDir, filename);
+          fs.writeFileSync(destPath, fileBuffer);
+
+          const relPath = path.relative(projectRoot, destPath).split(path.sep).join("/");
+          logActivity({
+            category: "document",
+            action: "upload",
+            actor: "human",
+            message: `Uploaded file ${filename} to spec "${specId}" (${subDir})`,
+            details: { specId, filename, target: subDir, path: relPath },
+          });
+
+          broadcast({
+            type: "SPEC_FILES_UPDATED",
+            payload: { specId, filename, path: relPath },
+          });
+
+          return json({
+            success: true,
+            filename,
+            path: relPath,
+            is_temp: subDir === ".temp",
+            target: subDir,
+          });
+        }
+
+        // POST /api/specs/:id/preserve-file & POST /api/features/:id/preserve-file
+        const specPreserveMatch = pathname.match(/^\/api\/(?:specs|features)\/([^/]+)\/preserve-file$/);
+        if (specPreserveMatch && method === "POST") {
+          const specId = decodeURIComponent(specPreserveMatch[1]);
+          const specDir = path.resolve(getSpecflowDir(projectRoot), "specs", specId);
+          if (!fs.existsSync(specDir)) {
+            return json({ error: `Spec "${specId}" not found` }, 404);
+          }
+
+          const body = await parseBody(req);
+          const filename = body.filename?.replace(/[^a-zA-Z0-9._-]/g, "_");
+          if (!filename) {
+            return json({ error: "Missing required 'filename'" }, 400);
+          }
+
+          const tempFilePath = path.join(specDir, ".temp", filename);
+          if (!fs.existsSync(tempFilePath)) {
+            return json({ error: `Temporary file "${filename}" not found in .temp` }, 404);
+          }
+
+          const ext = path.extname(filename).toLowerCase();
+          const isImg = [".png", ".jpg", ".jpeg", ".svg", ".gif", ".webp"].includes(ext);
+          const targetDir = body.target === "images" || (isImg && body.target !== "references") ? "images" : "references";
+          const targetPath = path.join(specDir, targetDir, filename);
+          fs.mkdirSync(path.join(specDir, targetDir), { recursive: true });
+
+          fs.renameSync(tempFilePath, targetPath);
+
+          // If referenced in pending comments, update their path
+          try {
+            const commentsDoc = readPendingCommentsDoc(projectRoot);
+            let changed = false;
+            for (const c of commentsDoc.comments) {
+              if (c.attachments) {
+                for (const a of c.attachments) {
+                  if (a.name === filename || a.path.includes(filename)) {
+                    a.path = path.relative(projectRoot, targetPath).split(path.sep).join("/");
+                    a.is_temp = false;
+                    changed = true;
+                  }
+                }
+              }
+            }
+            if (changed) {
+              writePendingCommentsDoc(projectRoot, commentsDoc);
+              broadcast({ type: "COMMENTS_UPDATED", payload: {} });
+            }
+          } catch {}
+
+          const relPath = path.relative(projectRoot, targetPath).split(path.sep).join("/");
+          logActivity({
+            category: "document",
+            action: "preserve",
+            actor: "human",
+            message: `Preserved temporary file ${filename} to ${targetDir} in spec "${specId}"`,
+            details: { specId, filename, target: targetDir, path: relPath },
+          });
+
+          broadcast({
+            type: "SPEC_FILES_UPDATED",
+            payload: { specId, filename, path: relPath },
+          });
+
+          return json({
+            success: true,
+            filename,
+            path: relPath,
+            target: targetDir,
+            is_temp: false,
           });
         }
 
@@ -1075,6 +1406,19 @@ export function createServer(options: ServerOptions = {}): {
             writeTasksYaml(projectRoot, specId, updatedDoc);
           });
 
+          const specDir = path.join(getSpecflowDir(projectRoot), "specs", specId);
+          let logMsg = `Task ${taskId} status transitioned to ${nextStatus} by ${actor}.`;
+          if (action === "claim") {
+            logMsg = `Task ${taskId} claimed by ${updatedTask.worktree ? `worktree "${updatedTask.worktree}"` : actor}. Status: in-progress.`;
+          } else if (action === "submit") {
+            logMsg = `Task ${taskId} submitted for review by ${actor}. Status: to-review.${reqBody.note ? ` Note: ${reqBody.note}` : ""}`;
+          } else if (action === "approve") {
+            logMsg = `Task ${taskId} verified and approved by ${actor}. Status: done.${reqBody.note ? ` Note: ${reqBody.note}` : ""}`;
+          } else if (action === "reject") {
+            logMsg = `Task ${taskId} changes requested by ${actor}. Status: todo.${reqBody.note ? ` Note: ${reqBody.note}` : ""}`;
+          }
+          appendToImplementationLog(specDir, logMsg);
+
           const allTasksInDoc = flattenTasks(updatedDoc);
           const statuses: Record<string, TaskStatus> = {};
           for (const t of allTasksInDoc) statuses[t.id] = t.status;
@@ -1142,9 +1486,12 @@ export function createServer(options: ServerOptions = {}): {
             newComment = addComment(projectRoot, {
               id: data.id,
               target_file,
+              target_type: data.target_type || (data.target_id ? "task" : "document"),
+              target_id: data.target_id || null,
               anchor,
               instruction,
               author: data.author || "human",
+              attachments: data.attachments || [],
             });
           });
 
@@ -1668,6 +2015,14 @@ export function startServer(
         nodeRes.end();
       }
     } catch (err: any) {
+      broadcast({
+        type: "BACKGROUND_ERROR",
+        payload: {
+          title: "Dashboard Server Error",
+          message: err.message || "Internal Server Error",
+          timestamp: new Date().toISOString(),
+        },
+      });
       if (!nodeRes.headersSent) {
         nodeRes.writeHead(500, { "Content-Type": "application/json" });
         nodeRes.end(JSON.stringify({ error: err.message || "Internal Server Error" }));

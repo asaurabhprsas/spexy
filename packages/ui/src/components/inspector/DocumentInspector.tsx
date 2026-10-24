@@ -34,6 +34,9 @@ import {
   Trash2,
   History,
   Archive,
+  Paperclip,
+  Upload,
+  BookmarkCheck,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -79,6 +82,8 @@ export function DocumentInspector({ documentId, onClose }: DocumentInspectorProp
   const [startLine, setStartLine] = useState(1);
   const [endLine, setEndLine] = useState(1);
   const [instruction, setInstruction] = useState('');
+  const [attachedFiles, setAttachedFiles] = useState<Array<{ name: string; path: string; is_temp: boolean; size?: number }>>([]);
+  const [isUploading, setIsUploading] = useState(false);
   const [isCommentDrawerOpen, setIsCommentDrawerOpen] = useState(true);
   const [isAddingComment, setIsAddingComment] = useState(false);
   const [activeHighlightLine, setActiveHighlightLine] = useState<number | null>(null);
@@ -402,29 +407,107 @@ export function DocumentInspector({ documentId, onClose }: DocumentInspectorProp
     );
   };
 
-  const handleCreateComment = (e: FormEvent) => {
-    e.preventDefault();
-    if (!instruction.trim() || !selectedText.trim()) return;
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const fileList = e.target.files;
+    if (!fileList || fileList.length === 0) return;
 
-    createCommentMutation.mutate(
-      {
-        data: {
-          documentId,
-          selectedText,
-          startLine: Number(startLine),
-          endLine: Number(endLine),
-          instruction,
-        },
-      },
-      {
-        onSuccess: () => {
-          setIsAddingComment(false);
-          setInstruction('');
-          setSelectedText('');
-          invalidateAll();
-        },
+    const files = Array.from(fileList);
+    setIsUploading(true);
+
+    try {
+      const uploadPromises = files.map(async (file) => {
+        const formData = new FormData();
+        formData.append('file', file);
+        formData.append('documentId', documentId);
+        if (documentId.includes(':')) {
+          formData.append('specId', documentId.split(':')[0]);
+        }
+        formData.append('target', 'temp');
+
+        const res = await fetch('/api/upload', {
+          method: 'POST',
+          body: formData,
+        });
+        if (!res.ok) {
+          throw new Error(`Upload failed for "${file.name}"`);
+        }
+        const data = await res.json();
+        return {
+          name: data.filename || file.name,
+          path: data.path,
+          is_temp: true,
+          size: file.size,
+        };
+      });
+
+      const uploaded = await Promise.all(uploadPromises);
+      setAttachedFiles((prev) => [...prev, ...uploaded]);
+      toast({
+        title: `${uploaded.length} ${uploaded.length === 1 ? 'attachment' : 'attachments'} uploaded`,
+        description: `Attached ${uploaded.map((u) => `"${u.name}"`).join(', ')} as reference.`,
+      });
+    } catch (err: any) {
+      toast({ title: 'Upload error', description: err.message, variant: 'destructive' });
+    } finally {
+      setIsUploading(false);
+      e.target.value = '';
+    }
+  };
+
+  const handlePreserveAttachment = async (filename: string, filepath?: string) => {
+    try {
+      const res = await fetch('/api/preserve-file', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ filename, filepath }),
+      });
+      if (res.ok) {
+        toast({ title: 'Preserved in repo', description: `Moved ${filename} to permanent references.` });
+        invalidateAll();
       }
-    );
+    } catch {}
+  };
+
+  const handleCreateComment = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!instruction.trim() && attachedFiles.length === 0) return;
+
+    const payload = {
+      target_file: documentId,
+      documentId,
+      instruction: instruction.trim() || `Refer attached document: ${attachedFiles.map((a) => a.name).join(', ')}`,
+      selectedText: selectedText || 'Document reference',
+      startLine: Number(startLine) || 1,
+      endLine: Number(endLine) || 1,
+      anchor: {
+        start_line: Number(startLine) || 1,
+        end_line: Number(endLine) || 1,
+        anchor_text: selectedText || '',
+        context_before: '',
+      },
+      attachments: attachedFiles,
+      author: 'human',
+    };
+
+    try {
+      const res = await fetch('/api/comments', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      if (res.ok) {
+        setIsAddingComment(false);
+        setInstruction('');
+        setSelectedText('');
+        setAttachedFiles([]);
+        invalidateAll();
+        toast({ title: 'Comment posted', description: 'Annotation saved with attachments.' });
+      } else {
+        toast({ title: 'Failed to post comment', variant: 'destructive' });
+      }
+    } catch (err: any) {
+      toast({ title: 'Error posting comment', description: err.message, variant: 'destructive' });
+    }
   };
 
   const handleResolveComment = (commentId: string) => {
@@ -921,7 +1004,6 @@ export function DocumentInspector({ documentId, onClose }: DocumentInspectorProp
                       Instruction for AI
                     </label>
                     <Textarea
-                      required
                       value={instruction}
                       onChange={(e) => setInstruction(e.target.value)}
                       placeholder="e.g. Clarify edge cases when token expires..."
@@ -929,11 +1011,67 @@ export function DocumentInspector({ documentId, onClose }: DocumentInspectorProp
                     />
                   </div>
 
+                  {/* File Attachment & References */}
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <label className="text-[10px] font-mono uppercase text-muted-foreground">
+                        Attach Reference (Doc, Image, PDF)
+                      </label>
+                      <label
+                        className={`cursor-pointer inline-flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded border border-dashed hover:bg-muted/60 transition-colors text-primary ${
+                          isUploading ? 'opacity-50 pointer-events-none' : ''
+                        }`}
+                      >
+                        {isUploading ? (
+                          <Loader2 size={12} className="animate-spin" />
+                        ) : (
+                          <Paperclip size={12} />
+                        )}
+                        <span>{isUploading ? 'Uploading...' : 'Attach File'}</span>
+                        <input
+                          type="file"
+                          multiple
+                          className="hidden"
+                          onChange={handleFileUpload}
+                          disabled={isUploading}
+                        />
+                      </label>
+                    </div>
+
+                    {attachedFiles.length > 0 && (
+                      <div className="space-y-1.5 bg-muted/40 p-2 rounded border border-border/60">
+                        <span className="text-[10px] font-mono text-muted-foreground block">
+                          Attached References ({attachedFiles.length}):
+                        </span>
+                        <div className="flex flex-wrap gap-1.5">
+                          {attachedFiles.map((f, idx) => (
+                            <span
+                              key={idx}
+                              className="inline-flex items-center gap-1.5 bg-background border px-2 py-0.5 rounded text-[11px] font-mono text-foreground"
+                            >
+                              <Paperclip size={10} className="text-primary" />
+                              <span className="truncate max-w-[140px]">{f.name}</span>
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setAttachedFiles((prev) => prev.filter((_, i) => i !== idx))
+                                }
+                                className="text-muted-foreground hover:text-destructive"
+                              >
+                                <X size={11} />
+                              </button>
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
                   <Button
                     type="submit"
                     size="sm"
                     className="w-full gap-1.5"
-                    disabled={createCommentMutation.isPending || !instruction.trim()}
+                    disabled={createCommentMutation.isPending || (!instruction.trim() && attachedFiles.length === 0)}
                   >
                     {createCommentMutation.isPending ? (
                       <Loader2 size={13} className="animate-spin" />
@@ -1030,6 +1168,48 @@ export function DocumentInspector({ documentId, onClose }: DocumentInspectorProp
                         <p className="text-xs leading-relaxed text-foreground font-medium mb-2.5">
                           {comment.instruction}
                         </p>
+                      )}
+
+                      {/* Attachments in active comment */}
+                      {((comment as any).attachments || (comment as any).attached_files)?.length > 0 && (
+                        <div className="mb-2.5 bg-muted/30 p-2 rounded border border-border/50 text-[11px]">
+                          <div className="text-[10px] font-mono text-muted-foreground font-semibold flex items-center gap-1 mb-1.5">
+                            <Paperclip size={11} /> ATTACHED REFERENCES:
+                          </div>
+                          <div className="flex flex-wrap gap-1.5">
+                            {((comment as any).attachments || (comment as any).attached_files).map((att: any, idx: number) => {
+                              const attPath = typeof att === 'string' ? att : att.path || att.name;
+                              const attName = typeof att === 'string' ? att.split('/').pop() : att.name || att.path?.split('/').pop();
+                              const isTemp = typeof att === 'object' ? Boolean(att.is_temp || att.path?.includes('.temp')) : att.includes('.temp');
+                              return (
+                                <div key={idx} className="flex items-center gap-1 bg-background border px-2 py-0.5 rounded text-[11px] shadow-sm">
+                                  <a
+                                    href={`/api/files/raw?path=${encodeURIComponent(attPath)}`}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="text-primary hover:underline font-mono truncate max-w-[140px]"
+                                    title={attName}
+                                  >
+                                    {attName}
+                                  </a>
+                                  {isTemp && (
+                                    <button
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        void handlePreserveAttachment(attName, attPath);
+                                      }}
+                                      title="Preserve in repository permanently (moves out of .temp)"
+                                      className="text-[10px] text-amber-600 dark:text-amber-400 hover:text-emerald-600 flex items-center gap-0.5 ml-1 bg-amber-500/10 px-1 py-0.5 rounded"
+                                    >
+                                      <BookmarkCheck size={10} /> Keep
+                                    </button>
+                                  )}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
                       )}
 
                       {comment.resolutionNote && (
@@ -1139,6 +1319,33 @@ export function DocumentInspector({ documentId, onClose }: DocumentInspectorProp
                       <p className="text-xs leading-relaxed text-foreground/90 font-medium mb-2">
                         {comment.instruction}
                       </p>
+
+                      {/* Attachments in resolved history comment */}
+                      {((comment as any).attachments || (comment as any).attached_files)?.length > 0 && (
+                        <div className="mb-2 bg-muted/30 p-2 rounded border border-border/50 text-[11px]">
+                          <div className="text-[10px] font-mono text-muted-foreground font-semibold flex items-center gap-1 mb-1">
+                            <Paperclip size={11} /> ATTACHED REFERENCES:
+                          </div>
+                          <div className="flex flex-wrap gap-1.5">
+                            {((comment as any).attachments || (comment as any).attached_files).map((att: any, idx: number) => {
+                              const attPath = typeof att === 'string' ? att : att.path || att.name;
+                              const attName = typeof att === 'string' ? att.split('/').pop() : att.name || att.path?.split('/').pop();
+                              return (
+                                <a
+                                  key={idx}
+                                  href={`/api/files/raw?path=${encodeURIComponent(attPath)}`}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="text-primary hover:underline font-mono text-[11px] bg-background border px-2 py-0.5 rounded truncate max-w-[160px]"
+                                  title={attName}
+                                >
+                                  {attName}
+                                </a>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
 
                       <div className="text-[11px] text-emerald-700 dark:text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 p-2 rounded mb-2 font-mono">
                         <span className="font-semibold block mb-0.5">Resolution Note:</span>

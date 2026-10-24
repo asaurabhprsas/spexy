@@ -1,5 +1,13 @@
 import React, { useState, useEffect } from 'react';
-import type { Task } from '@workspace/api-client-react';
+import { useQueryClient } from '@tanstack/react-query';
+import {
+  useListComments,
+  useCreateComment,
+  useResolveComment,
+  getListCommentsQueryKey,
+  type Task,
+  type Comment,
+} from '@workspace/api-client-react';
 import {
   Sheet,
   SheetContent,
@@ -40,7 +48,13 @@ import {
   Layers,
   Send,
   SlidersHorizontal,
+  MessageSquare,
+  Paperclip,
+  BookmarkCheck,
+  Trash2,
+  Upload,
 } from 'lucide-react';
+import { toast } from '@/hooks/use-toast';
 
 export type TaskDetailItem = Task & {
   actor?: string;
@@ -57,6 +71,8 @@ export type TaskDetailItem = Task & {
 
 export interface TaskDetailSheetProps {
   task: TaskDetailItem | null;
+  specId?: string;
+  initialTab?: 'overview' | 'dependencies' | 'files' | 'notes' | 'comments';
   open: boolean;
   onOpenChange: (open: boolean) => void;
   allTasks?: Task[];
@@ -70,6 +86,8 @@ export interface TaskDetailSheetProps {
 
 export function TaskDetailSheet({
   task,
+  specId,
+  initialTab,
   open,
   onOpenChange,
   allTasks = [],
@@ -86,7 +104,132 @@ export function TaskDetailSheet({
   const [submitNoteInput, setSubmitNoteInput] = useState('');
   const [reviewNoteInput, setReviewNoteInput] = useState('');
   const [showAdvancedClaim, setShowAdvancedClaim] = useState(false);
-  const [activeTab, setActiveTab] = useState<'overview' | 'dependencies' | 'files' | 'notes'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'dependencies' | 'files' | 'notes' | 'comments'>(
+    initialTab || 'overview'
+  );
+
+  useEffect(() => {
+    if (initialTab) {
+      setActiveTab(initialTab);
+    }
+  }, [initialTab, task]);
+
+  const resolvedSpecId = React.useMemo(() => {
+    if (specId) return specId;
+    if ((task as any)?.specId) return (task as any).specId;
+    if ((task as any)?.featureId) return (task as any).featureId;
+    const urlSpec = typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('spec') : null;
+    if (urlSpec && urlSpec !== 'all') return urlSpec;
+    return 'demo-spec';
+  }, [specId, task]);
+
+  const queryClient = useQueryClient();
+  const commentsQuery = useListComments({ query: { queryKey: getListCommentsQueryKey() } });
+  const allComments = (commentsQuery.data || []) as any[];
+  const taskComments = allComments.filter(
+    (c) => c.target_id === task?.id || (c.target_type === 'task' && c.target_id === task?.id)
+  );
+
+  const [newCommentText, setNewCommentText] = useState('');
+  const [attachedFiles, setAttachedFiles] = useState<Array<{ name: string; path: string; is_temp: boolean }>>([]);
+  const [isUploadingAttachment, setIsUploadingAttachment] = useState(false);
+
+  const resolveCommentMutation = useResolveComment();
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const fileList = e.target.files;
+    if (!fileList || fileList.length === 0 || !resolvedSpecId) return;
+
+    const files = Array.from(fileList);
+    setIsUploadingAttachment(true);
+
+    try {
+      const uploadPromises = files.map(async (file) => {
+        const formData = new FormData();
+        formData.append('file', file);
+        formData.append('target', 'temp');
+        formData.append('specId', resolvedSpecId);
+
+        const res = await fetch(`/api/specs/${encodeURIComponent(resolvedSpecId)}/upload`, {
+          method: 'POST',
+          body: formData,
+        });
+
+        if (!res.ok) {
+          throw new Error(`Upload failed for "${file.name}"`);
+        }
+
+        const data = await res.json();
+        return {
+          name: data.filename || file.name,
+          path: data.path,
+          is_temp: true,
+          size: file.size,
+        };
+      });
+
+      const uploaded = await Promise.all(uploadPromises);
+      setAttachedFiles((prev) => [...prev, ...uploaded]);
+      toast({
+        title: `${uploaded.length} ${uploaded.length === 1 ? 'attachment' : 'attachments'} uploaded`,
+        description: `Attached ${uploaded.map((u) => `"${u.name}"`).join(', ')} as reference.`,
+      });
+    } catch (err: any) {
+      toast({ title: 'Upload error', description: err.message, variant: 'destructive' });
+    } finally {
+      setIsUploadingAttachment(false);
+      e.target.value = '';
+    }
+  };
+
+  const handleAddComment = () => {
+    if ((!newCommentText.trim() && attachedFiles.length === 0) || !task) return;
+    const instruction = newCommentText.trim() || `Attached reference: ${attachedFiles.map((a) => a.name).join(', ')}`;
+
+    fetch('/api/comments', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        target_file: `specs/${resolvedSpecId}/tasks.yaml`,
+        target_type: 'task',
+        target_id: task.id,
+        instruction,
+        author: 'human',
+        attachments: attachedFiles,
+      }),
+    })
+      .then((res) => {
+        if (res.ok) {
+          setNewCommentText('');
+          setAttachedFiles([]);
+          void queryClient.invalidateQueries({ queryKey: getListCommentsQueryKey() });
+          toast({ title: 'Comment added', description: 'Your comment and attachments were saved.' });
+        }
+      })
+      .catch((err) => {
+        toast({ title: 'Failed to add comment', description: err.message, variant: 'destructive' });
+      });
+  };
+
+  const handlePreserveAttachment = async (filename: string, filepath?: string) => {
+    if (!resolvedSpecId) return;
+    try {
+      const res = await fetch(`/api/preserve-file`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ filename, filepath, specId: resolvedSpecId }),
+      });
+      if (res.ok) {
+        toast({ title: 'Preserved in repo', description: `Moved ${filename} to permanent references.` });
+        void queryClient.invalidateQueries({ queryKey: getListCommentsQueryKey() });
+        void queryClient.invalidateQueries({ queryKey: ['spec-files', resolvedSpecId] });
+      } else {
+        toast({ title: 'Failed to preserve file', variant: 'destructive' });
+      }
+    } catch (err: any) {
+      toast({ title: 'Preserve error', description: err.message, variant: 'destructive' });
+    }
+  };
 
   useEffect(() => {
     if (task) {
@@ -95,7 +238,9 @@ export function TaskDetailSheet({
       setSubmitNoteInput('');
       setReviewNoteInput('');
       setShowAdvancedClaim(false);
-      setActiveTab('overview');
+      setActiveTab(initialTab || 'overview');
+      setNewCommentText('');
+      setAttachedFiles([]);
     }
   }, [task?.id, task?.status]);
 
@@ -245,7 +390,7 @@ export function TaskDetailSheet({
             onValueChange={(v) => setActiveTab(v as any)}
             className="space-y-5"
           >
-            <TabsList className="grid grid-cols-4 w-full bg-muted/70 p-1">
+            <TabsList className="grid grid-cols-5 w-full bg-muted/70 p-1">
               <TabsTrigger value="overview" className="text-xs">Overview</TabsTrigger>
               <TabsTrigger value="dependencies" className="text-xs">
                 Deps {task.dependsOn?.length ? `(${task.dependsOn.length})` : ''}
@@ -254,6 +399,9 @@ export function TaskDetailSheet({
                 Files {task.files?.length ? `(${task.files.length})` : ''}
               </TabsTrigger>
               <TabsTrigger value="notes" className="text-xs">Notes</TabsTrigger>
+              <TabsTrigger value="comments" className="text-xs">
+                Comments {taskComments.length ? `(${taskComments.length})` : ''}
+              </TabsTrigger>
             </TabsList>
 
             {/* TAB 1: OVERVIEW */}
@@ -524,6 +672,62 @@ export function TaskDetailSheet({
 
               <Separator />
 
+              {/* Reference Documents & Attachments */}
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <h4 className="text-[11px] font-mono uppercase tracking-wider text-muted-foreground font-semibold flex items-center gap-1.5">
+                    <Paperclip size={12} className="text-primary" />
+                    Reference Documents & Attachments ({attachedFiles.length})
+                  </h4>
+                  <label className="cursor-pointer inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md border border-border bg-background hover:bg-muted text-xs font-medium text-foreground transition-all shadow-2xs">
+                    <input
+                      type="file"
+                      multiple
+                      className="hidden"
+                      onChange={handleFileUpload}
+                      disabled={isUploadingAttachment}
+                    />
+                    <Upload size={12} className="text-primary" />
+                    <span>{isUploadingAttachment ? 'Uploading...' : 'Upload Reference'}</span>
+                  </label>
+                </div>
+                {attachedFiles.length > 0 ? (
+                  <div className="space-y-1.5">
+                    {attachedFiles.map((att, i) => (
+                      <div
+                        key={i}
+                        className="flex items-center justify-between font-mono text-[11px] bg-muted/40 p-2 rounded-md border border-border/60"
+                      >
+                        <div className="flex items-center gap-2 truncate">
+                          <Paperclip size={12} className="text-primary shrink-0" />
+                          <span className="truncate text-foreground/90">{att.name}</span>
+                          {att.is_temp && (
+                            <Badge variant="outline" className="font-mono text-[9px] text-amber-600 border-amber-500/30">
+                              temp
+                            </Badge>
+                          )}
+                        </div>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="h-6 text-[10px] gap-1 hover:text-emerald-600"
+                          onClick={() => handlePreserveAttachment(att.name)}
+                        >
+                          <BookmarkCheck size={11} className="text-emerald-600" />
+                          Keep
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="rounded-lg border border-dashed border-border/70 p-4 text-center text-xs text-muted-foreground">
+                    No reference files uploaded yet. Click above to attach a document.
+                  </div>
+                )}
+              </div>
+
+              <Separator />
+
               {/* Requirements References */}
               <div>
                 <h4 className="text-[11px] font-mono uppercase tracking-wider text-muted-foreground mb-2 font-semibold">
@@ -577,6 +781,222 @@ export function TaskDetailSheet({
                     <p className="text-muted-foreground text-xs leading-relaxed whitespace-pre-wrap">
                       {task.submissionNote}
                     </p>
+                  </div>
+                )}
+              </div>
+            </TabsContent>
+
+            {/* TAB 5: COMMENTS & REFERENCES */}
+            <TabsContent value="comments" className="space-y-4 m-0 focus-visible:outline-none">
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <h4 className="text-[11px] font-mono uppercase tracking-wider text-muted-foreground font-semibold flex items-center gap-1.5">
+                    <MessageSquare size={12} className="text-primary" />
+                    Task Comments & Feedback ({taskComments.length})
+                  </h4>
+                  <span className="text-[10px] text-muted-foreground font-mono">
+                    Visible to AI agents & reviewers
+                  </span>
+                </div>
+
+                {/* Upload Banner */}
+                <div className="flex items-center justify-between p-2.5 rounded-lg border border-border/80 bg-muted/40">
+                  <div className="space-y-0.5">
+                    <span className="text-xs font-semibold text-foreground flex items-center gap-1.5">
+                      <Upload size={13} className="text-primary" />
+                      Attach Reference Documents
+                    </span>
+                    <p className="text-[11px] text-muted-foreground">
+                      Upload diagrams, specs, or logs to include with your feedback.
+                    </p>
+                  </div>
+                  <label className="cursor-pointer inline-flex items-center gap-1.5 h-7 px-3 rounded-md border border-border bg-background hover:bg-muted text-xs font-medium text-foreground transition-all shadow-xs hover:border-primary/50">
+                    <input
+                      type="file"
+                      multiple
+                      className="hidden"
+                      onChange={handleFileUpload}
+                      disabled={isUploadingAttachment}
+                    />
+                    <Upload size={12} className="text-primary" />
+                    <span>{isUploadingAttachment ? 'Uploading...' : 'Upload Document'}</span>
+                  </label>
+                </div>
+
+                {/* Add Comment Box */}
+                <div className="rounded-lg border border-border/80 bg-muted/20 p-3 space-y-2.5">
+                  <Textarea
+                    value={newCommentText}
+                    onChange={(e) => setNewCommentText(e.target.value)}
+                    placeholder="Add an instruction, question, or note for this task..."
+                    className="text-xs min-h-[70px] resize-none bg-background"
+                  />
+
+                  {/* Attached Files List */}
+                  {attachedFiles.length > 0 && (
+                    <div className="space-y-1">
+                      <span className="text-[10px] font-mono text-muted-foreground block">
+                        Attached Files ({attachedFiles.length}):
+                      </span>
+                      <div className="flex flex-wrap gap-1.5">
+                        {attachedFiles.map((att, i) => (
+                          <div
+                            key={i}
+                            className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[10px] font-mono bg-muted border border-border/80"
+                          >
+                            <Paperclip size={10} className="text-primary" />
+                            <span className="max-w-[120px] truncate">{att.name}</span>
+                            <button
+                              type="button"
+                              onClick={() => setAttachedFiles((prev) => prev.filter((_, idx) => idx !== i))}
+                              className="text-muted-foreground hover:text-destructive cursor-pointer ml-1"
+                            >
+                              ×
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="flex items-center justify-between pt-1">
+                    <label className="cursor-pointer inline-flex items-center gap-1.5 px-2.5 py-1 rounded border border-border/70 bg-background hover:bg-muted text-xs font-medium text-foreground transition-colors shadow-2xs">
+                      <input
+                        type="file"
+                        multiple
+                        className="hidden"
+                        onChange={handleFileUpload}
+                        disabled={isUploadingAttachment}
+                      />
+                      <Paperclip size={12} className="text-primary" />
+                      <span>{isUploadingAttachment ? 'Uploading...' : 'Attach File'}</span>
+                    </label>
+
+                    <Button
+                      size="sm"
+                      onClick={handleAddComment}
+                      disabled={!newCommentText.trim() && attachedFiles.length === 0}
+                      className="h-7 text-xs gap-1.5"
+                    >
+                      <Send size={12} />
+                      Post Comment
+                    </Button>
+                  </div>
+                </div>
+
+                {/* Comments List */}
+                {taskComments.length === 0 ? (
+                  <div className="rounded-lg border border-dashed border-border/70 p-6 text-center text-xs text-muted-foreground">
+                    <MessageSquare size={20} className="mx-auto mb-2 text-primary opacity-40" />
+                    No comments on this task yet. Add feedback or guidelines above.
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {taskComments.map((cmt) => (
+                      <div
+                        key={cmt.id}
+                        className={`rounded-lg border p-3 text-xs space-y-2 ${
+                          cmt.status === 'addressed'
+                            ? 'bg-muted/30 border-border/50 opacity-75'
+                            : 'bg-card border-border/80'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="flex items-center gap-2">
+                            <Badge
+                              variant="outline"
+                              className={`font-mono text-[9px] uppercase ${
+                                cmt.author === 'agent'
+                                  ? 'bg-sky-500/10 text-sky-600 border-sky-500/30'
+                                  : 'bg-amber-500/10 text-amber-600 border-amber-500/30'
+                              }`}
+                            >
+                              {cmt.author}
+                            </Badge>
+                            <span className="font-mono text-[10px] text-muted-foreground">
+                              {cmt.created_at ? new Date(cmt.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}
+                            </span>
+                          </div>
+
+                          <div className="flex items-center gap-1.5">
+                            {cmt.status === 'addressed' ? (
+                              <Badge variant="secondary" className="font-mono text-[9px] text-emerald-600">
+                                Addressed
+                              </Badge>
+                            ) : (
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                className="h-6 px-1.5 text-[10px] text-muted-foreground hover:text-emerald-600"
+                                onClick={() => {
+                                  resolveCommentMutation.mutate(
+                                    { commentId: cmt.id },
+                                    {
+                                      onSuccess: () => {
+                                        void queryClient.invalidateQueries({ queryKey: getListCommentsQueryKey() });
+                                        toast({ title: 'Comment resolved' });
+                                      },
+                                    }
+                                  );
+                                }}
+                              >
+                                <Check size={11} className="mr-1" />
+                                Resolve
+                              </Button>
+                            )}
+                          </div>
+                        </div>
+
+                        <p className="text-foreground/90 whitespace-pre-wrap leading-relaxed">
+                          {cmt.instruction}
+                        </p>
+
+                        {/* Attachments if any */}
+                        {cmt.attachments && cmt.attachments.length > 0 && (
+                          <div className="pt-1 space-y-1 border-t border-border/50">
+                            <span className="text-[9px] font-mono text-muted-foreground uppercase tracking-wider block">
+                              Attached References
+                            </span>
+                            <div className="flex flex-wrap gap-1.5">
+                              {cmt.attachments.map((att: any, i: number) => {
+                                const attPath = typeof att === 'string' ? att : att.path || att.name;
+                                const attName = typeof att === 'string' ? att.split('/').pop() : att.name || att.path?.split('/').pop();
+                                const isTemp = typeof att === 'object' ? Boolean(att.is_temp || att.path?.includes('.temp')) : att.includes('.temp');
+                                return (
+                                  <div
+                                    key={i}
+                                    className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[10px] font-mono bg-muted/60 border border-border/60"
+                                  >
+                                    <Paperclip size={10} className="text-primary" />
+                                    <a
+                                      href={`/api/files/raw?path=${encodeURIComponent(attPath)}`}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="text-primary hover:underline font-mono truncate max-w-[140px]"
+                                      title={attName}
+                                    >
+                                      {attName}
+                                    </a>
+                                    {isTemp && (
+                                      <Button
+                                        size="sm"
+                                        variant="ghost"
+                                        className="h-4 px-1 text-[9px] text-amber-600 dark:text-amber-400 hover:text-emerald-600 font-sans"
+                                        onClick={() => handlePreserveAttachment(attName, attPath)}
+                                        title="Keep in permanent repository references"
+                                      >
+                                        <BookmarkCheck size={9} className="mr-0.5" />
+                                        Keep
+                                      </Button>
+                                    )}
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    ))}
                   </div>
                 )}
               </div>
