@@ -104,6 +104,7 @@ export function useWebSocketSync() {
             case 'COMMENTS_UPDATED': {
               void queryClient.invalidateQueries({ queryKey: getGetDashboardQueryKey() });
               void queryClient.invalidateQueries({ queryKey: getListCommentsQueryKey() });
+              void queryClient.invalidateQueries({ queryKey: ['/api/comments/history'] });
               if (data.documentId) {
                 void queryClient.invalidateQueries({ queryKey: getGetDocumentQueryKey(data.documentId) });
               }

@@ -36,6 +36,8 @@ import {
   PanelLeftOpen,
   Compass,
   Sliders,
+  MessageSquare,
+  Search,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -57,6 +59,7 @@ import NotFound from '@/pages/not-found';
 import { SteeringPage } from '@/pages/SteeringPage';
 import { SpecificationsHub } from '@/pages/SpecificationsHub';
 import { TasksPage } from '@/pages/TasksPage';
+import { CommentsPage } from '@/pages/CommentsPage';
 import { SettingsPage } from '@/pages/SettingsPage';
 import { POPULAR_THEMES, POPULAR_FONTS } from '@/lib/themes';
 import {
@@ -298,6 +301,14 @@ function Shell({ children }: { children: ReactNode }) {
             collapsed={!isExpandedView}
           />
           <NavItem
+            href="/comments"
+            current={location === '/comments'}
+            icon={<MessageSquare size={16} />}
+            label="Comments"
+            badge={dashboard.data?.openCommentsCount && dashboard.data.openCommentsCount > 0 ? dashboard.data.openCommentsCount : undefined}
+            collapsed={!isExpandedView}
+          />
+          <NavItem
             href="/documents"
             current={location === '/documents'}
             icon={<BookOpen size={16} />}
@@ -372,12 +383,14 @@ function NavItem({
   icon,
   label,
   collapsed = false,
+  badge,
 }: {
   href: string;
   current: boolean;
   icon: ReactNode;
   label: string;
   collapsed?: boolean;
+  badge?: number | string;
 }) {
   return (
     <Link
@@ -392,7 +405,12 @@ function NavItem({
     >
       <span className={current ? 'text-primary' : ''}>{icon}</span>
       {!collapsed && <span className="truncate">{label}</span>}
-      {current && !collapsed && <span className="ml-auto hidden h-1.5 w-1.5 rounded-full bg-primary md:block shrink-0" />}
+      {badge !== undefined && !collapsed && (
+        <span className="ml-auto rounded-full bg-primary/20 px-1.5 py-0.5 font-mono text-[9px] font-bold text-primary shrink-0">
+          {badge}
+        </span>
+      )}
+      {current && !collapsed && !badge && <span className="ml-auto hidden h-1.5 w-1.5 rounded-full bg-primary md:block shrink-0" />}
     </Link>
   );
 }
@@ -627,14 +645,12 @@ function SpecAuxiliaryFiles({
   );
 }
 
-function DashboardSpecCard({
+function CompactSpecCard({
   feature: f,
   onOpenDoc,
-  onPreviewAuxFile,
 }: {
   feature: Feature;
   onOpenDoc: (docId: string) => void;
-  onPreviewAuxFile: (file: AuxFile) => void;
 }) {
   const [, setLocation] = useLocation();
   const total = f.taskCount || 0;
@@ -642,101 +658,56 @@ function DashboardSpecCard({
   const progressPercent = total > 0 ? Math.round((completed / total) * 100) : 0;
 
   return (
-    <Surface className="p-5 sm:p-6 space-y-5 hover:border-primary/30 transition-colors">
-      {/* Header */}
-      <div className="flex flex-wrap items-start justify-between gap-3 border-b border-border/70 pb-4">
-        <div>
-          <div className="flex items-center gap-2 mb-1.5">
-            <h3 className="font-serif text-lg font-semibold tracking-tight mb-0">{f.name}</h3>
-            <span className="font-mono text-[10px] bg-muted px-2 py-0.5 rounded border border-border/60 text-muted-foreground">
-              {f.id}
-            </span>
-            <StatusPill value={f.status} />
-          </div>
-          {f.description && (
-            <p className="text-xs text-muted-foreground max-w-2xl leading-relaxed mb-0">
-              {f.description}
-            </p>
-          )}
+    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3.5 rounded-xl border border-border/70 bg-card/70 hover:bg-card hover:border-primary/40 transition-all">
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-2 mb-1 flex-wrap">
+          <span className="font-semibold text-sm truncate">{f.name}</span>
+          <span className="font-mono text-[9px] bg-muted px-1.5 py-0.5 rounded border border-border/60 text-muted-foreground shrink-0">
+            {f.id}
+          </span>
+          <StatusPill value={f.status} />
         </div>
+        {f.description && (
+          <p className="text-xs text-muted-foreground truncate mb-2 max-w-xl">
+            {f.description}
+          </p>
+        )}
+        <div className="flex items-center gap-3">
+          <div className="h-1.5 flex-1 max-w-[180px] overflow-hidden rounded-full bg-secondary">
+            <div
+              className="h-full rounded-full bg-emerald-500 transition-all"
+              style={{ width: `${progressPercent}%` }}
+            />
+          </div>
+          <span className="font-mono text-[10px] text-muted-foreground">
+            {completed}/{total} tasks ({progressPercent}%)
+          </span>
+        </div>
+      </div>
 
+      <div className="flex items-center gap-2 shrink-0 pt-2 sm:pt-0 border-t sm:border-t-0 border-border/40">
         <Button
           size="sm"
+          variant="outline"
+          className="h-7 text-xs gap-1"
+          onClick={() => onOpenDoc(`${f.id}:requirements`)}
+          title="Inspect Requirements"
+        >
+          <FileText size={12} className="text-sky-500" />
+          <span>Inspect</span>
+        </Button>
+        <Button
+          size="sm"
+          className="h-7 text-xs gap-1"
           onClick={() => setLocation(`/tasks?spec=${encodeURIComponent(f.id)}`)}
-          className="gap-1.5"
           data-testid={`button-open-tasks-${f.id}`}
         >
-          <ListTodo size={14} />
-          Open Tasks Board
-          <ArrowRight size={13} />
+          <ListTodo size={12} />
+          <span>Tasks</span>
+          <ArrowRight size={11} />
         </Button>
       </div>
-
-      {/* Task Progress Bar */}
-      <div>
-        <div className="flex items-center justify-between text-xs mb-1.5">
-          <span className="font-mono text-[11px] text-muted-foreground uppercase tracking-wider">
-            Execution Progress
-          </span>
-          <span className="font-mono text-[11px] font-semibold">
-            {completed} / {total} tasks ({progressPercent}%)
-          </span>
-        </div>
-        <div className="h-2 w-full bg-secondary rounded-full overflow-hidden">
-          <div
-            className="h-full bg-emerald-500 rounded-full transition-all duration-300"
-            style={{ width: `${progressPercent}%` }}
-          />
-        </div>
-      </div>
-
-      {/* Core Specification Documents Quick Links */}
-      <div>
-        <div className="text-[10px] font-mono uppercase tracking-wider text-muted-foreground mb-2 flex items-center gap-1.5">
-          <FileCheck2 size={12} className="text-primary" />
-          Core Specification Documents (Click to Inspect)
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <button
-            type="button"
-            onClick={() => onOpenDoc(`${f.id}:requirements`)}
-            className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg border border-border bg-card hover:bg-accent hover:border-primary/40 text-xs font-mono transition-colors group cursor-pointer"
-            title="Open requirements.md in Document Inspector"
-          >
-            <FileText size={13} className="text-sky-500" />
-            <span>requirements.md</span>
-            <Eye size={12} className="text-muted-foreground group-hover:text-foreground opacity-60 group-hover:opacity-100" />
-          </button>
-
-          <button
-            type="button"
-            onClick={() => onOpenDoc(`${f.id}:design`)}
-            className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg border border-border bg-card hover:bg-accent hover:border-primary/40 text-xs font-mono transition-colors group cursor-pointer"
-            title="Open design.md in Document Inspector"
-          >
-            <BookOpen size={13} className="text-purple-500" />
-            <span>design.md</span>
-            <Eye size={12} className="text-muted-foreground group-hover:text-foreground opacity-60 group-hover:opacity-100" />
-          </button>
-
-          <button
-            type="button"
-            onClick={() => onOpenDoc(`${f.id}:tasks`)}
-            className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg border border-border bg-card hover:bg-accent hover:border-primary/40 text-xs font-mono transition-colors group cursor-pointer"
-            title="Open tasks.yaml in Document Inspector"
-          >
-            <FileCode size={13} className="text-emerald-500" />
-            <span>tasks.yaml</span>
-            <Eye size={12} className="text-muted-foreground group-hover:text-foreground opacity-60 group-hover:opacity-100" />
-          </button>
-        </div>
-      </div>
-
-      {/* Auxiliary Files & References */}
-      <div className="border-t border-border/60 pt-4">
-        <SpecAuxiliaryFiles specId={f.id} onPreview={onPreviewAuxFile} />
-      </div>
-    </Surface>
+    </div>
   );
 }
 
@@ -746,9 +717,8 @@ function Dashboard() {
   const comments = useListComments({ query: { queryKey: getListCommentsQueryKey() } });
   const [, setLocation] = useLocation();
 
-  // Overlay states for inspecting docs or previewing auxiliary files from Dashboard
+  // Overlay state for inspecting docs from Dashboard quick links
   const [inspectingDocId, setInspectingDocId] = useState<string | null>(null);
-  const [previewAuxFile, setPreviewAuxFile] = useState<AuxFile | null>(null);
 
   if (q.isLoading)
     return (
@@ -768,226 +738,357 @@ function Dashboard() {
 
   const d = q.data;
   const tasks = d.taskCounts;
+  const totalTasks = tasks.done + tasks.todo + tasks.inProgress + tasks.toReview + tasks.blocked;
+  const taskProgressPercent = totalTasks > 0 ? Math.round((tasks.done / totalTasks) * 100) : 0;
   const gates = d.steeringTotal ? Math.round((d.steeringApprovedCount / d.steeringTotal) * 100) : 0;
 
   return (
-    <div className="animate-in fade-in duration-500">
+    <div className="animate-in fade-in duration-300 space-y-6">
+      {/* Header */}
       <Heading
         eyebrow="Workspace / overview"
         title={d.projectName}
-        detail="The approved context, moving work, and human decisions behind this workspace."
+        detail="Context-driven workspace for specifications, tasks, and human-in-the-loop decisions."
         action={
-          <div className="rounded-lg border border-border bg-card px-3 py-2 font-mono text-[10px] text-muted-foreground">
-            <span className="mr-2 inline-block size-1.5 rounded-full bg-emerald-500" />
-            SYNCED
+          <div className="flex items-center gap-2">
+            <div className="rounded-lg border border-border bg-card px-2.5 py-1.5 font-mono text-[10px] text-muted-foreground flex items-center gap-1.5">
+              <span className="size-1.5 rounded-full bg-emerald-500 animate-pulse" />
+              <span>SYNCED</span>
+            </div>
+            <Button
+              size="sm"
+              onClick={() => setLocation('/specs')}
+              className="h-8 gap-1 text-xs"
+            >
+              <Plus size={13} />
+              <span>New Spec</span>
+            </Button>
           </div>
         }
       />
-      <Surface className="mb-6 overflow-hidden">
-        <div className="grid md:grid-cols-[1.15fr_.85fr]">
-          <div className="p-5 sm:p-7">
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <div className="font-mono text-[10px] uppercase tracking-[.17em] text-muted-foreground">Steering gate</div>
-                <h2 className="mb-0 mt-2 font-serif text-[22px] font-semibold tracking-tight">
-                  {d.steeringApproved ? 'Context is approved' : 'Approval needed before agents run'}
-                </h2>
-              </div>
-              <div
-                className={cx(
-                  'grid size-11 place-items-center rounded-full',
-                  d.steeringApproved ? 'bg-emerald-100 text-emerald-700' : 'bg-orange-100 text-primary'
-                )}
-              >
-                {d.steeringApproved ? <CheckCheck size={21} /> : <ShieldCheck size={21} />}
-              </div>
-            </div>
-            <p className="mb-0 mt-2 max-w-lg text-[13px] leading-relaxed text-muted-foreground">
-              {d.steeringApproved
-                ? 'The foundational steering document has a human sign-off.'
-                : 'Review the steering documents and approve the context agents should follow.'}
-            </p>
-            <div className="mt-6 flex items-center gap-3">
-              <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-secondary">
-                <div className="h-full rounded-full bg-primary transition-all" style={{ width: `${gates}%` }} />
-              </div>
-              <span className="font-mono text-[10px] text-muted-foreground">
-                {d.steeringApprovedCount} / {d.steeringTotal} approved
-              </span>
-            </div>
-            <button
-              onClick={() => setLocation('/documents')}
-              className="mt-5 inline-flex items-center gap-2 text-xs font-semibold text-primary hover:gap-3"
-              data-testid="button-review-steering"
-            >
-              Review documents <ArrowRight size={14} />
-            </button>
+
+      {/* Steering Status Banner */}
+      {d.steeringApproved ? (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-emerald-500/25 bg-emerald-500/[.04] px-4 py-2.5 text-xs">
+          <div className="flex items-center gap-2.5">
+            <span className="grid size-6 place-items-center rounded-full bg-emerald-500/15 text-emerald-600">
+              <CheckCheck size={14} />
+            </span>
+            <span className="font-medium text-foreground">Steering Gate Approved</span>
+            <span className="text-muted-foreground font-mono text-[11px]">
+              ({d.steeringApprovedCount}/{d.steeringTotal} documents signed off)
+            </span>
           </div>
-          <div className="grid grid-cols-2 border-t border-border/80 bg-secondary/35 md:border-l md:border-t-0">
-            <Metric label="Features" value={d.featureCount} icon={<Layers3 size={15} />} />
-            <Metric label="Review queue" value={d.reviewQueueCount} icon={<Clock3 size={15} />} highlight={d.reviewQueueCount > 0} />
-            <Metric label="Open comments" value={d.openCommentsCount} icon={<Clock3 size={15} />} />
-            <Metric
-              label="Tasks complete"
-              value={tasks.done}
-              icon={<Check size={15} />}
-              sub={`${tasks.done} of ${tasks.done + tasks.todo + tasks.inProgress + tasks.toReview + tasks.blocked}`}
-            />
-          </div>
+          <button
+            onClick={() => setLocation('/steering')}
+            className="inline-flex items-center gap-1 font-medium text-emerald-600 hover:underline cursor-pointer"
+          >
+            Review context <ArrowRight size={12} />
+          </button>
         </div>
-      </Surface>
-
-      <div className="grid gap-6 xl:grid-cols-[1.2fr_.8fr]">
-        <Surface>
-          <div className="flex items-center justify-between border-b border-border/70 px-5 py-4">
+      ) : (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-500/30 bg-amber-500/[.06] p-3.5 text-xs">
+          <div className="flex items-center gap-2.5">
+            <span className="grid size-7 place-items-center rounded-full bg-amber-500/15 text-amber-600">
+              <ShieldCheck size={16} />
+            </span>
             <div>
-              <div className="font-mono text-[9px] uppercase tracking-[.18em] text-muted-foreground">Execution pulse</div>
-              <h2 className="mb-0 mt-1 text-[15px] font-semibold">Task flow</h2>
-            </div>
-            <button
-              onClick={() => setLocation('/tasks')}
-              className="text-xs font-semibold text-primary cursor-pointer"
-              data-testid="link-all-features"
-            >
-              View tasks <ArrowRight size={13} className="ml-1 inline" />
-            </button>
-          </div>
-          <div className="grid grid-cols-2 divide-x divide-y divide-border/70 sm:grid-cols-5 sm:divide-y-0">
-            {[
-              ['To do', tasks.todo, 'todo'],
-              ['In progress', tasks.inProgress, 'in-progress'],
-              ['For review', tasks.toReview, 'to-review'],
-              ['Done', tasks.done, 'done'],
-              ['Blocked', tasks.blocked, 'blocked'],
-            ].map(([name, val, key]) => (
-              <div key={key} className="px-4 py-5">
-                <div className="mb-3 flex items-center gap-2 text-[10px] text-muted-foreground">
-                  <span
-                    className={cx(
-                      'size-1.5 rounded-full',
-                      key === 'done'
-                        ? 'bg-emerald-500'
-                        : key === 'blocked'
-                        ? 'bg-rose-500'
-                        : key === 'to-review'
-                        ? 'bg-primary'
-                        : 'bg-slate-400'
-                    )}
-                  />
-                  {name}
-                </div>
-                <div className="font-serif text-3xl font-semibold tracking-tight">{val}</div>
+              <div className="font-semibold text-foreground">Steering Gate Pending Human Approval</div>
+              <div className="text-[11px] text-muted-foreground">
+                Foundational steering documents require human sign-off before autonomous agent execution ({d.steeringApprovedCount}/{d.steeringTotal} approved).
               </div>
-            ))}
-          </div>
-        </Surface>
-
-        <Surface>
-          <div className="border-b border-border/70 px-5 py-4">
-            <div className="font-mono text-[9px] uppercase tracking-[.18em] text-muted-foreground">Recent activity</div>
-            <h2 className="mb-0 mt-1 text-[15px] font-semibold">Workspace trail</h2>
-          </div>
-          <div className="divide-y divide-border/70">
-            {d.recentActivity.length ? (
-              d.recentActivity.slice(0, 5).map((a: ActivityData) => (
-                <div key={a.id} className="flex gap-3 px-5 py-3.5">
-                  <span className="mt-1 grid size-6 shrink-0 place-items-center rounded-full bg-accent text-primary">
-                    <Activity size={12} />
-                  </span>
-                  <div className="min-w-0 flex-1">
-                    <p className="mb-1 text-[12px] leading-relaxed">{a.summary}</p>
-                    <time className="font-mono text-[9px] text-muted-foreground">{dateLabel(a.createdAt)}</time>
-                  </div>
-                </div>
-              ))
-            ) : (
-              <div className="px-5 py-10 text-center text-xs text-muted-foreground">Activity will appear here as work moves.</div>
-            )}
-          </div>
-        </Surface>
-      </div>
-
-      {/* Dedicated Specifications & Features Section */}
-      <div className="mt-8 space-y-4">
-        <div className="flex flex-wrap items-end justify-between gap-3 border-b border-border/80 pb-3">
-          <div>
-            <div className="font-mono text-[9px] uppercase tracking-[.18em] text-muted-foreground">
-              Living Specifications
             </div>
-            <h2 className="mb-0 mt-1 font-serif text-2xl font-semibold tracking-tight">
-              Specifications & Features
-            </h2>
           </div>
           <Button
             size="sm"
-            onClick={() => setLocation('/specs')}
-            variant="outline"
-            className="gap-1.5"
+            onClick={() => setLocation('/steering')}
+            className="gap-1.5 bg-amber-600 hover:bg-amber-700 text-white"
+            data-testid="button-review-steering"
           >
-            <Layers3 size={14} />
-            Manage all specs
+            Review & Sign Off <ArrowRight size={13} />
           </Button>
         </div>
+      )}
 
-        {features.isLoading ? (
-          <LoadingRows />
-        ) : (features.data ?? []).length === 0 ? (
-          <Surface className="p-8 text-center">
-            <Layers3 className="size-10 mx-auto mb-2 text-muted-foreground opacity-40" />
-            <h3 className="text-sm font-semibold">No specifications created yet</h3>
-            <p className="text-xs text-muted-foreground mt-1 mb-4">
-              Add your first feature specification to generate requirements, design, and executable tasks.
-            </p>
-            <Button size="sm" onClick={() => setLocation('/specs')}>
-              Create specification
-            </Button>
-          </Surface>
-        ) : (
-          <div className="grid gap-5">
-            {features.data?.map((f: Feature) => (
-              <DashboardSpecCard
-                key={f.id}
-                feature={f}
-                onOpenDoc={(docId) => setInspectingDocId(docId)}
-                onPreviewAuxFile={(file) => setPreviewAuxFile(file)}
-              />
-            ))}
+      {/* High-Signal Metrics Grid (4 Clean Cards) */}
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <div
+          onClick={() => setLocation('/specs')}
+          className="cursor-pointer rounded-xl border border-border/80 bg-card p-4 transition-all hover:border-primary/40 shadow-xs"
+        >
+          <div className="flex items-center justify-between text-muted-foreground">
+            <span className="text-[10px] font-medium uppercase tracking-wider">Specifications</span>
+            <Layers3 size={15} />
           </div>
-        )}
+          <div className="mt-2 font-serif text-3xl font-semibold tracking-tight">{d.featureCount}</div>
+          <div className="mt-1 font-mono text-[10px] text-muted-foreground">Living specs in workspace</div>
+        </div>
+
+        <div
+          onClick={() => setLocation('/tasks')}
+          className="cursor-pointer rounded-xl border border-border/80 bg-card p-4 transition-all hover:border-primary/40 shadow-xs"
+        >
+          <div className="flex items-center justify-between text-muted-foreground">
+            <span className="text-[10px] font-medium uppercase tracking-wider">Tasks Execution</span>
+            <Check size={15} className="text-emerald-500" />
+          </div>
+          <div className="mt-2 font-serif text-3xl font-semibold tracking-tight">
+            {tasks.done}
+            <span className="text-sm font-normal text-muted-foreground ml-1.5">/ {totalTasks}</span>
+          </div>
+          <div className="mt-1.5 flex items-center gap-2">
+            <div className="h-1 flex-1 overflow-hidden rounded-full bg-secondary">
+              <div
+                className="h-full rounded-full bg-emerald-500 transition-all"
+                style={{ width: `${taskProgressPercent}%` }}
+              />
+            </div>
+            <span className="font-mono text-[10px] text-muted-foreground">{taskProgressPercent}%</span>
+          </div>
+        </div>
+
+        <div
+          onClick={() => setLocation('/tasks')}
+          className={`cursor-pointer rounded-xl border p-4 transition-all shadow-xs ${
+            d.reviewQueueCount > 0
+              ? 'border-amber-500/50 bg-amber-500/[.03] hover:border-amber-500'
+              : 'border-border/80 bg-card hover:border-primary/40'
+          }`}
+        >
+          <div className={`flex items-center justify-between ${d.reviewQueueCount > 0 ? 'text-amber-500' : 'text-muted-foreground'}`}>
+            <span className="text-[10px] font-medium uppercase tracking-wider">Review Queue</span>
+            <Clock3 size={15} />
+          </div>
+          <div className={`mt-2 font-serif text-3xl font-semibold tracking-tight ${d.reviewQueueCount > 0 ? 'text-amber-500' : ''}`}>
+            {d.reviewQueueCount}
+          </div>
+          <div className="mt-1 font-mono text-[10px] text-muted-foreground">
+            {d.reviewQueueCount > 0 ? 'Tasks awaiting human sign-off' : 'Queue is all clear'}
+          </div>
+        </div>
+
+        <div
+          onClick={() => setLocation('/comments')}
+          className={`cursor-pointer rounded-xl border p-4 transition-all shadow-xs ${
+            d.openCommentsCount > 0
+              ? 'border-indigo-500/50 bg-indigo-500/[.03] hover:border-indigo-500'
+              : 'border-border/80 bg-card hover:border-primary/40'
+          }`}
+        >
+          <div className={`flex items-center justify-between ${d.openCommentsCount > 0 ? 'text-indigo-400' : 'text-muted-foreground'}`}>
+            <span className="text-[10px] font-medium uppercase tracking-wider">Active Comments</span>
+            <MessageSquare size={15} />
+          </div>
+          <div className={`mt-2 font-serif text-3xl font-semibold tracking-tight ${d.openCommentsCount > 0 ? 'text-indigo-400' : ''}`}>
+            {d.openCommentsCount}
+          </div>
+          <div className="mt-1 font-mono text-[10px] text-muted-foreground">Directives & feedback queue</div>
+        </div>
       </div>
 
-      <div className="mt-6 grid gap-4 sm:grid-cols-2">
-        <button
-          onClick={() => setLocation('/specs')}
-          className="group flex items-center gap-4 rounded-xl border border-border bg-card/75 p-4 text-left transition hover:border-primary/40 cursor-pointer"
-          data-testid="button-open-features"
-        >
-          <span className="grid size-10 place-items-center rounded-lg bg-secondary text-foreground">
-            <Layers3 size={18} />
-          </span>
-          <span className="flex-1">
-            <span className="block text-sm font-semibold">Feature specs & Tasks</span>
-            <span className="mt-1 block text-xs text-muted-foreground">Kanban, Hierarchical list, and dependency DAG views.</span>
-          </span>
-          <ChevronRight size={16} className="text-muted-foreground group-hover:text-primary" />
-        </button>
+      {/* Task Flow Execution Pulse */}
+      <Surface>
+        <div className="flex items-center justify-between border-b border-border/70 px-5 py-3.5">
+          <div>
+            <div className="font-mono text-[9px] uppercase tracking-[.18em] text-muted-foreground">Execution Pulse</div>
+            <h2 className="mb-0 mt-0.5 text-[15px] font-semibold">Task flow breakdown</h2>
+          </div>
+          <button
+            onClick={() => setLocation('/tasks')}
+            className="text-xs font-semibold text-primary hover:underline cursor-pointer flex items-center gap-1"
+            data-testid="link-all-features"
+          >
+            <span>Open tasks board</span>
+            <ArrowRight size={13} />
+          </button>
+        </div>
 
-        <button
-          onClick={() => setLocation('/documents')}
-          className="group flex items-center gap-4 rounded-xl border border-border bg-card/75 p-4 text-left transition hover:border-primary/40"
-          data-testid="button-open-documents"
-        >
-          <span className="grid size-10 place-items-center rounded-lg bg-secondary text-foreground">
-            <FileText size={18} />
-          </span>
-          <span className="flex-1">
-            <span className="block text-sm font-semibold">Document review & Inspector</span>
-            <span className="mt-1 block text-xs text-muted-foreground">
-              {comments.data?.length ?? d.openCommentsCount} comments anchored to specifications.
-            </span>
-          </span>
-          <ChevronRight size={16} className="text-muted-foreground group-hover:text-primary" />
-        </button>
+        {/* Multi-segment continuous status bar */}
+        {totalTasks > 0 && (
+          <div className="px-5 pt-4">
+            <div className="h-2 w-full overflow-hidden rounded-full bg-secondary flex">
+              {tasks.done > 0 && (
+                <div
+                  className="bg-emerald-500 h-full transition-all"
+                  style={{ width: `${(tasks.done / totalTasks) * 100}%` }}
+                  title={`Done: ${tasks.done}`}
+                />
+              )}
+              {tasks.toReview > 0 && (
+                <div
+                  className="bg-amber-500 h-full transition-all"
+                  style={{ width: `${(tasks.toReview / totalTasks) * 100}%` }}
+                  title={`To review: ${tasks.toReview}`}
+                />
+              )}
+              {tasks.inProgress > 0 && (
+                <div
+                  className="bg-sky-500 h-full transition-all"
+                  style={{ width: `${(tasks.inProgress / totalTasks) * 100}%` }}
+                  title={`In progress: ${tasks.inProgress}`}
+                />
+              )}
+              {tasks.todo > 0 && (
+                <div
+                  className="bg-slate-400/60 h-full transition-all"
+                  style={{ width: `${(tasks.todo / totalTasks) * 100}%` }}
+                  title={`To do: ${tasks.todo}`}
+                />
+              )}
+              {tasks.blocked > 0 && (
+                <div
+                  className="bg-rose-500 h-full transition-all"
+                  style={{ width: `${(tasks.blocked / totalTasks) * 100}%` }}
+                  title={`Blocked: ${tasks.blocked}`}
+                />
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Status count cards */}
+        <div className="grid grid-cols-2 divide-x divide-y divide-border/70 sm:grid-cols-5 sm:divide-y-0">
+          {[
+            ['To do', tasks.todo, 'todo', 'bg-slate-400'],
+            ['In progress', tasks.inProgress, 'in-progress', 'bg-sky-500'],
+            ['For review', tasks.toReview, 'to-review', 'bg-amber-500'],
+            ['Done', tasks.done, 'done', 'bg-emerald-500'],
+            ['Blocked', tasks.blocked, 'blocked', 'bg-rose-500'],
+          ].map(([name, val, key, dotColor]) => (
+            <div
+              key={key}
+              onClick={() => setLocation('/tasks')}
+              className="px-4 py-4 cursor-pointer hover:bg-muted/15 transition-colors"
+            >
+              <div className="mb-2 flex items-center gap-1.5 text-[10px] text-muted-foreground">
+                <span className={`size-1.5 rounded-full ${dotColor}`} />
+                <span>{name}</span>
+              </div>
+              <div className="font-serif text-2xl font-semibold tracking-tight">{val}</div>
+            </div>
+          ))}
+        </div>
+      </Surface>
+
+      {/* Specifications & Recent Context (2 Columns) */}
+      <div className="grid gap-6 lg:grid-cols-[1.25fr_.75fr]">
+        {/* Left: Active Specifications Overview */}
+        <div className="space-y-3.5">
+          <div className="flex items-center justify-between border-b border-border/80 pb-2.5">
+            <div>
+              <div className="font-mono text-[9px] uppercase tracking-[.18em] text-muted-foreground">
+                Living Specifications
+              </div>
+              <h2 className="mb-0 mt-0.5 text-[16px] font-semibold">Active feature specs</h2>
+            </div>
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => setLocation('/specs')}
+              className="text-xs text-primary gap-1 h-7"
+            >
+              <span>Manage all</span>
+              <ArrowRight size={12} />
+            </Button>
+          </div>
+
+          {features.isLoading ? (
+            <LoadingRows />
+          ) : (features.data ?? []).length === 0 ? (
+            <Surface className="p-8 text-center">
+              <Layers3 className="size-8 mx-auto mb-2 text-muted-foreground opacity-40" />
+              <h3 className="text-sm font-semibold">No specifications created yet</h3>
+              <p className="text-xs text-muted-foreground mt-1 mb-4">
+                Add your first feature specification to generate requirements, design, and executable tasks.
+              </p>
+              <Button size="sm" onClick={() => setLocation('/specs')}>
+                Create specification
+              </Button>
+            </Surface>
+          ) : (
+            <div className="space-y-2.5">
+              {features.data?.map((f: Feature) => (
+                <CompactSpecCard
+                  key={f.id}
+                  feature={f}
+                  onOpenDoc={(docId) => setInspectingDocId(docId)}
+                />
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Right: Recent Context (Activity & Feedback) */}
+        <div className="space-y-4">
+          {/* Recent Activity Card */}
+          <Surface>
+            <div className="border-b border-border/70 px-4 py-3">
+              <div className="font-mono text-[9px] uppercase tracking-[.18em] text-muted-foreground">Audit Log</div>
+              <h2 className="mb-0 mt-0.5 text-[14px] font-semibold">Recent activity</h2>
+            </div>
+            <div className="divide-y divide-border/60">
+              {d.recentActivity.length ? (
+                d.recentActivity.slice(0, 4).map((a: ActivityData) => (
+                  <div key={a.id} className="flex gap-2.5 px-4 py-3">
+                    <span className="mt-0.5 grid size-5 shrink-0 place-items-center rounded-full bg-accent text-primary">
+                      <Activity size={11} />
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <p className="mb-0.5 text-[12px] leading-relaxed line-clamp-2">{a.summary}</p>
+                      <time className="font-mono text-[9px] text-muted-foreground">{dateLabel(a.createdAt)}</time>
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <div className="px-4 py-8 text-center text-xs text-muted-foreground">
+                  Activity will appear here as work moves.
+                </div>
+              )}
+            </div>
+          </Surface>
+
+          {/* Pending Directives / Comments Quick Card */}
+          <Surface>
+            <div className="flex items-center justify-between border-b border-border/70 px-4 py-3">
+              <div>
+                <div className="font-mono text-[9px] uppercase tracking-[.18em] text-muted-foreground">Review Directives</div>
+                <h2 className="mb-0 mt-0.5 text-[14px] font-semibold">Active comments</h2>
+              </div>
+              <button
+                onClick={() => setLocation('/comments')}
+                className="text-[11px] font-semibold text-primary hover:underline cursor-pointer flex items-center gap-1"
+              >
+                <span>View all</span>
+                <ArrowRight size={11} />
+              </button>
+            </div>
+            <div className="divide-y divide-border/60">
+              {(comments.data || []).length ? (
+                (comments.data as any[]).slice(0, 3).map((c) => (
+                  <div
+                    key={c.id}
+                    onClick={() => setLocation('/comments')}
+                    className="p-3.5 hover:bg-muted/15 transition-colors cursor-pointer space-y-1"
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="font-mono text-[9px] bg-secondary px-1.5 py-0.5 rounded text-muted-foreground truncate max-w-[160px]">
+                        {c.target_file || c.documentId || 'general'}
+                      </span>
+                      <span className="text-[10px] text-amber-500 font-medium">Pending</span>
+                    </div>
+                    <p className="text-xs text-foreground line-clamp-2 mb-0">
+                      {c.instruction}
+                    </p>
+                  </div>
+                ))
+              ) : (
+                <div className="px-4 py-8 text-center text-xs text-muted-foreground">
+                  No active comments. Workspace context is clean.
+                </div>
+              )}
+            </div>
+          </Surface>
+        </div>
       </div>
 
       {/* Modal Inspector Overlay for Dashboard quick links */}
@@ -998,63 +1099,6 @@ function Dashboard() {
               documentId={inspectingDocId}
               onClose={() => setInspectingDocId(null)}
             />
-          </div>
-        </div>
-      )}
-
-      {/* Auxiliary File Preview Modal */}
-      {previewAuxFile && (
-        <div
-          className="fixed inset-0 z-50 bg-background/80 backdrop-blur-md flex items-center justify-center p-4 animate-in fade-in duration-200"
-          onClick={() => setPreviewAuxFile(null)}
-        >
-          <div
-            className="w-full max-w-2xl bg-card border border-border rounded-xl p-5 shadow-2xl space-y-4"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="flex items-center justify-between border-b border-border/70 pb-3">
-              <div className="flex items-center gap-2">
-                {previewAuxFile.kind === 'image' ? (
-                  <ImageIcon size={16} className="text-primary" />
-                ) : (
-                  <FileText size={16} className="text-primary" />
-                )}
-                <span className="font-semibold text-sm">{previewAuxFile.name}</span>
-                <span className="font-mono text-[10px] text-muted-foreground">
-                  ({Math.round(previewAuxFile.size / 1024)} KB)
-                </span>
-              </div>
-              <Button size="sm" variant="ghost" onClick={() => setPreviewAuxFile(null)} className="h-7 w-7 p-0">
-                <X size={15} />
-              </Button>
-            </div>
-
-            <div className="max-h-[60vh] overflow-auto flex items-center justify-center bg-muted/20 rounded-lg p-3">
-              {previewAuxFile.kind === 'image' ? (
-                <img
-                  src={`/${previewAuxFile.path}`}
-                  alt={previewAuxFile.name}
-                  className="max-h-[55vh] object-contain rounded"
-                  onError={(e) => {
-                    (e.currentTarget as HTMLElement).style.display = 'none';
-                  }}
-                />
-              ) : (
-                <div className="text-xs font-mono space-y-2 text-left w-full p-2">
-                  <p className="text-muted-foreground">File Path: {previewAuxFile.path}</p>
-                  <p className="text-muted-foreground">Category: {previewAuxFile.kind} ({previewAuxFile.ext})</p>
-                  <p className="text-xs text-foreground/80">
-                    This auxiliary reference file is linked to the specification workspace.
-                  </p>
-                </div>
-              )}
-            </div>
-
-            <div className="flex justify-end pt-1">
-              <Button size="sm" variant="outline" onClick={() => setPreviewAuxFile(null)}>
-                Close Preview
-              </Button>
-            </div>
           </div>
         </div>
       )}
@@ -1101,6 +1145,10 @@ function DocumentsPage() {
   const isDocumentDirty = useWorkflowUiStore((state) => state.isDocumentDirty);
   const setIsDocumentDirty = useWorkflowUiStore((state) => state.setIsDocumentDirty);
 
+  // Search & Spec filters
+  const [search, setSearch] = useState('');
+  const [selectedSpec, setSelectedSpec] = useState<string>('all');
+
   // Unsaved changes protection
   const [showDiscardDialog, setShowDiscardDialog] = useState(false);
   const [pendingAction, setPendingAction] = useState<(() => void) | null>(null);
@@ -1128,6 +1176,7 @@ function DocumentsPage() {
   useEffect(() => {
     const searchParams = new URLSearchParams(window.location.search);
     const filterParam = searchParams.get('filter');
+    const specParam = searchParams.get('spec');
     if (filterParam === 'steering') {
       setFilter('steering');
     } else if (filterParam === 'specifications') {
@@ -1135,26 +1184,59 @@ function DocumentsPage() {
     } else if (filterParam && ['all', 'steering', 'specifications', 'requirements', 'design'].includes(filterParam)) {
       setFilter(filterParam as any);
     }
+    if (specParam) {
+      setSelectedSpec(specParam);
+    }
   }, [setFilter]);
 
-  const filtered = (docs.data ?? []).filter((d: DocumentSummary) => {
-    if (filter === 'all') return true;
-    if (filter === 'steering') return d.kind === 'steering' || d.path.includes('/steering/');
-    if (filter === 'specifications') {
-      return Boolean(d.featureId) || (d.kind as string) === 'specifications' || d.path.includes('/specs/') || d.path.includes('/features/');
-    }
-    if (filter === 'requirements') return d.kind === 'requirements';
-    if (filter === 'design') return d.kind === 'design';
-    return true;
-  });
+  const filtered = useMemo(() => {
+    return (docs.data ?? []).filter((d: DocumentSummary) => {
+      const isSteering = d.kind === 'steering' || d.path.includes('/steering/');
+      const isSpec = Boolean(d.featureId) || (d.kind as string) === 'specifications' || d.path.includes('/specs/') || d.path.includes('/features/');
+
+      // Category / Type filter
+      if (filter === 'steering' && !isSteering) return false;
+      if (filter === 'specifications' && !isSpec) return false;
+      if (filter === 'requirements' && d.kind !== 'requirements') return false;
+      if (filter === 'design' && d.kind !== 'design') return false;
+
+      // Specific Spec filter
+      if (selectedSpec !== 'all') {
+        const docSpecId = d.featureId || (d.id.includes(':') ? d.id.split(':')[0] : null);
+        if (docSpecId !== selectedSpec && !d.path.includes(`/specs/${selectedSpec}/`)) {
+          return false;
+        }
+      }
+
+      // Search text filter
+      if (search.trim()) {
+        const q = search.toLowerCase();
+        const searchable = [
+          d.title,
+          d.path,
+          d.id,
+          d.kind,
+          d.featureId,
+          d.status,
+        ]
+          .filter(Boolean)
+          .join(' ')
+          .toLowerCase();
+
+        if (!searchable.includes(q)) return false;
+      }
+
+      return true;
+    });
+  }, [docs.data, filter, selectedSpec, search]);
 
   // When Specifications filter is active, group documents by spec (feature)
   const groupedSpecs = useMemo(() => {
-    if (filter !== 'specifications') return null;
+    if (filter !== 'specifications' && selectedSpec === 'all') return null;
     const groups: Record<string, { title: string; docs: DocumentSummary[] }> = {};
 
     for (const doc of filtered) {
-      const featId = doc.featureId || 'general';
+      const featId = doc.featureId || (doc.id.includes(':') ? doc.id.split(':')[0] : 'general');
       const featureObj = featuresList.find((f: Feature) => f.id === featId);
       const groupTitle = featureObj?.name || (featId === 'general' ? 'General Specifications' : featId);
 
@@ -1164,15 +1246,19 @@ function DocumentsPage() {
       groups[featId].docs.push(doc);
     }
     return groups;
-  }, [filter, filtered, featuresList]);
+  }, [filter, selectedSpec, filtered, featuresList]);
 
   const currentId = selected && filtered.some((d: DocumentSummary) => d.id === selected) ? selected : filtered[0]?.id;
 
   const filterTabs = [
     { id: 'all' as const, label: 'All' },
     { id: 'steering' as const, label: 'Steering' },
-    { id: 'specifications' as const, label: 'Specifications' },
-    { id: 'requirements' as const, label: 'Requirements' },
+    { id: 'specifications' as const, label: 'Specs' },
+  ];
+
+  const subTypeTabs = [
+    { id: 'all' as const, label: 'All types' },
+    { id: 'requirements' as const, label: 'Reqs' },
     { id: 'design' as const, label: 'Design' },
   ];
 
@@ -1189,24 +1275,50 @@ function DocumentsPage() {
       ) : docs.isError ? (
         <ErrorState message="Document index is unavailable." retry={() => void docs.refetch()} />
       ) : (
-        <div className="grid gap-5 lg:grid-cols-[290px_minmax(0,1fr)]">
+        <div className="grid gap-5 lg:grid-cols-[310px_minmax(0,1fr)]">
           <Surface className="h-fit overflow-hidden">
-            <div className="border-b border-border/70 p-4">
-              <div className="mb-3 flex items-center justify-between">
+            <div className="border-b border-border/70 p-3.5 space-y-2.5">
+              <div className="flex items-center justify-between">
                 <span className="font-mono text-[9px] uppercase tracking-[.17em] text-muted-foreground">Specification set</span>
-                <span className="font-mono text-[10px] text-muted-foreground">{docs.data?.length ?? 0}</span>
+                <span className="font-mono text-[10px] text-muted-foreground">{filtered.length} / {docs.data?.length ?? 0}</span>
               </div>
-              <div className="flex flex-wrap gap-1.5">
+
+              {/* Search Bar */}
+              <div className="relative">
+                <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  placeholder="Search titles, paths, specs..."
+                  className="h-8 pl-7 pr-7 text-xs font-mono"
+                />
+                {search && (
+                  <button
+                    type="button"
+                    onClick={() => setSearch('')}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground p-0.5"
+                    title="Clear search"
+                  >
+                    <X size={12} />
+                  </button>
+                )}
+              </div>
+
+              {/* Scope Tabs: All / Steering / Specs */}
+              <div className="flex items-center rounded-lg border border-border bg-background p-0.5 text-xs">
                 {filterTabs.map(({ id: f, label }) => (
                   <button
                     key={f}
+                    type="button"
                     onClick={() => {
                       if (filter === f) return;
                       confirmDiscard(() => setFilter(f));
                     }}
                     className={cx(
-                      'rounded-full px-2.5 py-1 font-mono text-[9px] uppercase tracking-wider transition-colors',
-                      filter === f ? 'bg-sidebar text-white' : 'bg-secondary text-muted-foreground hover:bg-secondary/80'
+                      'flex-1 py-1 text-center font-mono text-[10px] uppercase tracking-wider rounded-md transition-colors font-medium',
+                      filter === f || (f === 'specifications' && ['requirements', 'design', 'tasks'].includes(filter))
+                        ? 'bg-primary text-primary-foreground shadow-xs'
+                        : 'text-muted-foreground hover:text-foreground'
                     )}
                     data-testid={`filter-documents-${f}`}
                   >
@@ -1214,11 +1326,94 @@ function DocumentsPage() {
                   </button>
                 ))}
               </div>
+
+              {/* Spec Dropdown (Available when viewing Specs or All) */}
+              {featuresList.length > 0 && filter !== 'steering' && (
+                <div>
+                  <select
+                    value={selectedSpec}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      confirmDiscard(() => setSelectedSpec(val));
+                    }}
+                    className="w-full h-8 rounded-lg border border-border bg-background px-2 text-xs font-medium text-foreground focus:outline-hidden focus:ring-1 focus:ring-ring"
+                  >
+                    <option value="all">All Specifications ({featuresList.length})</option>
+                    {featuresList.map((feat: Feature) => (
+                      <option key={feat.id} value={feat.id}>
+                        {feat.name} ({feat.id})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
+              {/* Sub-type filter pills (Reqs, Design, Tasks) */}
+              {filter !== 'steering' && (
+                <div className="flex flex-wrap gap-1">
+                  {subTypeTabs.map(({ id: k, label }) => {
+                    const isSubActive =
+                      filter === k || (k === 'all' && ['all', 'specifications'].includes(filter));
+                    return (
+                      <button
+                        key={k}
+                        type="button"
+                        onClick={() => {
+                          if (isSubActive) return;
+                          confirmDiscard(() => setFilter(k));
+                        }}
+                        className={cx(
+                          'rounded px-2 py-0.5 font-mono text-[9px] uppercase tracking-wider transition-colors',
+                          isSubActive
+                            ? 'bg-muted text-foreground font-semibold border border-border/80'
+                            : 'text-muted-foreground hover:text-foreground'
+                        )}
+                      >
+                        {label}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+
+              {/* Active Filter Reset */}
+              {(search || filter !== 'all' || selectedSpec !== 'all') && (
+                <div className="flex items-center justify-between pt-1 border-t border-border/50 text-[10px] text-muted-foreground">
+                  <span>Filtered ({filtered.length})</span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSearch('');
+                      setSelectedSpec('all');
+                      setFilter('all');
+                    }}
+                    className="text-primary hover:underline font-medium"
+                  >
+                    Reset filters
+                  </button>
+                </div>
+              )}
             </div>
 
-            <div className="divide-y divide-border/60 max-h-[calc(100vh-280px)] overflow-y-auto">
+            <div className="divide-y divide-border/60 max-h-[calc(100vh-340px)] overflow-y-auto">
               {filtered.length === 0 ? (
-                <div className="px-4 py-10 text-center text-xs text-muted-foreground">No documents in this view.</div>
+                <div className="px-4 py-10 text-center text-xs text-muted-foreground space-y-2">
+                  <p>No documents matching your filters.</p>
+                  {(search || filter !== 'all' || selectedSpec !== 'all') && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-7 text-xs"
+                      onClick={() => {
+                        setSearch('');
+                        setSelectedSpec('all');
+                        setFilter('all');
+                      }}
+                    >
+                      Reset all filters
+                    </Button>
+                  )}
+                </div>
               ) : groupedSpecs ? (
                 Object.entries(groupedSpecs).map(([groupId, group]) => (
                   <div key={groupId} className="p-2 space-y-1">
@@ -1361,6 +1556,7 @@ function Router() {
           <Route path="/features" component={SpecificationsHub} />
           <Route path="/features/:featureId" component={FeatureTasksRedirect} />
           <Route path="/tasks" component={TasksPage} />
+          <Route path="/comments" component={CommentsPage} />
           <Route path="/documents" component={DocumentsPage} />
           <Route path="/settings" component={SettingsPage} />
           <Route component={NotFound} />

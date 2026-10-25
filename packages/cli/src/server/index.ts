@@ -1479,8 +1479,10 @@ export function createServer(options: ServerOptions = {}): {
         // GET /api/comments
         if (pathname === "/api/comments" && method === "GET") {
           const target_file = url.searchParams.get("target_file") || undefined;
+          const target_type = url.searchParams.get("target_type") || undefined;
+          const target_id = url.searchParams.get("target_id") || undefined;
           const pendingOnly = url.searchParams.get("pendingOnly") === "true";
-          const comments = listComments(projectRoot, { target_file, pendingOnly });
+          const comments = listComments(projectRoot, { target_file, target_type, target_id, pendingOnly });
           return json(comments.map(formatComment));
         }
 
@@ -1488,17 +1490,22 @@ export function createServer(options: ServerOptions = {}): {
         if (pathname === "/api/comments" && method === "POST") {
           const reqBody = await parseBody(req);
           const data = reqBody.data || reqBody;
-          const target_file = data.target_file || data.documentId;
+          const target_type = data.target_type || (data.target_id ? "task" : (data.target_file || data.documentId) ? "document" : "general");
+          const target_file = data.target_file || data.documentId || (target_type === "general" ? "general" : "");
           const instruction = data.instruction;
-          const anchor = data.anchor || {
-            start_line: Number(data.startLine) || Number(data.start_line) || 1,
-            end_line: Number(data.endLine) || Number(data.end_line) || 1,
-            anchor_text: data.selectedText || data.anchor_text || "",
-            context_before: data.contextBefore || data.context_before || "",
-          };
+          const anchor = data.anchor
+            ? data.anchor
+            : (data.selectedText || data.startLine || data.endLine)
+            ? {
+                start_line: Number(data.startLine) || Number(data.start_line) || 1,
+                end_line: Number(data.endLine) || Number(data.end_line) || 1,
+                anchor_text: data.selectedText || data.anchor_text || "",
+                context_before: data.contextBefore || data.context_before || "",
+              }
+            : null;
 
-          if (!target_file || !instruction) {
-            return json({ error: "Missing required fields (target_file / instruction)" }, 400);
+          if (!instruction || !String(instruction).trim()) {
+            return json({ error: "Missing required field (instruction)" }, 400);
           }
 
           const commentsPath = path.join(getSpecflowDir(projectRoot), ".cache", "pending-comments.yaml");
@@ -1508,10 +1515,10 @@ export function createServer(options: ServerOptions = {}): {
             newComment = addComment(projectRoot, {
               id: data.id,
               target_file,
-              target_type: data.target_type || (data.target_id ? "task" : "document"),
+              target_type,
               target_id: data.target_id || null,
               anchor,
-              instruction,
+              instruction: String(instruction).trim(),
               author: data.author || "human",
               attachments: data.attachments || [],
             });
@@ -1530,8 +1537,8 @@ export function createServer(options: ServerOptions = {}): {
             category: "comment",
             action: "create",
             actor: data.author || "human",
-            message: `Created comment on ${target_file}`,
-            details: { commentId: (newComment as CommentItem).id, target_file },
+            message: target_type === "general" ? "Created general workspace comment" : `Created comment on ${target_file || target_type}`,
+            details: { commentId: (newComment as CommentItem).id, target_file, target_type },
           });
 
           return json(formatComment(newComment), 201);
@@ -1705,6 +1712,7 @@ export function createServer(options: ServerOptions = {}): {
           const steering = getSteeringStatus(projectRoot);
           interface ApiDocItem {
             id: string;
+            featureId?: string | null;
             kind: string;
             title: string;
             path: string;
@@ -1718,6 +1726,7 @@ export function createServer(options: ServerOptions = {}): {
           for (const d of steering.documents) {
             docs.push({
               id: d.id,
+              featureId: null,
               kind: "steering",
               title: d.title,
               path: d.relativePath,
@@ -1734,6 +1743,7 @@ export function createServer(options: ServerOptions = {}): {
             if (s.hasRequirements) {
               docs.push({
                 id: `${s.id}:requirements`,
+                featureId: s.id,
                 kind: "requirements",
                 title: `${s.name} - Requirements`,
                 path: path.relative(projectRoot, path.join(specDir, "requirements.md")),
@@ -1746,6 +1756,7 @@ export function createServer(options: ServerOptions = {}): {
             if (s.hasDesign) {
               docs.push({
                 id: `${s.id}:design`,
+                featureId: s.id,
                 kind: "design",
                 title: `${s.name} - Design`,
                 path: path.relative(projectRoot, path.join(specDir, "design.md")),
@@ -1758,6 +1769,7 @@ export function createServer(options: ServerOptions = {}): {
             if (fs.existsSync(path.join(specDir, "tasks.yaml"))) {
               docs.push({
                 id: `${s.id}:tasks`,
+                featureId: s.id,
                 kind: "tasks",
                 title: `${s.name} - Tasks`,
                 path: path.relative(projectRoot, path.join(specDir, "tasks.yaml")),

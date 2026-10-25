@@ -295,6 +295,28 @@ describe("Spexy Node.js HTTP & WebSocket Server & File Watcher", () => {
     expect(afterComments.some((c: any) => c.id === comment.id)).toBe(false);
   });
 
+  it("POST /api/comments creates general workspace comment without anchor or target_file", async () => {
+    const createRes = await fetch(`${baseUrl}/api/comments`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        target_type: "general",
+        instruction: "Review high-level architectural patterns for next release.",
+        author: "human",
+      }),
+    });
+    expect(createRes.status).toBe(201);
+    const comment: any = await createRes.json();
+    expect(comment.id).toBeDefined();
+    expect(comment.target_type).toBe("general");
+    expect(comment.instruction).toBe("Review high-level architectural patterns for next release.");
+
+    // Query with target_type filter
+    const listRes = await fetch(`${baseUrl}/api/comments?target_type=general`);
+    const comments: any = await listRes.json();
+    expect(comments.some((c: any) => c.id === comment.id)).toBe(true);
+  });
+
   it("GET /api/checkpoints and POST /api/checkpoints/:id/restore", async () => {
     const testFile = path.join(tmpDir, "test-checkpoint.txt");
     fs.writeFileSync(testFile, "Version 1", "utf-8");
