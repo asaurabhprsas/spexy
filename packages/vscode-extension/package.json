@@ -1,0 +1,277 @@
+{
+  "name": "@workspace/spexy-vscode",
+  "displayName": "Spexy - Spec-Driven Development",
+  "description": "Enterprise Spec-Driven Development, inline file commenting, autonomous agent orchestration, and full workspace dashboard in VS Code",
+  "version": "0.1.1",
+  "publisher": "spexy",
+  "license": "MIT",
+  "main": "./dist/extension.js",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Programming Languages",
+    "Other"
+  ],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "spexy-sidebar",
+          "title": "Spexy SDD",
+          "icon": "media/icon.svg"
+        }
+      ]
+    },
+    "views": {
+      "spexy-sidebar": [
+        {
+          "id": "spexy.steeringView",
+          "name": "Constitutional Steering"
+        },
+        {
+          "id": "spexy.tasksView",
+          "name": "Specifications & Tasks"
+        },
+        {
+          "id": "spexy.worktreesView",
+          "name": "Git Worktrees & Leases"
+        },
+        {
+          "id": "spexy.commentsView",
+          "name": "Pending Comments"
+        },
+        {
+          "id": "spexy.quickActionsView",
+          "name": "Quick Actions & Diagnostics",
+          "collapsed": true
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "spexy.openDashboard",
+        "title": "Spexy: Open Full Workspace Dashboard",
+        "icon": "$(layout-panel)"
+      },
+      {
+        "command": "spexy.openKanban",
+        "title": "Spexy: Open Kanban Board",
+        "icon": "$(project)"
+      },
+      {
+        "command": "spexy.openTasks",
+        "title": "Spexy: Open Tasks & Sublists",
+        "icon": "$(checklist)"
+      },
+      {
+        "command": "spexy.openDag",
+        "title": "Spexy: Open DAG Visualizer",
+        "icon": "$(type-hierarchy)"
+      },
+      {
+        "command": "spexy.openSpecs",
+        "title": "Spexy: Open Specifications Hub",
+        "icon": "$(book)"
+      },
+      {
+        "command": "spexy.openSteering",
+        "title": "Spexy: Open Constitutional Steering",
+        "icon": "$(law)"
+      },
+      {
+        "command": "spexy.runDoctor",
+        "title": "Spexy: Run Health Doctor",
+        "icon": "$(pulse)"
+      },
+      {
+        "command": "spexy.taskNext",
+        "title": "Spexy: Next Available Task",
+        "icon": "$(arrow-right)"
+      },
+      {
+        "command": "spexy.refreshAll",
+        "title": "Spexy: Refresh All",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "spexy.addComment",
+        "title": "Spexy: Add Review Comment at Current Selection",
+        "icon": "$(comment-discussion)"
+      },
+      {
+        "command": "spexy.resolveComment",
+        "title": "Spexy: Resolve Selected Comment",
+        "icon": "$(check)"
+      },
+      {
+        "command": "spexy.deleteComment",
+        "title": "Spexy: Dismiss Comment",
+        "icon": "$(trash)"
+      },
+      {
+        "command": "spexy.claimTask",
+        "title": "Spexy: Claim Task [In-Progress]",
+        "icon": "$(play)"
+      },
+      {
+        "command": "spexy.submitTask",
+        "title": "Spexy: Submit Task for Review",
+        "icon": "$(eye)"
+      },
+      {
+        "command": "spexy.approveTask",
+        "title": "Spexy: Approve Task [Done]",
+        "icon": "$(pass-filled)"
+      },
+      {
+        "command": "spexy.approveSteeringDoc",
+        "title": "Spexy: Approve Steering Document",
+        "icon": "$(pass-filled)"
+      },
+      {
+        "command": "spexy.setSteeringStatus",
+        "title": "Spexy: Set Steering Document Status",
+        "icon": "$(edit)"
+      },
+      {
+        "command": "spexy.addCommentToSteeringDoc",
+        "title": "Spexy: Add Comment to Steering Document",
+        "icon": "$(comment-discussion)"
+      },
+      {
+        "command": "spexy.setTaskStatus",
+        "title": "Spexy: Set Task Status",
+        "icon": "$(edit)"
+      },
+      {
+        "command": "spexy.setTaskPriority",
+        "title": "Spexy: Set Task Priority",
+        "icon": "$(tag)"
+      },
+      {
+        "command": "spexy.addCommentToTask",
+        "title": "Spexy: Add Comment to Task",
+        "icon": "$(comment-discussion)"
+      },
+      {
+        "command": "spexy.createTaskInSpec",
+        "title": "Spexy: Add Task to Spec",
+        "icon": "$(plus)"
+      }
+    ],
+    "menus": {
+      "view/title": [
+        {
+          "command": "spexy.openKanban",
+          "when": "view == spexy.tasksView",
+          "group": "navigation@1"
+        },
+        {
+          "command": "spexy.openTasks",
+          "when": "view == spexy.tasksView",
+          "group": "navigation@2"
+        },
+        {
+          "command": "spexy.openDag",
+          "when": "view == spexy.tasksView",
+          "group": "navigation@3"
+        },
+        {
+          "command": "spexy.runDoctor",
+          "when": "view == spexy.tasksView || view == spexy.steeringView",
+          "group": "navigation@4"
+        },
+        {
+          "command": "spexy.refreshAll",
+          "when": "view == spexy.tasksView || view == spexy.steeringView || view == spexy.commentsView || view == spexy.worktreesView",
+          "group": "navigation@5"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "spexy.claimTask",
+          "when": "view == spexy.tasksView && viewItem == spexyTask_todo",
+          "group": "inline@1"
+        },
+        {
+          "command": "spexy.submitTask",
+          "when": "view == spexy.tasksView && viewItem == spexyTask_in-progress",
+          "group": "inline@1"
+        },
+        {
+          "command": "spexy.approveTask",
+          "when": "view == spexy.tasksView && viewItem == spexyTask_to-review",
+          "group": "inline@1"
+        },
+        {
+          "command": "spexy.setTaskStatus",
+          "when": "view == spexy.tasksView && (viewItem == spexyTask_todo || viewItem == spexyTask_in-progress || viewItem == spexyTask_to-review || viewItem == spexyTask_done)",
+          "group": "spexyTaskActions@1"
+        },
+        {
+          "command": "spexy.setTaskPriority",
+          "when": "view == spexy.tasksView && (viewItem == spexyTask_todo || viewItem == spexyTask_in-progress || viewItem == spexyTask_to-review || viewItem == spexyTask_done)",
+          "group": "spexyTaskActions@2"
+        },
+        {
+          "command": "spexy.addCommentToTask",
+          "when": "view == spexy.tasksView && (viewItem == spexyTask_todo || viewItem == spexyTask_in-progress || viewItem == spexyTask_to-review || viewItem == spexyTask_done)",
+          "group": "spexyTaskActions@3"
+        },
+        {
+          "command": "spexy.createTaskInSpec",
+          "when": "view == spexy.tasksView && viewItem == spexySpec",
+          "group": "inline@1"
+        },
+        {
+          "command": "spexy.addCommentToSteeringDoc",
+          "when": "view == spexy.steeringView && viewItem == spexySteeringDoc",
+          "group": "inline@1"
+        },
+        {
+          "command": "spexy.setSteeringStatus",
+          "when": "view == spexy.steeringView && viewItem == spexySteeringDoc",
+          "group": "inline@2"
+        },
+        {
+          "command": "spexy.approveSteeringDoc",
+          "when": "view == spexy.steeringView && viewItem == spexySteeringDoc",
+          "group": "inline@3"
+        },
+        {
+          "command": "spexy.resolveComment",
+          "when": "view == spexy.commentsView && viewItem == spexyPendingComment",
+          "group": "inline@1"
+        },
+        {
+          "command": "spexy.deleteComment",
+          "when": "view == spexy.commentsView && viewItem == spexyPendingComment",
+          "group": "inline@2"
+        }
+      ],
+      "editor/context": [
+        {
+          "command": "spexy.addComment",
+          "group": "spexy"
+        }
+      ]
+    }
+  },
+  "scripts": {
+    "build": "node ./build.mjs",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@spexy/core": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "@types/vscode": "^1.85.0",
+    "esbuild": "^0.28.2",
+    "typescript": "^7.0.2"
+  }
+}

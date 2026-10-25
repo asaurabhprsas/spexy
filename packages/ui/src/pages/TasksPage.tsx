@@ -60,17 +60,23 @@ export function TasksPage() {
     return params.get('spec') || '';
   });
 
-  // If visiting /tasks without a ?spec param:
-  // Automatically redirect / sync URL using setLocation('/tasks?spec=' + encodeURIComponent(defaultSpec), { replace: true })
+  // If visiting /tasks without a ?spec param or with a ?view param:
   useEffect(() => {
-    if (!specParam && featuresList.length > 0) {
+    const params = new URLSearchParams(searchString);
+    const viewParam = params.get('tab') || params.get('view');
+    if (viewParam === 'list' || viewParam === 'dag' || viewParam === 'kanban') {
+      setActiveTab(viewParam);
+    }
+
+    if (!params.get('spec') && featuresList.length > 0) {
       const defaultSpec = featuresList[0]?.id || 'all';
       setSelectedSpecId(defaultSpec);
-      setLocation(`/tasks?spec=${encodeURIComponent(defaultSpec)}`, { replace: true });
-    } else if (specParam) {
-      setSelectedSpecId(specParam);
+      params.set('spec', defaultSpec);
+      setLocation(`/tasks?${params.toString()}`, { replace: true });
+    } else if (params.get('spec')) {
+      setSelectedSpecId(params.get('spec')!);
     }
-  }, [specParam, featuresList, setLocation]);
+  }, [searchString, featuresList, setLocation]);
 
   const isAllSpecs = selectedSpecId === 'all';
 
@@ -116,13 +122,14 @@ export function TasksPage() {
     return 'kanban';
   });
 
-  useEffect(() => {
-    const params = new URLSearchParams(searchString);
-    const t = params.get('tab') || params.get('view');
-    if (t === 'list' || t === 'dag' || t === 'kanban') {
-      setActiveTab(t);
-    }
-  }, [searchString]);
+  const handleTabChange = (val: string) => {
+    const nextTab = val as 'kanban' | 'list' | 'dag';
+    setActiveTab(nextTab);
+    const params = new URLSearchParams(typeof window !== 'undefined' ? window.location.search : searchString);
+    params.set('view', nextTab);
+    setLocation(`/tasks?${params.toString()}`);
+  };
+
   const [isComposerOpen, setIsComposerOpen] = useState(false);
   const [composerParentId, setComposerParentId] = useState<string | null>(null);
   const [isUploadingDoc, setIsUploadingDoc] = useState(false);
@@ -157,11 +164,11 @@ export function TasksPage() {
       const results = await Promise.all(uploadPromises);
       toast({
         title: `${results.length} ${results.length === 1 ? 'document' : 'documents'} uploaded`,
-        description: `Uploaded ${results.map((r: any) => `"${r.filename}"`).join(', ')} to spec "${targetSpec}". You can reference or preserve them anytime.`,
+        description: `Uploaded ${results.map((r: { filename?: string }) => `"${r.filename || 'file'}"`).join(', ')} to spec "${targetSpec}". You can reference or preserve them anytime.`,
       });
       void qc.invalidateQueries({ queryKey: ['spec-files', targetSpec] });
-    } catch (err: any) {
-      toast({ title: 'Upload error', description: err.message, variant: 'destructive' });
+    } catch (err: unknown) {
+      toast({ title: 'Upload error', description: err instanceof Error ? err.message : String(err), variant: 'destructive' });
     } finally {
       setIsUploadingDoc(false);
       e.target.value = '';
@@ -332,16 +339,17 @@ export function TasksPage() {
 
   const rawTasks = isAllSpecs ? allTasksQuery.data : singleSpecTasksQuery.data;
   const taskList: Task[] = useMemo(() => {
+    const rawObj = rawTasks as unknown as { tasks?: Task[] } | undefined;
     const list: Task[] = Array.isArray(rawTasks)
-      ? rawTasks
-      : Array.isArray((rawTasks as any)?.tasks)
-      ? (rawTasks as any).tasks
+      ? (rawTasks as Task[])
+      : Array.isArray(rawObj?.tasks)
+      ? rawObj.tasks
       : [];
 
     if (!isAllSpecs) return list;
 
-    return list.map((task: any) => {
-      const parentSpec = task.specId || task.spec_id || task.groupId || 'spec';
+    return list.map((task: Task) => {
+      const parentSpec = (task as Task & { specId?: string; spec_id?: string; groupId?: string }).specId || (task as Task & { spec_id?: string }).spec_id || (task as Task & { groupId?: string }).groupId || 'spec';
       const compositeId = `${parentSpec}:${task.id}`;
       return {
         ...task,
@@ -522,7 +530,7 @@ export function TasksPage() {
         /* Tabs: Kanban, List, DAG Visualizer */
         <Tabs
           value={activeTab}
-          onValueChange={(v) => setActiveTab(v as 'kanban' | 'list' | 'dag')}
+          onValueChange={handleTabChange}
           className="space-y-5"
         >
           <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border/70 pb-3">

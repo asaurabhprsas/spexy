@@ -55,6 +55,18 @@ spexy dashboard
 - **Inline Line-Anchored Comments**: Click any line in the document inspector to pin feedback or architectural questions. AI agents can read, address, and resolve comments directly (`spexy comment list` / `spexy comment resolve`).
 - **Instant Live Updates**: Built-in file watcher and WebSocket server automatically broadcast file changes to the UI instantaneously with zero manual polling.
 
+### 🧩 Official VS Code Extension
+- **Native Editor Integration**: Complete Spexy SDD lifecycle directly within VS Code via `packages/vscode-extension`.
+- **Sidebar Explorer**: Interactive Tree Views for **Active Specifications** (with status badges, quick actions) and **Pending Review Comments**.
+- **Inline Editor Commenting**: Add line-anchored comments directly on *any* repo file or spec from the editor context menu (`Spexy: Add Inline Comment`) with live fuzzy anchoring and line tracking.
+- **Embedded Webview Dashboard**: Launch the full real-time dashboard or dedicated views (Kanban, DAG Visualizer, Hierarchical Tasks, Specs, Steering) seamlessly within editor panels.
+- **Automatic Daemon Lifecycle**: Automatically starts, monitors, and stops the local Spexy dashboard server in the background.
+
+### 🌿 Multi-Worktree Task Coordination & Auto-Blocking
+- **Centralized Hub Architecture**: Main repository serves as the central coordination hub when multiple agents operate concurrently in parallel Git worktrees (`git worktree`).
+- **Conflict Prevention & Active Lease Tracking**: If an agent starts a task in one worktree, Spexy's central engine automatically marks it in-progress across all worktrees. Subsequent claim attempts in other worktrees are immediately blocked with informative guidance, redirecting agents to independent tasks.
+- **Clean Worktree Allocation**: `spexy worktree allocate` & `spexy worktree clean` commands provide turnkey agent worktree isolation without merge collisions.
+
 ### 📊 Three-Way Synchronized Task Views & Hierarchical Sub-Tasks
 - **Hierarchical List View (ClickUp / TickTick Style)**:
   - Multi-level nested task hierarchies (`parent_id`) allowing main tasks to be broken down into granular sub-tasks.
@@ -64,7 +76,7 @@ spexy dashboard
   - Full directed acyclic graph resolution (`depends_on`). If any prerequisite task is not `done`, dependent tasks and sub-tasks are marked as blocked with visual lock indicators.
   - Real-time dynamic availability calculation (`spexy task list` and dashboard) guarantees agents and humans only work on unblocked, actionable items.
 - **Kanban Board**: Drag-and-drop workflow across `todo`, `in-progress`, `to-review`, and `done` columns, complete with a dedicated blocked dependencies queue.
-- **DAG Dependency Visualizer**: Interactive node-based graph showing prerequisite chains, dynamic availability, and topological execution order.
+- **DAG Dependency Visualizer**: Interactive node-based graph showing prerequisite chains, dynamic availability, and topological execution order. Includes canvas zoom in/out/reset controls and captured keyboard shortcuts (`Ctrl/Cmd + +`, `Ctrl/Cmd + -`, `Ctrl/Cmd + 0`, `Ctrl + Wheel`) that prevent browser-level page scaling.
 
 ### 🛡️ Spec Approval Gate & Two-Tier HITL Safety
 - **Drafting Freedom with AI Guardrails**:
@@ -80,7 +92,7 @@ spexy dashboard
 ### 💬 Unified Comments, Document Uploads & Temp-to-Permanent Staging
 - **Targeted Line, Task & General Comments**:
   - Add inline line-anchored comments directly on markdown specs, task-specific feedback on task detail sheets, or general spec-level architectural discussions.
-  - Review comments support file attachments directly uploaded from the browser or CLI.
+  - Review comments support deferred file attachments (images, logs, documents) staged in-browser and written to disk only upon user confirmation ("Post Comment"), preventing orphaned disk bloat.
 - **Smart Staging (`.temp`) & 1-Click Preservation**:
   - Uploaded reference documents and images default to `.temp/` subdirectories (automatically git-ignored to prevent repo bloat).
   - A 1-click **"Preserve in repo" / "Keep"** action allows humans to permanently promote important assets into tracked `references/` or `images/` directories.
@@ -124,9 +136,11 @@ spexy doctor --compact
 
 Track upcoming architectural milestones and planned enhancements:
 
-- [ ] **Multi-Agent Centralized Status Management**:
-  - Unified dashboard coordination for multi-AI agent setups working concurrently across isolated Git worktrees or remote agent environments.
-  - Distributed task leases and real-time cross-worktree lock coordination to prevent merge collisions.
+- [x] **Multi-Agent Centralized Status Management & Worktree Auto-Blocking** *(Implemented in latest release - see commits `b03c20b` & `HEAD`)*:
+  - Central repository hub coordination for multi-AI agent setups working concurrently across isolated Git worktrees.
+  - Cross-worktree conflict prevention and active lease tracking (`spexy worktree allocate`).
+- [x] **Official VS Code Extension Release**:
+  - Embedded real-time dashboard webviews, sidebar trees for active specifications and pending comments, inline editor line comments.
 - [ ] **Automated Test Report Ingestion**:
   - Seamless ingestion of test runner results (Vitest, Jest, Pytest) directly into task review submissions.
 - [ ] **Interactive Visual Spec Generator**:
@@ -157,6 +171,8 @@ Track upcoming architectural milestones and planned enhancements:
 | `spexy comment resolve <spec> <id>` | Resolve a review comment |
 | `spexy checkpoint list` | List automatic rollback snapshots in the ring-buffer cache |
 | `spexy checkpoint restore <id>` | Safely restore workspace state from a snapshot |
+| `spexy worktree allocate <spec> <id>` | Allocate isolated Git worktree for an unblocked task with central conflict leasing |
+| `spexy worktree clean` | Remove merged/stale agent worktrees and release active locks |
 
 ### CLI Help & Introspection
 Every command and subcommand features built-in self-documenting help:

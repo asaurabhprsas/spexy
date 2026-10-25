@@ -1,0 +1,13 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "paths": {
+      "@spexy/core": ["../core/src/index.ts"]
+    }
+  },
+  "include": [
+    "src/**/*",
+    "../core/src/**/*"
+  ]
+}

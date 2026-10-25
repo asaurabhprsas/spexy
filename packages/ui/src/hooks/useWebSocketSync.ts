@@ -25,7 +25,7 @@ export interface WebSocketMessage {
   path?: string;
   error?: string;
   message?: string;
-  payload?: any;
+  payload?: Record<string, unknown>;
   timestamp?: string;
 }
 
@@ -111,7 +111,7 @@ export function useWebSocketSync() {
             }
 
             case 'SPEC_FILES_UPDATED': {
-              const specId = data.payload?.specId || data.featureId;
+              const specId = (data.payload?.specId as string | undefined) || data.featureId;
               if (specId) {
                 void queryClient.invalidateQueries({ queryKey: ['spec-files', specId] });
               } else {
@@ -134,7 +134,7 @@ export function useWebSocketSync() {
             }
 
             case 'BACKGROUND_ERROR': {
-              const payload = data.payload || {};
+              const payload = (data.payload || {}) as { title?: string; message?: string };
               toast({
                 title: payload.title || 'Workspace Error',
                 description: payload.message || data.error || data.message || 'An error occurred in the background.',

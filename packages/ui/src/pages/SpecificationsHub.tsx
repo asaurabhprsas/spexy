@@ -328,8 +328,8 @@ export function SpecificationsHub() {
         const errData = await res.json().catch(() => ({}));
         toast({ title: 'Upload Failed', description: errData.error || 'Failed to upload file.', variant: 'destructive' });
       }
-    } catch (err: any) {
-      toast({ title: 'Upload Error', description: err.message, variant: 'destructive' });
+    } catch (err: unknown) {
+      toast({ title: 'Upload Error', description: err instanceof Error ? err.message : String(err), variant: 'destructive' });
     } finally {
       setIsUploading(false);
       e.target.value = '';

@@ -23,7 +23,7 @@ export type CommentAttachment = z.infer<typeof CommentAttachmentSchema>;
 export const CommentItemSchema = z.object({
   id: z.string().min(1),
   target_file: z.string().default(""),
-  target_type: z.enum(["document", "task", "general", "spec"]).default("document"),
+  target_type: z.enum(["document", "task", "general", "spec", "code", "file"]).default("document"),
   target_id: z.string().nullable().optional().default(null),
   status: CommentStatusSchema.default("pending"),
   author: z.enum(["human", "agent"]).default("human"),

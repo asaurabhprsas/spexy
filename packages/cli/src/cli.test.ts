@@ -30,11 +30,12 @@ describe("@spexy/cli Comprehensive Test Suite", () => {
         stdio: ["ignore", "pipe", "pipe"],
       });
       return output;
-    } catch (err: any) {
+    } catch (err: unknown) {
+      const execErr = err as { stdout?: Buffer | string; stderr?: Buffer | string; message?: string };
       if (options?.expectFail) {
-        return (err.stdout?.toString() || "") + (err.stderr?.toString() || "");
+        return (execErr.stdout?.toString() || "") + (execErr.stderr?.toString() || "");
       }
-      throw new Error(`CLI execution failed: ${err.stderr?.toString() || err.message}`);
+      throw new Error(`CLI execution failed: ${execErr.stderr?.toString() || execErr.message}`);
     }
   }
 
@@ -501,6 +502,46 @@ describe("@spexy/cli Comprehensive Test Suite", () => {
 
     const failCompactOut = runCli(["doctor", "--compact"], { expectFail: true });
     expect(failCompactOut).toContain("FAIL");
+  });
+
+  it("adds inline code review comments and queries next available task", () => {
+    runCli(["init"]);
+    runCli(["spec", "create", "demo-feature", "--force", "--title", "Demo Feature"]);
+
+    // 1. Add comment with spexy comment add
+    const addOut = runCli([
+      "comment",
+      "add",
+      "-f",
+      "packages/core/src/index.ts",
+      "-i",
+      "Verify export completeness",
+      "-l",
+      "5-12",
+      "-s",
+      "export * from",
+      "-t",
+      "code",
+    ]);
+    expect(addOut).toContain("✓ Comment");
+    expect(addOut).toContain("packages/core/src/index.ts");
+    expect(addOut).toContain("5-12");
+
+    // 2. Query comment via spexy comment list
+    const listOut = runCli(["comment", "list", "--compact", "--json"]);
+    const comments = JSON.parse(listOut);
+    expect(comments.some((c: { target_file: string; instruction: string }) => 
+      c.target_file === "packages/core/src/index.ts" && c.instruction === "Verify export completeness"
+    )).toBe(true);
+
+    // 3. Query next available task via spexy task next
+    const nextOut = runCli(["task", "next", "demo-feature"]);
+    expect(nextOut).toContain("Next available task: 1");
+    expect(nextOut).toContain("spexy task start 1");
+
+    // 4. Query worktree list
+    const worktreeOut = runCli(["worktree", "list", "--json"]);
+    expect(worktreeOut).toBeDefined();
   });
 
   it("verifies package configuration and bundled distribution artifact", () => {

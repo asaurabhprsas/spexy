@@ -1,9 +1,9 @@
 import { execSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
-import { getSpecflowDir } from "../fs/workspace";
-import { TaskItem } from "../schemas/tasks";
-import { WorkflowRuleError } from "../dag/workflow";
+import { findProjectRoot, getSpecflowDir } from "../fs/workspace";
+import { TaskItem, TaskStatus } from "../schemas/tasks";
+import { getTaskAvailability, WorkflowRuleError } from "../dag/workflow";
 
 export interface GitContext {
   isGit: boolean;
@@ -112,20 +112,44 @@ export function registerWorktree(projectRoot: string, cwd: string): void {
   fs.writeFileSync(registryPath, JSON.stringify(list, null, 2), "utf-8");
 }
 
+export function listRegisteredWorktrees(projectRoot: string): WorktreeRegistration[] {
+  const cacheDir = path.join(getSpecflowDir(projectRoot), ".cache");
+  const registryPath = path.join(cacheDir, "worktrees.json");
+  if (!fs.existsSync(registryPath)) return [];
+  try {
+    return JSON.parse(fs.readFileSync(registryPath, "utf-8"));
+  } catch {
+    return [];
+  }
+}
+
+export function findCentralProjectRoot(startDir: string = process.cwd()): string {
+  const git = resolveGitContext(startDir);
+  if (git.isGit && git.primaryRoot) {
+    const centralSpexy = path.join(git.primaryRoot, ".spexy");
+    const centralLegacy = path.join(git.primaryRoot, ".specflow");
+    if (fs.existsSync(centralSpexy) || fs.existsSync(centralLegacy)) {
+      return git.primaryRoot;
+    }
+  }
+  return findProjectRoot(startDir);
+}
+
 export function acquireTaskLease(
   task: TaskItem,
   worktree: string,
   branch: string,
 ): TaskItem {
   if (
-    task.locked_at &&
-    task.worktree &&
-    task.worktree !== worktree &&
-    task.status === "in-progress"
+    task.status === "in-progress" &&
+    ((task.worktree && task.worktree !== worktree) || (!task.worktree))
   ) {
+    const holder = task.worktree ? `worktree "${task.worktree}"` : "another agent";
+    const branchInfo = task.branch ? ` on branch "${task.branch}"` : "";
+    const sinceInfo = task.locked_at ? ` since ${task.locked_at}` : "";
     throw new WorkflowRuleError(
       "TASK_LEASE_CONFLICT",
-      `Task "${task.id}" is already leased by worktree "${task.worktree}" on branch "${task.branch}" since ${task.locked_at}. Concurrency conflict prevented.`,
+      `Task "${task.id}" is already leased by ${holder}${branchInfo}${sinceInfo}. Concurrency conflict prevented.`,
     );
   }
 
@@ -143,4 +167,19 @@ export function releaseTaskLease(task: TaskItem): TaskItem {
     ...task,
     locked_at: null,
   };
+}
+
+export function getAlternativeAvailableTasks(
+  tasks: TaskItem[],
+  currentTaskId?: string,
+): TaskItem[] {
+  const statuses: Record<string, TaskStatus | undefined> = {};
+  for (const t of tasks) {
+    statuses[t.id] = t.status;
+  }
+  const availability = getTaskAvailability(tasks, statuses);
+  return tasks.filter((t) => {
+    if (currentTaskId && t.id === currentTaskId) return false;
+    return availability.get(t.id) === "available" && t.status === "todo";
+  });
 }

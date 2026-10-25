@@ -30,7 +30,7 @@ export interface LogEvent {
   details?: {
     taskId?: string;
     taskTitle?: string;
-    [key: string]: any;
+    [key: string]: unknown;
   };
 }
 
@@ -109,21 +109,23 @@ export function LiveLogsDrawer({ open, onClose, onLogsCountChange }: LiveLogsDra
     lastProcessedMsgRef.current = lastMessage;
 
     if (lastMessage.type === 'LOG_EVENT' && lastMessage.payload) {
+      const p = lastMessage.payload as Record<string, unknown>;
       const newLog: LogEvent = {
-        id: lastMessage.payload.id || `log-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
-        timestamp: lastMessage.payload.timestamp || new Date().toISOString(),
-        category: (lastMessage.payload.category as LogCategory) || 'SYSTEM',
-        actor: lastMessage.payload.actor || 'System',
-        message: lastMessage.payload.message || 'Activity event',
-        details: lastMessage.payload.details || (lastMessage.payload.taskTitle ? {
-          taskId: lastMessage.payload.taskId,
-          taskTitle: lastMessage.payload.taskTitle,
+        id: (p.id as string) || `log-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+        timestamp: (p.timestamp as string) || new Date().toISOString(),
+        category: (p.category as LogCategory) || 'SYSTEM',
+        actor: (p.actor as string) || 'System',
+        message: (p.message as string) || 'Activity event',
+        details: (p.details as LogEvent['details']) || (p.taskTitle ? {
+          taskId: p.taskId as string | undefined,
+          taskTitle: p.taskTitle as string | undefined,
         } : undefined),
       };
       setLogs((prev) => [newLog, ...prev.filter((l) => l.id !== newLog.id)]);
     } else if (lastMessage.type === 'TASK_UPDATED') {
-      const taskId = lastMessage.taskId || lastMessage.payload?.taskId || lastMessage.payload?.specId;
-      const taskTitle = lastMessage.payload?.taskTitle || lastMessage.payload?.title;
+      const p = (lastMessage.payload || {}) as Record<string, string | undefined>;
+      const taskId = lastMessage.taskId || p.taskId || p.specId;
+      const taskTitle = p.taskTitle || p.title;
       const newLog: LogEvent = {
         id: `log-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
         timestamp: new Date().toISOString(),
@@ -134,12 +136,13 @@ export function LiveLogsDrawer({ open, onClose, onLogsCountChange }: LiveLogsDra
       };
       setLogs((prev) => [newLog, ...prev]);
     } else if (lastMessage.type === 'DOC_UPDATED') {
+      const p = (lastMessage.payload || {}) as Record<string, string | undefined>;
       const newLog: LogEvent = {
         id: `log-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
         timestamp: new Date().toISOString(),
         category: 'DOC',
         actor: 'Workspace',
-        message: `Specification updated: ${lastMessage.documentId || lastMessage.payload?.file || 'document'}`,
+        message: `Specification updated: ${lastMessage.documentId || p.file || 'document'}`,
       };
       setLogs((prev) => [newLog, ...prev]);
     } else if (lastMessage.type === 'COMMENTS_UPDATED') {

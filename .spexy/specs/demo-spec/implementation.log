@@ -4,3 +4,5 @@
 - [2026-10-21T23:42:51.085Z] Task 1 claimed by worktree "spexy" on branch "local-dev". Status: in-progress.
 - [2026-10-21T23:42:54.236Z] Task 1 submitted for review by agent. Status: to-review. Note: Implemented foundation and tests
 - [2026-10-21T23:43:01.313Z] Task 1 verified and approved by human reviewer. Status: done.
+- [2026-10-25T10:34:14.204Z] Task 3.2 changes requested by human. Status: todo. Note: Changes requested
+- [2026-10-25T10:34:22.573Z] Task 3.2 status transitioned to to-review by human.

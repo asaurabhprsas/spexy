@@ -66,7 +66,6 @@ export type TaskDetailItem = Task & {
     security?: string | null;
     testing?: string | null;
   };
-  [key: string]: any;
 };
 
 export interface TaskDetailSheetProps {
@@ -174,8 +173,8 @@ export function TaskDetailSheet({
         title: `${uploaded.length} ${uploaded.length === 1 ? 'attachment' : 'attachments'} uploaded`,
         description: `Attached ${uploaded.map((u) => `"${u.name}"`).join(', ')} as reference.`,
       });
-    } catch (err: any) {
-      toast({ title: 'Upload error', description: err.message, variant: 'destructive' });
+    } catch (err: unknown) {
+      toast({ title: 'Upload error', description: err instanceof Error ? err.message : String(err), variant: 'destructive' });
     } finally {
       setIsUploadingAttachment(false);
       e.target.value = '';
@@ -207,7 +206,7 @@ export function TaskDetailSheet({
         }
       })
       .catch((err) => {
-        toast({ title: 'Failed to add comment', description: err.message, variant: 'destructive' });
+        toast({ title: 'Failed to add comment', description: err instanceof Error ? err.message : String(err), variant: 'destructive' });
       });
   };
 
@@ -226,8 +225,8 @@ export function TaskDetailSheet({
       } else {
         toast({ title: 'Failed to preserve file', variant: 'destructive' });
       }
-    } catch (err: any) {
-      toast({ title: 'Preserve error', description: err.message, variant: 'destructive' });
+    } catch (err: unknown) {
+      toast({ title: 'Preserve error', description: err instanceof Error ? err.message : String(err), variant: 'destructive' });
     }
   };
 
@@ -958,8 +957,8 @@ export function TaskDetailSheet({
                               Attached References
                             </span>
                             <div className="flex flex-wrap gap-1.5">
-                              {cmt.attachments.map((att: any, i: number) => {
-                                const attPath = typeof att === 'string' ? att : att.path || att.name;
+                              {cmt.attachments.map((att: { name?: string; path?: string; is_temp?: boolean } | string, i: number) => {
+                                const attPath = typeof att === 'string' ? att : att.path || att.name || '';
                                 const attName = typeof att === 'string' ? att.split('/').pop() : att.name || att.path?.split('/').pop();
                                 const isTemp = typeof att === 'object' ? Boolean(att.is_temp || att.path?.includes('.temp')) : att.includes('.temp');
                                 return (
@@ -982,7 +981,7 @@ export function TaskDetailSheet({
                                         size="sm"
                                         variant="ghost"
                                         className="h-4 px-1 text-[9px] text-amber-600 dark:text-amber-400 hover:text-emerald-600 font-sans"
-                                        onClick={() => handlePreserveAttachment(attName, attPath)}
+                                        onClick={() => handlePreserveAttachment(attName || 'attachment', attPath)}
                                         title="Keep in permanent repository references"
                                       >
                                         <BookmarkCheck size={9} className="mr-0.5" />

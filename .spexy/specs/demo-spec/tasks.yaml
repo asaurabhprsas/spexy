@@ -234,7 +234,7 @@ groups:
         requirements_ref:
           - REQ-3
         notes:
-          security: Encrypt sensitive event payloads in transit.
+          security: Changes requested
           testing: Test message delivery across 3 mock cluster nodes.
       - id: "3.3"
         parent_id: "3"

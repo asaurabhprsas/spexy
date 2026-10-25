@@ -5,7 +5,7 @@ import { getSpecflowDir } from "../fs/workspace";
 import { parseDocumentFrontmatter } from "../schemas/frontmatter";
 import { TasksDocumentSchema, type TaskStatus } from "../schemas/tasks";
 import { flattenTasks } from "../fs/workspace";
-import { validateTaskGraph, computeTaskAvailability } from "../dag/workflow";
+import { validateTaskGraph, computeTaskAvailability, getErrorMessage } from "../dag/workflow";
 
 export interface DiagnosticCheck {
   id: string;
@@ -113,13 +113,13 @@ export function runHealthCheck(projectRoot: string): HealthReport {
             message: `${file} exists with valid frontmatter (status: ${parsed.frontmatter.status}).`,
           });
         }
-      } catch (err: any) {
+      } catch (err: unknown) {
         checks.push({
           id: `steering-${file}-error`,
           category: "steering",
           name: `Steering doc: ${file}`,
           status: "fail",
-          message: `Failed to read or parse .spexy/steering/${file}: ${err.message}`,
+          message: `Failed to read or parse .spexy/steering/${file}: ${getErrorMessage(err)}`,
           actionable: `Check file permissions and YAML frontmatter syntax in .spexy/steering/${file}.`,
         });
       }
@@ -185,13 +185,13 @@ export function runHealthCheck(projectRoot: string): HealthReport {
               message: `requirements.md exists with valid frontmatter.`,
             });
           }
-        } catch (err: any) {
+        } catch (err: unknown) {
           checks.push({
             id: `spec-${specId}-requirements-read`,
             category: "specs",
             name: `Spec "${specId}" requirements.md`,
             status: "fail",
-            message: `Error reading requirements.md in spec "${specId}": ${err.message}`,
+            message: `Error reading requirements.md in spec "${specId}": ${getErrorMessage(err)}`,
             actionable: `Fix file permissions or syntax in requirements.md.`,
           });
         }
@@ -230,13 +230,13 @@ export function runHealthCheck(projectRoot: string): HealthReport {
               message: `design.md exists with valid frontmatter.`,
             });
           }
-        } catch (err: any) {
+        } catch (err: unknown) {
           checks.push({
             id: `spec-${specId}-design-read`,
             category: "specs",
             name: `Spec "${specId}" design.md`,
             status: "fail",
-            message: `Error reading design.md in spec "${specId}": ${err.message}`,
+            message: `Error reading design.md in spec "${specId}": ${getErrorMessage(err)}`,
             actionable: `Fix file permissions or syntax in design.md.`,
           });
         }
@@ -256,17 +256,17 @@ export function runHealthCheck(projectRoot: string): HealthReport {
         continue;
       }
 
-      let parsedDoc: any = null;
+      let parsedDoc: unknown = null;
       try {
         const rawYaml = fs.readFileSync(tasksPath, "utf-8");
         parsedDoc = YAML.parse(rawYaml);
-      } catch (err: any) {
+      } catch (err: unknown) {
         checks.push({
           id: `spec-${specId}-tasks-syntax`,
           category: "tasks",
           name: `Spec "${specId}" tasks.yaml YAML syntax`,
           status: "fail",
-          message: `YAML syntax error in .spexy/specs/${specId}/tasks.yaml: ${err.message}`,
+          message: `YAML syntax error in .spexy/specs/${specId}/tasks.yaml: ${getErrorMessage(err)}`,
           actionable: `Fix YAML indentation and syntax in .spexy/specs/${specId}/tasks.yaml.`,
         });
         continue;
@@ -311,13 +311,13 @@ export function runHealthCheck(projectRoot: string): HealthReport {
           status: "pass",
           message: `Task DAG valid (${tasks.length} tasks, no cycles or dangling dependencies).`,
         });
-      } catch (err: any) {
+      } catch (err: unknown) {
         checks.push({
           id: `spec-${specId}-graph`,
           category: "graph",
           name: `Spec "${specId}" task graph DAG & availability`,
           status: "fail",
-          message: `Task graph error in spec "${specId}": ${err.message}`,
+          message: `Task graph error in spec "${specId}": ${getErrorMessage(err)}`,
           actionable: `Fix circular dependencies or missing referenced task IDs in .spexy/specs/${specId}/tasks.yaml.`,
         });
       }
@@ -394,13 +394,13 @@ export function runHealthCheck(projectRoot: string): HealthReport {
             });
           }
         }
-      } catch (err: any) {
+      } catch (err: unknown) {
         checks.push({
           id: "checkpoints-corrupt",
           category: "checkpoints",
           name: "Checkpoints index JSON parsing",
           status: "fail",
-          message: `Failed to read checkpoints index.json: ${err.message}`,
+          message: `Failed to read checkpoints index.json: ${getErrorMessage(err)}`,
           actionable: `Remove or fix corrupted JSON at ${indexPath}.`,
         });
       }

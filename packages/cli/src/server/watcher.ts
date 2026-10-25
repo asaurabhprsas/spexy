@@ -9,16 +9,17 @@ import {
   SPEXY_DIR,
   TasksDocumentSchema,
   validateTaskGraph,
+  getErrorMessage,
 } from "@spexy/core";
 
-export type BroadcastFn = (event: { type: string; payload: any }) => void;
+export type BroadcastFn = (event: { type: string; payload: unknown }) => void;
 
 export type WatcherLogFn = (entry: {
   category: "task" | "document" | "comment" | "watcher" | "checkpoint";
   action: string;
   actor: string;
   message: string;
-  details?: Record<string, any>;
+  details?: Record<string, unknown>;
 }) => void;
 
 const writeLocks = new Map<string, number>();
@@ -131,20 +132,20 @@ export function startWatcher(
             details: { file: path.relative(projectRoot, filePath), specId },
           });
         }
-      } catch (err: any) {
-        console.warn(`[Watcher] Corrupted tasks.yaml at ${filePath}:`, err.message);
+      } catch (err: unknown) {
+        console.warn(`[Watcher] Corrupted tasks.yaml at ${filePath}:`, getErrorMessage(err));
         broadcast({
           type: "FILE_CORRUPTED",
           payload: {
             file: path.relative(projectRoot, filePath),
-            error: err.message,
+            error: getErrorMessage(err),
           },
         });
         broadcast({
           type: "BACKGROUND_ERROR",
           payload: {
             title: "Corrupted tasks.yaml",
-            message: `Syntax or schema error in ${path.relative(projectRoot, filePath)}: ${err.message}`,
+            message: `Syntax or schema error in ${path.relative(projectRoot, filePath)}: ${getErrorMessage(err)}`,
             file: path.relative(projectRoot, filePath),
             timestamp: new Date().toISOString(),
           },
@@ -158,7 +159,7 @@ export function startWatcher(
             message: `Corrupted file detected: ${path.relative(projectRoot, filePath)}`,
             details: {
               file: path.relative(projectRoot, filePath),
-              error: err.message,
+              error: getErrorMessage(err),
             },
           });
         }
@@ -226,8 +227,8 @@ export function startWatcher(
             details: { file: path.relative(projectRoot, filePath) },
           });
         }
-      } catch (err: any) {
-        console.warn(`[Watcher] Error reading comments:`, err.message);
+      } catch (err: unknown) {
+        console.warn(`[Watcher] Error reading comments:`, getErrorMessage(err));
       }
       return;
     }
@@ -250,8 +251,8 @@ export function startWatcher(
             details: { file: path.relative(projectRoot, filePath) },
           });
         }
-      } catch (err: any) {
-        console.warn(`[Watcher] Error reading config:`, err.message);
+      } catch (err: unknown) {
+        console.warn(`[Watcher] Error reading config:`, getErrorMessage(err));
       }
       return;
     }
@@ -284,13 +285,13 @@ export function startWatcher(
   watcher.on("add", (filePath) => handleFileChange(filePath, "add"));
   watcher.on("change", (filePath) => handleFileChange(filePath, "change"));
   watcher.on("unlink", handleFileRemove);
-  watcher.on("error", (err: any) => {
+  watcher.on("error", (err: unknown) => {
     console.error("[Watcher Error]", err);
     broadcast({
       type: "BACKGROUND_ERROR",
       payload: {
         title: "File Watcher Error",
-        message: err?.message || String(err),
+        message: getErrorMessage(err),
         timestamp: new Date().toISOString(),
       },
     });

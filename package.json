@@ -14,13 +14,16 @@
     "skills/*"
   ],
   "scripts": {
-    "build": "pnpm run build:ui && pnpm run build:cli",
+    "build": "pnpm run build:ui && pnpm run build:cli && pnpm run build:vscode",
     "build:ui": "pnpm --filter @workspace/spexy run build",
     "build:cli": "pnpx tsx ./scripts/build-cli.ts",
+    "build:vscode": "pnpm --filter @workspace/spexy-vscode run build",
+    "cli": "node packages/cli/dist/bin.js",
     "typecheck": "tsc --noEmit && tsc -p packages/ui/tsconfig.json --noEmit",
     "publish:local": "pnpx tsx ./scripts/publish-local.ts",
     "local:publish": "pnpx tsx ./scripts/publish-local.ts",
     "link:skills": "node ./scripts/link-skills.ts",
+    "link:vscode": "pnpx tsx ./scripts/link-vscode.ts",
     "prepare": "node ./scripts/link-skills.ts && husky",
     "test": "vitest run",
     "release": "pnpx tsx ./scripts/release.ts",

@@ -1,6 +1,6 @@
 version: "1.0"
 project:
-  name: My Project
+  name: Spexy Repo
   primary_branch: main
 gates:
   enforce_steering_approval: true

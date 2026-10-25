@@ -8,6 +8,7 @@
   },
   "include": [
     "packages/core/src/**/*",
-    "packages/cli/src/**/*"
+    "packages/cli/src/**/*",
+    "packages/vscode-extension/src/**/*"
   ]
 }

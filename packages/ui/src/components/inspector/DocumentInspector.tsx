@@ -127,10 +127,10 @@ export function DocumentInspector({ documentId, onClose }: DocumentInspectorProp
           variant: 'destructive',
         });
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       toast({
         title: 'Archive Error',
-        description: err?.message || 'Network error archiving document.',
+        description: err instanceof Error ? err.message : 'Network error archiving document.',
         variant: 'destructive',
       });
     } finally {
@@ -238,9 +238,9 @@ export function DocumentInspector({ documentId, onClose }: DocumentInspectorProp
     setIsLoadingHistory(true);
     fetch(`/api/comments/history?target_file=${encodeURIComponent(documentId)}`)
       .then((res) => (res.ok ? res.json() : []))
-      .then((data: any) => {
+      .then((data: unknown) => {
         if (!cancelled) {
-          const list: Comment[] = Array.isArray(data) ? data : [];
+          const list: Comment[] = Array.isArray(data) ? (data as Comment[]) : [];
           const localResolved = docComments.filter((c: Comment) => c.status === 'resolved');
           const merged = [...list];
           for (const lr of localResolved) {
@@ -446,8 +446,8 @@ export function DocumentInspector({ documentId, onClose }: DocumentInspectorProp
         title: `${uploaded.length} ${uploaded.length === 1 ? 'attachment' : 'attachments'} uploaded`,
         description: `Attached ${uploaded.map((u) => `"${u.name}"`).join(', ')} as reference.`,
       });
-    } catch (err: any) {
-      toast({ title: 'Upload error', description: err.message, variant: 'destructive' });
+    } catch (err: unknown) {
+      toast({ title: 'Upload error', description: err instanceof Error ? err.message : String(err), variant: 'destructive' });
     } finally {
       setIsUploading(false);
       e.target.value = '';
@@ -505,8 +505,8 @@ export function DocumentInspector({ documentId, onClose }: DocumentInspectorProp
       } else {
         toast({ title: 'Failed to post comment', variant: 'destructive' });
       }
-    } catch (err: any) {
-      toast({ title: 'Error posting comment', description: err.message, variant: 'destructive' });
+    } catch (err: unknown) {
+      toast({ title: 'Error posting comment', description: err instanceof Error ? err.message : String(err), variant: 'destructive' });
     }
   };
 
@@ -1177,8 +1177,8 @@ export function DocumentInspector({ documentId, onClose }: DocumentInspectorProp
                             <Paperclip size={11} /> ATTACHED REFERENCES:
                           </div>
                           <div className="flex flex-wrap gap-1.5">
-                            {((comment as any).attachments || (comment as any).attached_files).map((att: any, idx: number) => {
-                              const attPath = typeof att === 'string' ? att : att.path || att.name;
+                            {((comment as { attachments?: Array<{ name?: string; path?: string; is_temp?: boolean } | string>; attached_files?: Array<{ name?: string; path?: string; is_temp?: boolean } | string> }).attachments || (comment as { attached_files?: Array<{ name?: string; path?: string; is_temp?: boolean } | string> }).attached_files || []).map((att: { name?: string; path?: string; is_temp?: boolean } | string, idx: number) => {
+                              const attPath = typeof att === 'string' ? att : att.path || att.name || '';
                               const attName = typeof att === 'string' ? att.split('/').pop() : att.name || att.path?.split('/').pop();
                               const isTemp = typeof att === 'object' ? Boolean(att.is_temp || att.path?.includes('.temp')) : att.includes('.temp');
                               return (
@@ -1197,7 +1197,7 @@ export function DocumentInspector({ documentId, onClose }: DocumentInspectorProp
                                       type="button"
                                       onClick={(e) => {
                                         e.stopPropagation();
-                                        void handlePreserveAttachment(attName, attPath);
+                                        void handlePreserveAttachment(attName || 'attachment', attPath);
                                       }}
                                       title="Preserve in repository permanently (moves out of .temp)"
                                       className="text-[10px] text-amber-600 dark:text-amber-400 hover:text-emerald-600 flex items-center gap-0.5 ml-1 bg-amber-500/10 px-1 py-0.5 rounded"
@@ -1327,8 +1327,8 @@ export function DocumentInspector({ documentId, onClose }: DocumentInspectorProp
                             <Paperclip size={11} /> ATTACHED REFERENCES:
                           </div>
                           <div className="flex flex-wrap gap-1.5">
-                            {((comment as any).attachments || (comment as any).attached_files).map((att: any, idx: number) => {
-                              const attPath = typeof att === 'string' ? att : att.path || att.name;
+                            {((comment as { attachments?: Array<{ name?: string; path?: string; is_temp?: boolean } | string>; attached_files?: Array<{ name?: string; path?: string; is_temp?: boolean } | string> }).attachments || (comment as { attached_files?: Array<{ name?: string; path?: string; is_temp?: boolean } | string> }).attached_files || []).map((att: { name?: string; path?: string; is_temp?: boolean } | string, idx: number) => {
+                              const attPath = typeof att === 'string' ? att : att.path || att.name || '';
                               const attName = typeof att === 'string' ? att.split('/').pop() : att.name || att.path?.split('/').pop();
                               return (
                                 <a
@@ -1349,13 +1349,13 @@ export function DocumentInspector({ documentId, onClose }: DocumentInspectorProp
 
                       <div className="text-[11px] text-emerald-700 dark:text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 p-2 rounded mb-2 font-mono">
                         <span className="font-semibold block mb-0.5">Resolution Note:</span>
-                        {comment.resolutionNote || (comment as any).resolution_note || 'Verified and addressed'}
+                        {comment.resolutionNote || (comment as { resolution_note?: string }).resolution_note || 'Verified and addressed'}
                       </div>
 
                       <div className="flex items-center justify-between pt-1 text-[10px] text-muted-foreground">
                         <span className="flex items-center gap-1 font-mono">
                           <Clock size={11} />
-                          Resolved: {(comment as any).resolvedAt || (comment as any).resolved_at ? new Date((comment as any).resolvedAt || (comment as any).resolved_at).toLocaleString() : new Date(comment.createdAt).toLocaleDateString()}
+                          Resolved: {(comment as { resolvedAt?: string; resolved_at?: string }).resolvedAt || (comment as { resolved_at?: string }).resolved_at ? new Date(((comment as { resolvedAt?: string; resolved_at?: string }).resolvedAt || (comment as { resolved_at?: string }).resolved_at) as string).toLocaleString() : new Date(comment.createdAt).toLocaleDateString()}
                         </span>
                         <Button
                           size="sm"

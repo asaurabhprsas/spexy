@@ -329,28 +329,45 @@ export function TaskDagViewer({ tasks, onSelectTask }: TaskDagViewerProps) {
             size="sm"
             variant="ghost"
             className="h-7 w-7 p-0"
-            onClick={() => setZoomLevel((z) => Math.max(0.6, z - 0.15))}
-            title="Zoom Out"
+            onClick={() => setZoomLevel((z) => Math.max(0.3, Number((z - 0.15).toFixed(2))))}
+            title="Zoom Out (Ctrl + Scroll Down)"
           >
             <ZoomOut size={14} />
           </Button>
-          <span className="font-mono text-[10px] text-muted-foreground w-10 text-center">
+          <button
+            type="button"
+            onClick={() => setZoomLevel(1)}
+            title="Reset Zoom to 100%"
+            className="font-mono text-[10px] text-muted-foreground hover:text-primary px-1.5 py-0.5 rounded hover:bg-muted transition-colors cursor-pointer"
+          >
             {Math.round(zoomLevel * 100)}%
-          </span>
+          </button>
           <Button
             size="sm"
             variant="ghost"
             className="h-7 w-7 p-0"
-            onClick={() => setZoomLevel((z) => Math.min(1.8, z + 0.15))}
-            title="Zoom In"
+            onClick={() => setZoomLevel((z) => Math.min(3.0, Number((z + 0.15).toFixed(2))))}
+            title="Zoom In (Ctrl + Scroll Up)"
           >
             <ZoomIn size={14} />
           </Button>
+          {zoomLevel !== 1 && (
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-7 px-2 text-[10px] font-mono gap-1"
+              onClick={() => setZoomLevel(1)}
+              title="Reset Zoom to 100%"
+            >
+              <RotateCcw size={11} />
+              100%
+            </Button>
+          )}
           {selectedTaskId && (
             <Button
               size="sm"
               variant="outline"
-              className="h-7 text-xs gap-1 ml-2"
+              className="h-7 text-xs gap-1 ml-1"
               onClick={() => setSelectedTaskId(null)}
             >
               <RotateCcw size={12} />
@@ -361,7 +378,16 @@ export function TaskDagViewer({ tasks, onSelectTask }: TaskDagViewerProps) {
       </div>
 
       {/* SVG Canvas Area */}
-      <div className="relative min-h-[480px] max-h-[640px] overflow-auto bg-background/50 p-6 flex justify-center items-start">
+      <div
+        className="relative min-h-[480px] max-h-[640px] overflow-auto bg-background/50 p-6 flex justify-center items-start cursor-grab active:cursor-grabbing"
+        onWheel={(e) => {
+          if (e.ctrlKey || e.metaKey) {
+            e.preventDefault();
+            const delta = e.deltaY < 0 ? 0.1 : -0.1;
+            setZoomLevel((z) => Math.min(3.0, Math.max(0.3, Number((z + delta).toFixed(2)))));
+          }
+        }}
+      >
         <svg
           width={width * zoomLevel}
           height={height * zoomLevel}

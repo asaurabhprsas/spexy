@@ -39,7 +39,7 @@ import {
   updateComment,
   listCommentHistory,
 } from "./comments/fuzzy-anchor";
-import { acquireTaskLease } from "./git/worktree";
+import { acquireTaskLease, getAlternativeAvailableTasks } from "./git/worktree";
 import { TaskItem } from "./schemas/tasks";
 import { archiveDocument } from "./documents/archive";
 import { getPreferences, updatePreferences } from "./config";
@@ -502,6 +502,62 @@ Document body here.`;
       expect(() => acquireTaskLease(task, "worktree-billing", "feat-billing")).toThrow(
         /already leased/i,
       );
+    });
+
+    it("suggests unblocked alternative available tasks from DAG", () => {
+      const tasks: TaskItem[] = [
+        {
+          id: "task-1",
+          parent_id: null,
+          title: "Task 1 (leased)",
+          description: "",
+          status: "in-progress",
+          priority: "high",
+          depends_on: [],
+          worktree: "worker-1",
+          branch: "feat-1",
+          locked_at: new Date().toISOString(),
+          files: [],
+          leverage: "",
+          requirements_ref: [],
+          notes: { security: null, testing: null },
+        },
+        {
+          id: "task-2",
+          parent_id: null,
+          title: "Task 2 (blocked by 1)",
+          description: "",
+          status: "todo",
+          priority: "medium",
+          depends_on: ["task-1"],
+          worktree: null,
+          branch: null,
+          locked_at: null,
+          files: [],
+          leverage: "",
+          requirements_ref: [],
+          notes: { security: null, testing: null },
+        },
+        {
+          id: "task-3",
+          parent_id: null,
+          title: "Task 3 (independent available)",
+          description: "",
+          status: "todo",
+          priority: "low",
+          depends_on: [],
+          worktree: null,
+          branch: null,
+          locked_at: null,
+          files: [],
+          leverage: "",
+          requirements_ref: [],
+          notes: { security: null, testing: null },
+        },
+      ];
+
+      const alternatives = getAlternativeAvailableTasks(tasks, "task-1");
+      expect(alternatives.map((t) => t.id)).toEqual(["task-3"]);
     });
   });
 

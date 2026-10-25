@@ -42,8 +42,17 @@ import {
   WorkflowActor,
   WorkflowRuleError,
   writeTasksYaml,
+  CommentItem,
+  CommentAnchor,
+  getErrorMessage,
 } from "@spexy/core";
 import { startWatcher, withFileWriteLock, WatcherHandle } from "./watcher";
+
+export interface ServerWebSocketHandler {
+  open: (ws: { send: (data: string) => void }) => void;
+  message: (ws: { send: (data: string) => void }, message: string | Buffer | ArrayBuffer) => void;
+  close: (ws: { send: (data: string) => void }) => void;
+}
 
 export interface ServerOptions {
   port?: number;
@@ -61,15 +70,15 @@ export interface ActivityLogEntry {
   action: string;
   actor: string;
   message: string;
-  details?: Record<string, any>;
+  details?: Record<string, unknown>;
 }
 
 export interface ServerInstance {
-  server: any;
+  server: unknown;
   port: number;
   host: string;
   url: string;
-  broadcast: (event: { type: string; payload: any }) => void;
+  broadcast: (event: { type: string; payload: unknown }) => void;
   logActivity?: (entry: Omit<ActivityLogEntry, "id" | "timestamp">) => ActivityLogEntry;
   activityLogs?: ActivityLogEntry[];
   close: () => Promise<void>;
@@ -100,21 +109,21 @@ const MIME_TYPES: Record<string, string> = {
   ".log": "text/plain; charset=utf-8",
 };
 
-function formatComment(c: any) {
+function formatComment(c: CommentItem) {
   return {
     ...c,
     documentId: c.target_file,
     target_file: c.target_file,
-    selectedText: c.anchor?.anchor_text ?? c.selectedText ?? "",
-    startLine: c.anchor?.start_line ?? c.startLine ?? 1,
-    endLine: c.anchor?.end_line ?? c.endLine ?? 1,
+    selectedText: c.anchor?.anchor_text ?? "",
+    startLine: c.anchor?.start_line ?? 1,
+    endLine: c.anchor?.end_line ?? 1,
     status: c.status === "addressed" ? "resolved" : c.status,
     resolutionNote: c.resolution_note ?? null,
     createdAt: c.created_at || new Date().toISOString(),
   };
 }
 
-function json(data: any, status: number = 200, headers: Record<string, string> = {}): Response {
+function json(data: unknown, status: number = 200, headers: Record<string, string> = {}): Response {
   return new Response(JSON.stringify(data), {
     status,
     headers: {
@@ -179,10 +188,10 @@ function appendToImplementationLog(specDir: string, message: string): void {
 }
 
 export function createServer(options: ServerOptions = {}): {
-  fetch: (req: Request, server?: any) => Promise<Response | undefined> | Response | undefined;
-  websocket: any;
-  broadcast: (event: { type: string; payload: any }) => void;
-  clients: Set<any>;
+  fetch: (req: Request, server?: { upgrade?: (req: Request, options?: { data?: unknown }) => boolean }) => Promise<Response | undefined> | Response | undefined;
+  websocket: ServerWebSocketHandler;
+  broadcast: (event: { type: string; payload: unknown }) => void;
+  clients: Set<{ send: (data: string) => void; close?: () => void }>;
   logActivity: (entry: Omit<ActivityLogEntry, "id" | "timestamp">) => ActivityLogEntry;
   activityLogs: ActivityLogEntry[];
 } {
@@ -192,9 +201,9 @@ export function createServer(options: ServerOptions = {}): {
   const bundledStatic = path.resolve(import.meta.dirname, "../static");
   const devStatic = path.resolve(import.meta.dirname, "../../static");
   const staticDir = fs.existsSync(bundledStatic) ? bundledStatic : devStatic;
-  const clients = new Set<any>();
+  const clients = new Set<{ send: (data: string) => void; close?: () => void }>();
 
-  const broadcast = (event: { type: string; payload: any }) => {
+  const broadcast = (event: { type: string; payload: unknown }) => {
     const raw = JSON.stringify(event);
     for (const ws of clients) {
       try {
@@ -237,7 +246,7 @@ export function createServer(options: ServerOptions = {}): {
     });
   };
 
-  const handleWsMessage = async (ws: any, rawData: any) => {
+  const handleWsMessage = async (ws: { send: (data: string) => void }, rawData: string | Buffer | ArrayBuffer) => {
     try {
       const text = typeof rawData === "string" ? rawData : rawData.toString();
       const message = JSON.parse(text);
@@ -309,7 +318,7 @@ export function createServer(options: ServerOptions = {}): {
       if (message.type === "COMMENT_CREATE") {
         const payload = message.payload || {};
         const commentsPath = path.join(getSpecflowDir(projectRoot), ".cache", "pending-comments.yaml");
-        let newComment: any;
+        let newComment: CommentItem | undefined;
 
         await withFileWriteLock(commentsPath, () => {
           newComment = addComment(projectRoot, {
@@ -321,6 +330,11 @@ export function createServer(options: ServerOptions = {}): {
           });
         });
 
+        if (!newComment) {
+          ws.send(JSON.stringify({ type: "ERROR", error: "Failed to create comment" }));
+          return;
+        }
+
         broadcast({
           type: "COMMENTS_UPDATED",
           payload: { comments: readPendingCommentsDoc(projectRoot).comments.map(formatComment) },
@@ -331,7 +345,7 @@ export function createServer(options: ServerOptions = {}): {
           action: "create",
           actor: payload.author || "human",
           message: `Created comment on ${payload.target_file}`,
-          details: { commentId: newComment.id, target_file: payload.target_file },
+          details: { commentId: (newComment as CommentItem).id, target_file: payload.target_file },
         });
 
         ws.send(JSON.stringify({
@@ -346,11 +360,16 @@ export function createServer(options: ServerOptions = {}): {
       if (message.type === "COMMENT_RESOLVE") {
         const { commentId, note = "Resolved", purge = true } = message.payload || {};
         const commentsPath = path.join(getSpecflowDir(projectRoot), ".cache", "pending-comments.yaml");
-        let resolved: any;
+        let resolved: CommentItem | undefined;
 
         await withFileWriteLock(commentsPath, () => {
           resolved = resolveComment(projectRoot, commentId, note, { purge });
         });
+
+        if (!resolved) {
+          ws.send(JSON.stringify({ type: "ERROR", error: "Failed to resolve comment" }));
+          return;
+        }
 
         broadcast({
           type: "COMMENTS_UPDATED",
@@ -373,12 +392,12 @@ export function createServer(options: ServerOptions = {}): {
         }));
         return;
       }
-    } catch (err: any) {
-      ws.send(JSON.stringify({ type: "ERROR", error: err.message }));
+    } catch (err: unknown) {
+      ws.send(JSON.stringify({ type: "ERROR", error: getErrorMessage(err) }));
     }
   };
 
-  const handleFetch = async (req: Request, server?: any): Promise<Response | undefined> => {
+  const handleFetch = async (req: Request, server?: { upgrade?: (req: Request, options?: { data?: unknown }) => boolean }): Promise<Response | undefined> => {
     const url = new URL(req.url);
     const pathname = url.pathname;
     const method = req.method;
@@ -692,7 +711,7 @@ export function createServer(options: ServerOptions = {}): {
             pathname === "/api/features/all/tasks") &&
           method === "GET"
         ) {
-          const allTasks: any[] = [];
+          const allTasks: Array<TaskItem & { spec_id: string; specId: string; availability: string; blockers: string[] }> = [];
           const specs = listSpecs(projectRoot);
           for (const spec of specs) {
             try {
@@ -759,8 +778,8 @@ export function createServer(options: ServerOptions = {}): {
           let taskLocation: { specId: string; tasksDoc: TasksDocument; task: TaskItem; specDir: string };
           try {
             taskLocation = findTaskAcrossSpecs(projectRoot, taskId);
-          } catch (err: any) {
-            return json({ error: err.message }, 404);
+          } catch (err: unknown) {
+            return json({ error: getErrorMessage(err) }, 404);
           }
 
           const { specId, tasksDoc: doc, task: target } = taskLocation;
@@ -768,8 +787,9 @@ export function createServer(options: ServerOptions = {}): {
           let nextStatus: TaskStatus;
           try {
             nextStatus = transitionTask(target.status, action, actor, targetStatus);
-          } catch (err: any) {
-            return json({ error: err.message, code: err.code }, 400);
+          } catch (err: unknown) {
+            const code = err instanceof WorkflowRuleError ? err.code : undefined;
+            return json({ error: getErrorMessage(err), code }, 400);
           }
 
           const updatedTask: TaskItem = { ...target, status: nextStatus };
@@ -953,8 +973,9 @@ export function createServer(options: ServerOptions = {}): {
           let nextStatus: TaskStatus;
           try {
             nextStatus = transitionTask(target.status, action, actor, targetStatus);
-          } catch (err: any) {
-            return json({ error: err.message, code: err.code }, 400);
+          } catch (err: unknown) {
+            const code = err instanceof WorkflowRuleError ? err.code : undefined;
+            return json({ error: getErrorMessage(err), code }, 400);
           }
 
           const updatedTask: TaskItem = { ...target, status: nextStatus };
@@ -1380,8 +1401,9 @@ export function createServer(options: ServerOptions = {}): {
           let nextStatus: TaskStatus;
           try {
             nextStatus = transitionTask(target.status, action, actor, targetStatus);
-          } catch (err: any) {
-            return json({ error: err.message, code: err.code }, 400);
+          } catch (err: unknown) {
+            const code = err instanceof WorkflowRuleError ? err.code : undefined;
+            return json({ error: getErrorMessage(err), code }, 400);
           }
 
           const updatedTask: TaskItem = { ...target, status: nextStatus };
@@ -1480,7 +1502,7 @@ export function createServer(options: ServerOptions = {}): {
           }
 
           const commentsPath = path.join(getSpecflowDir(projectRoot), ".cache", "pending-comments.yaml");
-          let newComment: any;
+          let newComment: CommentItem | undefined;
 
           await withFileWriteLock(commentsPath, () => {
             newComment = addComment(projectRoot, {
@@ -1495,6 +1517,10 @@ export function createServer(options: ServerOptions = {}): {
             });
           });
 
+          if (!newComment) {
+            return json({ error: "Failed to create comment" }, 500);
+          }
+
           broadcast({
             type: "COMMENTS_UPDATED",
             payload: { comments: readPendingCommentsDoc(projectRoot).comments.map(formatComment) },
@@ -1505,7 +1531,7 @@ export function createServer(options: ServerOptions = {}): {
             action: "create",
             actor: data.author || "human",
             message: `Created comment on ${target_file}`,
-            details: { commentId: newComment.id, target_file },
+            details: { commentId: (newComment as CommentItem).id, target_file },
           });
 
           return json(formatComment(newComment), 201);
@@ -1528,11 +1554,15 @@ export function createServer(options: ServerOptions = {}): {
           const purge = data.purge !== false;
 
           const commentsPath = path.join(getSpecflowDir(projectRoot), ".cache", "pending-comments.yaml");
-          let resolved: any;
+          let resolved: CommentItem | undefined;
 
           await withFileWriteLock(commentsPath, () => {
             resolved = resolveComment(projectRoot, commentId, note, { purge });
           });
+
+          if (!resolved) {
+            return json({ error: "Failed to resolve comment" }, 500);
+          }
 
           logActivity({
             category: "comment",
@@ -1557,7 +1587,7 @@ export function createServer(options: ServerOptions = {}): {
           const reqBody = await parseBody(req);
           const data = reqBody.data || reqBody;
 
-          const updates: any = {};
+          const updates: { instruction?: string; anchor?: Partial<CommentAnchor> } = {};
           if (data.instruction !== undefined) {
             updates.instruction = data.instruction;
           }
@@ -1573,11 +1603,15 @@ export function createServer(options: ServerOptions = {}): {
           }
 
           const commentsPath = path.join(getSpecflowDir(projectRoot), ".cache", "pending-comments.yaml");
-          let updated: any;
+          let updated: CommentItem | undefined;
 
           await withFileWriteLock(commentsPath, () => {
             updated = updateComment(projectRoot, commentId, updates);
           });
+
+          if (!updated) {
+            return json({ error: "Failed to update comment" }, 500);
+          }
 
           logActivity({
             category: "comment",
@@ -1669,7 +1703,17 @@ export function createServer(options: ServerOptions = {}): {
         // GET /api/documents (Dashboard document list compatibility)
         if (pathname === "/api/documents" && method === "GET") {
           const steering = getSteeringStatus(projectRoot);
-          const docs: any[] = [];
+          interface ApiDocItem {
+            id: string;
+            kind: string;
+            title: string;
+            path: string;
+            status: string;
+            approvedBy: string | null;
+            revision: number;
+            updatedAt: string;
+          }
+          const docs: ApiDocItem[] = [];
 
           for (const d of steering.documents) {
             docs.push({
@@ -1859,7 +1903,7 @@ export function createServer(options: ServerOptions = {}): {
 
         // Unknown API route
         return json({ error: `Endpoint not found: ${method} ${pathname}` }, 404);
-      } catch (err: any) {
+      } catch (err: unknown) {
         return errorJson(err);
       }
     }
@@ -1904,13 +1948,13 @@ export function createServer(options: ServerOptions = {}): {
   };
 
   const websocket = {
-    open(ws: any) {
+    open(ws: { send: (data: string) => void }) {
       clients.add(ws);
     },
-    message(ws: any, message: any) {
+    message(ws: { send: (data: string) => void }, message: string | Buffer | ArrayBuffer) {
       handleWsMessage(ws, message);
     },
-    close(ws: any) {
+    close(ws: { send: (data: string) => void }) {
       clients.delete(ws);
     },
   };
@@ -2014,18 +2058,18 @@ export function startServer(
       } else {
         nodeRes.end();
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       broadcast({
         type: "BACKGROUND_ERROR",
         payload: {
           title: "Dashboard Server Error",
-          message: err.message || "Internal Server Error",
+          message: getErrorMessage(err),
           timestamp: new Date().toISOString(),
         },
       });
       if (!nodeRes.headersSent) {
         nodeRes.writeHead(500, { "Content-Type": "application/json" });
-        nodeRes.end(JSON.stringify({ error: err.message || "Internal Server Error" }));
+        nodeRes.end(JSON.stringify({ error: getErrorMessage(err) }));
       }
     }
   });
@@ -2069,7 +2113,7 @@ export function startServer(
       await watcherHandle.close();
       for (const client of clients) {
         try {
-          client.close();
+          client.close?.();
         } catch {
           // ignore
         }

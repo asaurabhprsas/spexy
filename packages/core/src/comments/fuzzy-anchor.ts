@@ -89,7 +89,7 @@ export function listComments(
 export type AddCommentInput = {
   id?: string;
   target_file?: string;
-  target_type?: "document" | "task" | "general" | "spec";
+  target_type?: "document" | "task" | "general" | "spec" | "code" | "file";
   target_id?: string | null;
   author?: "human" | "agent";
   anchor?: CommentAnchor | null;

@@ -6,6 +6,11 @@ import YAML from "yaml";
 import packageJson from "../package.json";
 import {
   findProjectRoot,
+  findCentralProjectRoot,
+  getAlternativeAvailableTasks,
+  listRegisteredWorktrees,
+  addComment,
+  getErrorMessage,
   getSpecflowDir,
   initSpexyWorkspace,
   getSteeringStatus,
@@ -87,7 +92,7 @@ program
   .option("--check", "Run workspace health checks (alias for --doctor)");
 
 function getRoot(): string {
-  return findProjectRoot(process.cwd());
+  return findCentralProjectRoot(process.cwd());
 }
 
 function handleDoctor(options: { compact?: boolean; json?: boolean }): void {
@@ -104,8 +109,8 @@ function handleDoctor(options: { compact?: boolean; json?: boolean }): void {
     if (!report.valid) {
       process.exit(1);
     }
-  } catch (err: any) {
-    console.error(`Error executing health check: ${err.message}`);
+  } catch (err: unknown) {
+    console.error(`Error executing health check: ${getErrorMessage(err)}`);
     process.exit(1);
   }
 }
@@ -155,8 +160,8 @@ program
       console.log(`✓ Spexy workspace initialized at: ${targetDir}`);
       console.log(`  • Created .spexy/ (steering, specs, templates, .cache)`);
       console.log(`\nNext step: Run "spexy status" to review steering documents.`);
-    } catch (err: any) {
-      console.error(`Error initializing workspace: ${err.message}`);
+    } catch (err: unknown) {
+      console.error(`Error initializing workspace: ${getErrorMessage(err)}`);
       process.exit(1);
     }
   });
@@ -204,8 +209,8 @@ program
           console.log(`  • ${spec.id} [${spec.status}]: ${spec.completedTaskCount}/${spec.taskCount} tasks done (${percent}%)`);
         }
       }
-    } catch (err: any) {
-      console.error(`Error checking status: ${err.message}`);
+    } catch (err: unknown) {
+      console.error(`Error checking status: ${getErrorMessage(err)}`);
       process.exit(1);
     }
   });
@@ -266,8 +271,8 @@ specCmd
           console.log(s.id.padEnd(20) + s.status.padEnd(15) + progress.padEnd(15) + s.name);
         }
       }
-    } catch (err: any) {
-      console.error(`Error listing specs: ${err.message}`);
+    } catch (err: unknown) {
+      console.error(`Error listing specs: ${getErrorMessage(err)}`);
       process.exit(1);
     }
   });
@@ -287,8 +292,8 @@ specCmd
       console.log(`  • design.md`);
       console.log(`  • tasks.yaml`);
       console.log(`  • implementation.log`);
-    } catch (err: any) {
-      console.error(`Error creating spec "${id}": ${err.message}`);
+    } catch (err: unknown) {
+      console.error(`Error creating spec "${id}": ${getErrorMessage(err)}`);
       process.exit(1);
     }
   });
@@ -351,7 +356,7 @@ taskCmd
               blockers,
             });
           }
-        } catch (err: any) {
+        } catch (err: unknown) {
           if (specId) throw err;
         }
       }
@@ -405,8 +410,8 @@ taskCmd
             t.title,
         );
       }
-    } catch (err: any) {
-      console.error(`Error listing tasks: ${err.message}`);
+    } catch (err: unknown) {
+      console.error(`Error listing tasks: ${getErrorMessage(err)}`);
       process.exit(1);
     }
   });
@@ -496,8 +501,29 @@ taskCmd
       console.log(`  • Status:   in-progress`);
       console.log(`  • Worktree: ${git.currentWorktree}`);
       console.log(`  • Branch:   ${git.branch}`);
-    } catch (err: any) {
-      console.error(`Error starting task "${taskId}": ${err.message}`);
+    } catch (err: unknown) {
+      if (err instanceof WorkflowRuleError && err.code === "TASK_LEASE_CONFLICT") {
+        console.error(`\n[Blocked] ${err.message}`);
+        try {
+          const projectRoot = getRoot();
+          const { tasksDoc } = findTaskAcrossSpecs(projectRoot, taskId);
+          const tasks = flattenTasks(tasksDoc);
+          const alternatives = getAlternativeAvailableTasks(tasks, taskId);
+          if (alternatives.length > 0) {
+            console.log(`\nSuggested independent tasks ready to work on:`);
+            for (const alt of alternatives) {
+              console.log(`  • ${alt.id.padEnd(8)} - ${alt.title} (priority: ${alt.priority})`);
+            }
+            console.log(`\nClaim an alternative task with: spexy task start <task-id>`);
+          } else {
+            console.log(`\nNo other independent tasks are currently available in this spec.`);
+          }
+        } catch {
+          // ignore fallback
+        }
+      } else {
+        console.error(`Error starting task "${taskId}": ${getErrorMessage(err)}`);
+      }
       process.exit(1);
     }
   });
@@ -535,8 +561,8 @@ taskCmd
         console.log(`  • Note:   ${options.note}`);
       }
       console.log(`\nNotice: Only a human reviewer can verify and mark tasks as "done" (spexy task approve ${taskId} --human).`);
-    } catch (err: any) {
-      console.error(`Error completing task "${taskId}": ${err.message}`);
+    } catch (err: unknown) {
+      console.error(`Error completing task "${taskId}": ${getErrorMessage(err)}`);
       process.exit(1);
     }
   });
@@ -569,8 +595,8 @@ taskCmd
       console.log(`✓ Task "${taskId}" approved by human reviewer.`);
       console.log(`  • Spec:   ${specId}`);
       console.log(`  • Status: done`);
-    } catch (err: any) {
-      console.error(`Error approving task "${taskId}": ${err.message}`);
+    } catch (err: unknown) {
+      console.error(`Error approving task "${taskId}": ${getErrorMessage(err)}`);
       process.exit(1);
     }
   });
@@ -615,8 +641,76 @@ taskCmd
       if (options.note) {
         console.log(`  • Note:   ${options.note}`);
       }
-    } catch (err: any) {
-      console.error(`Error rejecting task "${taskId}": ${err.message}`);
+    } catch (err: unknown) {
+      console.error(`Error rejecting task "${taskId}": ${getErrorMessage(err)}`);
+      process.exit(1);
+    }
+  });
+
+taskCmd
+  .command("next [spec-id]")
+  .description("Find the next unblocked, ready-to-claim task")
+  .option("-c, --compact", "Output minimal fields")
+  .option("--format <format>", "Format output as json or yaml")
+  .option("--json", "Output as JSON")
+  .option("--yaml", "Output as YAML")
+  .action((specIdArg, options) => {
+    try {
+      const projectRoot = getRoot();
+      const format = resolveFormat(options);
+      const targetSpecs = specIdArg
+        ? [{ id: specIdArg }]
+        : listSpecs(projectRoot);
+
+      const availableCandidates: Array<{ specId: string; task: TaskItem }> = [];
+      for (const s of targetSpecs) {
+        try {
+          const doc = readTasksYaml(projectRoot, s.id);
+          const tasks = flattenTasks(doc);
+          const available = getAlternativeAvailableTasks(tasks);
+          for (const t of available) {
+            availableCandidates.push({ specId: s.id, task: t });
+          }
+        } catch {
+          // ignore spec without valid tasks
+        }
+      }
+
+      if (availableCandidates.length === 0) {
+        if (format === "json") {
+          console.log(JSON.stringify({ available: false, candidate: null }));
+          return;
+        }
+        if (format === "yaml") {
+          console.log(dumpYaml({ available: false, candidate: null }));
+          return;
+        }
+        console.log("No available tasks ready to claim (all tasks in progress, completed, or waiting on dependencies).");
+        return;
+      }
+
+      // Prioritize high/critical tasks first
+      const priorityWeights: Record<string, number> = { critical: 4, high: 3, medium: 2, low: 1 };
+      availableCandidates.sort((a, b) => (priorityWeights[b.task.priority] || 0) - (priorityWeights[a.task.priority] || 0));
+
+      const next = availableCandidates[0];
+
+      if (format === "json") {
+        console.log(JSON.stringify(options.compact ? { spec: next.specId, id: next.task.id, title: next.task.title, priority: next.task.priority } : next, null, 2));
+        return;
+      }
+      if (format === "yaml") {
+        console.log(dumpYaml(options.compact ? { spec: next.specId, id: next.task.id, title: next.task.title, priority: next.task.priority } : next));
+        return;
+      }
+
+      console.log(`✓ Next available task: ${next.task.id} - ${next.task.title}`);
+      console.log(`  • Spec:     ${next.specId}`);
+      console.log(`  • Priority: ${next.task.priority}`);
+      console.log(`  • Depends:  ${next.task.depends_on.join(", ") || "none"}`);
+      console.log(`  • Claim:    spexy task start ${next.task.id}`);
+    } catch (err: unknown) {
+      console.error(`Error finding next task: ${getErrorMessage(err)}`);
       process.exit(1);
     }
   });
@@ -684,8 +778,58 @@ commentCmd
             c.instruction,
         );
       }
-    } catch (err: any) {
-      console.error(`Error listing comments: ${err.message}`);
+    } catch (err: unknown) {
+      console.error(`Error listing comments: ${getErrorMessage(err)}`);
+      process.exit(1);
+    }
+  });
+
+commentCmd
+  .command("add")
+  .description("Add an anchored or general review comment to any file in the workspace")
+  .requiredOption("-i, --instruction <text>", "Instruction or review feedback")
+  .option("-f, --file <file>", "Target file path relative to project root", "")
+  .option("-l, --line <range>", "Anchor line or line range (e.g. 10 or 10-25)")
+  .option("-s, --snippet <text>", "Anchor code snippet or excerpt", "")
+  .option("-t, --type <type>", "Target type (code, file, document, task, general)", "file")
+  .option("-a, --author <author>", "Author role (human or agent)", "human")
+  .action((options) => {
+    try {
+      const projectRoot = getRoot();
+      let anchor = null;
+      if (options.line) {
+        const parts = options.line.split("-").map((p: string) => parseInt(p.trim(), 10));
+        const start_line = isNaN(parts[0]) ? 1 : parts[0];
+        const end_line = isNaN(parts[1]) ? start_line : parts[1];
+        anchor = {
+          start_line,
+          end_line,
+          anchor_text: options.snippet || "",
+          context_before: "",
+        };
+      } else if (options.snippet) {
+        anchor = {
+          start_line: 1,
+          end_line: 1,
+          anchor_text: options.snippet,
+          context_before: "",
+        };
+      }
+
+      const comment = addComment(projectRoot, {
+        target_file: options.file || "",
+        target_type: options.type as any,
+        author: options.author === "agent" ? "agent" : "human",
+        instruction: options.instruction,
+        anchor,
+      });
+
+      console.log(`✓ Comment "${comment.id}" added.`);
+      if (comment.target_file) console.log(`  • File:   ${comment.target_file}`);
+      if (comment.anchor) console.log(`  • Lines:  ${comment.anchor.start_line}-${comment.anchor.end_line}`);
+      console.log(`  • Author: ${comment.author}`);
+    } catch (err: unknown) {
+      console.error(`Error adding comment: ${getErrorMessage(err)}`);
       process.exit(1);
     }
   });
@@ -701,8 +845,8 @@ commentCmd
       resolveComment(projectRoot, id, note, { purge: true });
       console.log(`✓ Comment "${id}" resolved and purged from pending queue.`);
       console.log(`  • Resolution Note: ${note}`);
-    } catch (err: any) {
-      console.error(`Error resolving comment "${id}": ${err.message}`);
+    } catch (err: unknown) {
+      console.error(`Error resolving comment "${id}": ${getErrorMessage(err)}`);
       process.exit(1);
     }
   });
@@ -715,8 +859,8 @@ commentCmd
       const projectRoot = getRoot();
       deleteComment(projectRoot, id);
       console.log(`✓ Comment "${id}" deleted.`);
-    } catch (err: any) {
-      console.error(`Error deleting comment "${id}": ${err.message}`);
+    } catch (err: unknown) {
+      console.error(`Error deleting comment "${id}": ${getErrorMessage(err)}`);
       process.exit(1);
     }
   });
@@ -731,8 +875,8 @@ commentCmd
       const updated = updateComment(projectRoot, id, { instruction: options.instruction });
       console.log(`✓ Comment "${id}" updated.`);
       console.log(`  • Instruction: ${updated.instruction}`);
-    } catch (err: any) {
-      console.error(`Error updating comment "${id}": ${err.message}`);
+    } catch (err: unknown) {
+      console.error(`Error updating comment "${id}": ${getErrorMessage(err)}`);
       process.exit(1);
     }
   });
@@ -775,8 +919,8 @@ commentCmd
             (c.resolution_note || "-"),
         );
       }
-    } catch (err: any) {
-      console.error(`Error listing comment history: ${err.message}`);
+    } catch (err: unknown) {
+      console.error(`Error listing comment history: ${getErrorMessage(err)}`);
       process.exit(1);
     }
   });
@@ -821,8 +965,8 @@ checkpointCmd
             s.relativePath,
         );
       }
-    } catch (err: any) {
-      console.error(`Error listing checkpoints: ${err.message}`);
+    } catch (err: unknown) {
+      console.error(`Error listing checkpoints: ${getErrorMessage(err)}`);
       process.exit(1);
     }
   });
@@ -838,13 +982,92 @@ checkpointCmd
       console.log(`  • Target File: ${restoredFile}`);
       console.log(`  • Timestamp:   ${entry.timestamp}`);
       console.log(`  • Hash:        ${entry.hash}`);
-    } catch (err: any) {
-      console.error(`Error restoring checkpoint "${id}": ${err.message}`);
+    } catch (err: unknown) {
+      console.error(`Error restoring checkpoint "${id}": ${getErrorMessage(err)}`);
       process.exit(1);
     }
   });
 
-// 7. doc commands: list, get
+// 7. worktree commands: list
+const worktreeCmd = program
+  .command("worktree")
+  .description("Manage git worktrees and centralized task concurrency leases");
+
+worktreeCmd
+  .command("list")
+  .description("List registered worktrees and their active task leases")
+  .option("-c, --compact", "Output minimal worktree fields")
+  .option("--json", "Output as JSON")
+  .option("--yaml", "Output as YAML")
+  .action((options) => {
+    try {
+      const projectRoot = getRoot();
+      const list = listRegisteredWorktrees(projectRoot);
+      const specs = listSpecs(projectRoot);
+
+      // Map active leased tasks per worktree
+      const leasesByWorktree = new Map<string, Array<{ specId: string; taskId: string; branch: string; title: string }>>();
+      for (const spec of specs) {
+        try {
+          const doc = readTasksYaml(projectRoot, spec.id);
+          const tasks = flattenTasks(doc);
+          for (const t of tasks) {
+            if (t.status === "in-progress" && t.worktree) {
+              const current = leasesByWorktree.get(t.worktree) || [];
+              current.push({
+                specId: spec.id,
+                taskId: t.id,
+                branch: t.branch || "-",
+                title: t.title,
+              });
+              leasesByWorktree.set(t.worktree, current);
+            }
+          }
+        } catch {
+          // ignore
+        }
+      }
+
+      const enriched = list.map((w) => ({
+        ...w,
+        active_leases: leasesByWorktree.get(w.id) || [],
+      }));
+
+      const format = resolveFormat(options);
+      if (format === "json") {
+        console.log(JSON.stringify(enriched, null, 2));
+        return;
+      }
+      if (format === "yaml") {
+        console.log(dumpYaml(enriched));
+        return;
+      }
+
+      if (enriched.length === 0) {
+        console.log("No registered worktrees found.");
+        return;
+      }
+
+      console.log(`WORKTREE`.padEnd(20) + `BRANCH`.padEnd(25) + `ACTIVE LEASES`.padEnd(20) + `PATH`);
+      console.log("-".repeat(85));
+      for (const w of enriched) {
+        const leaseStr = w.active_leases.length > 0 
+          ? w.active_leases.map(l => l.taskId).join(", ") 
+          : "none";
+        console.log(
+          w.id.padEnd(20) +
+          w.branch.padEnd(25) +
+          leaseStr.padEnd(20) +
+          w.path
+        );
+      }
+    } catch (err: unknown) {
+      console.error(`Error listing worktrees: ${getErrorMessage(err)}`);
+      process.exit(1);
+    }
+  });
+
+// 8. doc commands: list, get
 const docCmd = program.command("doc").description("Manage and inspect steering and specification documents");
 
 docCmd
@@ -898,12 +1121,12 @@ docCmd
       } else {
         console.log(`ID`.padEnd(25) + `KIND`.padEnd(16) + `STATUS`.padEnd(14) + `TITLE`);
         console.log(`-`.repeat(80));
-        for (const d of outputDocs as any[]) {
-          console.log(d.id.padEnd(25) + d.kind.padEnd(16) + d.status.padEnd(14) + d.title);
+        for (const d of outputDocs) {
+          console.log(d.id.padEnd(25) + (d as { kind?: string }).kind?.padEnd(16) || "".padEnd(16) + d.status.padEnd(14) + ((d as { title?: string }).title || ""));
         }
       }
-    } catch (err: any) {
-      console.error(`Error listing documents: ${err.message}`);
+    } catch (err: unknown) {
+      console.error(`Error listing documents: ${getErrorMessage(err)}`);
       process.exit(1);
     }
   });
@@ -1009,8 +1232,8 @@ docCmd
       }
 
       process.stdout.write(raw.endsWith("\n") ? raw : raw + "\n");
-    } catch (err: any) {
-      console.error(`Error reading document "${pathOrId}": ${err.message}`);
+    } catch (err: unknown) {
+      console.error(`Error reading document "${pathOrId}": ${getErrorMessage(err)}`);
       process.exit(1);
     }
   });
@@ -1030,8 +1253,8 @@ docCmd
       const serialized = serializeDocumentWithFrontmatter(frontmatter, body);
       fs.writeFileSync(doc.fullPath, serialized, "utf-8");
       console.log(`✓ Document "${doc.id}" approved successfully by human.`);
-    } catch (err: any) {
-      console.error(`Error approving document "${pathOrId}": ${err.message}`);
+    } catch (err: unknown) {
+      console.error(`Error approving document "${pathOrId}": ${getErrorMessage(err)}`);
       process.exit(1);
     }
   });
@@ -1044,8 +1267,8 @@ docCmd
       const projectRoot = getRoot();
       const res = archiveDocument(projectRoot, pathOrId);
       console.log(`Archived ${res.originalPath} -> ${res.archivedPath}`);
-    } catch (err: any) {
-      console.error(`Error archiving document "${pathOrId}": ${err.message}`);
+    } catch (err: unknown) {
+      console.error(`Error archiving document "${pathOrId}": ${getErrorMessage(err)}`);
       process.exit(1);
     }
   });
@@ -1061,8 +1284,8 @@ program
     try {
       const projectRoot = getRoot();
       await startServer(projectRoot, { port: options.port, host: options.host, logs: options.logs });
-    } catch (err: any) {
-      console.error(`Error starting dashboard: ${err.message}`);
+    } catch (err: unknown) {
+      console.error(`Error starting dashboard: ${getErrorMessage(err)}`);
       process.exit(1);
     }
   });
@@ -1098,8 +1321,8 @@ program
       for (const item of recent) {
         console.log(`[${item.specId}] ${item.entry}`);
       }
-    } catch (err: any) {
-      console.error(`Error fetching logs: ${err.message}`);
+    } catch (err: unknown) {
+      console.error(`Error fetching logs: ${getErrorMessage(err)}`);
       process.exit(1);
     }
   });
