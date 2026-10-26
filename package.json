@@ -1,6 +1,6 @@
 {
   "name": "spexy",
-  "version": "0.1.2-beta.0",
+  "version": "0.1.2-beta.1",
   "private": true,
   "engines": {
     "node": ">=22.0.0",
