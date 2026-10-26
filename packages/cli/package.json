@@ -1,6 +1,6 @@
 {
   "name": "spexy-cli",
-  "version": "0.1.1",
+  "version": "0.1.2-beta.0",
   "description": "Local-first, human-in-the-loop Spec-Driven Development (SDD) orchestration platform",
   "type": "module",
   "license": "MIT",
@@ -22,7 +22,7 @@
   ],
   "publishConfig": {
     "access": "public",
-    "tag": "latest"
+    "tag": "beta"
   },
   "keywords": [
     "spexy",
