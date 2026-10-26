@@ -101,6 +101,11 @@ export class SpexyServerManager {
       this.outputChannel.append(data.toString());
     });
 
+    child.on("error", (err) => {
+      this.outputChannel.appendLine(`[Spexy] Server process error: ${err.message}`);
+      this.serverProcess = null;
+    });
+
     child.on("exit", (code) => {
       this.outputChannel.appendLine(`[Spexy] Server process exited with code ${code}`);
       this.serverProcess = null;
@@ -116,6 +121,7 @@ export class SpexyServerManager {
       }
     }
 
+    this.stopServer();
     throw new Error(`Dashboard server failed to start within 10s on port ${port}`);
   }
 

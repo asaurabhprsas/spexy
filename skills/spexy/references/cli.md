@@ -7,14 +7,21 @@ All query commands support `--json` and `--yaml` (or `--format <json|yaml>`), as
 
 ## Command Catalog
 
+### `spexy doctor [--compact] [--json]` (or `spexy check`)
+Performs 13 comprehensive health diagnostics across steering documents, specification schemas, acyclic DAG graphs, and checkpoint caches.
+- `--compact`: Outputs single-line status token `PASS steering(3/3) specs(X/X) graph(Y/Y) checkpoints(ok)`.
+
 ### `spexy init [dir]`
 Scaffolds the `.spexy/` structure (config, steering, specs, templates, .cache) in the target directory.
 - `[dir]`: Target directory (defaults to current directory `.`).
 
-### `spexy status [--json]`
+### `spexy status [--json] [--compact]`
 Displays overall workspace gate health:
 - Steering documents status (`product.md`, `tech.md`, `structure.md`) and approval counts.
 - Active feature specs and completion progress.
+
+### `spexy worktree list`
+Lists all registered Git worktrees and active task leases (`worktree`, `branch`, `locked_at`).
 
 ### `spexy spec list [-c, --compact] [--format <json|yaml>] [--yaml] [--json]`
 Lists all feature specs in `.spexy/specs/`:
@@ -28,6 +35,9 @@ Scaffolds a new feature spec folder `.spexy/specs/<id>/`:
 - Generates `requirements.md`, `design.md`, `tasks.yaml`, `implementation.log`, `references/`, and `images/`.
 - **Steering Gate**: Fails with exit code 1 if steering documents are not approved, unless `--force` is provided.
 
+### `spexy task next [spec-id]`
+Auto-recommends the next topologically available ready-to-claim task from the DAG graph without scanning task lists.
+
 ### `spexy task list [spec-id] [--available] [-c, --compact] [--format <json|yaml>] [--yaml] [--json]`
 Lists tasks from `tasks.yaml`:
 - `[spec-id]`: Filter by specific spec ID.
@@ -39,7 +49,7 @@ Lists tasks from `tasks.yaml`:
 Claims a task for execution:
 - Records active worktree lease (`worktree`, `branch`, `locked_at`).
 - Sets task status to `in-progress`.
-- Rejects if another agent or worktree holds an active lease.
+- **Concurrency Auto-Blocking**: Rejects if another agent or worktree holds an active lease (`TASK_LEASE_CONFLICT`), printing blocker details and candidate independent alternative tasks.
 
 ### `spexy task complete <task-id> [--note <text>]`
 Submits an `in-progress` task for human verification:
@@ -57,13 +67,21 @@ Human verification gate:
 Human reviewer requests changes:
 - Transitions task back from `to-review` to `todo`.
 
+### `spexy comment add --file <path> --instruction <text> [--line <start[-end]>] [--snippet <text>] [--type <type>] [--author <author>]`
+Creates context-anchored review comments on arbitrary repo files (`.ts`, `.py`, `.json`, `.md`):
+- `--file <path>`: Target file path.
+- `--instruction <text>`: Review directive or guidance.
+- `--line <lines>`: Optional line number or range (`45` or `45-52`).
+- `--snippet <text>`: Optional referenced code excerpt.
+- `--type <type>`: `document`, `task`, `file`, `code`, `spec`, or `general`.
+
 ### `spexy comment list [--pending] [-c, --compact] [--format <json|yaml>] [--yaml] [--json]`
 Lists review comments anchored to documents:
 - `--pending`: Filter to unresolved comments only.
 - `-c, --compact`: Returns minimal fields: `{ id, status, author, target_file, lines, instruction }`, omitting snippets and context blocks.
 - `--format yaml` / `--yaml`: Outputs compact YAML.
 
-### `spexy comment resolve <id> --note <text>`
+### `spexy comment resolve <id> [--note <text>] [--purge]`
 Marks an anchored comment as addressed:
 - Records resolution note into `.spexy/.cache/history/comments-history.yaml`.
 - Purges comment from active pending queue to keep repository clean.
@@ -93,5 +111,5 @@ Lists rolling file snapshots from `.spexy/.cache/checkpoints/`:
 ### `spexy checkpoint restore <snapshot-id>`
 Reverts the specified file to the historical snapshot state and triggers real-time UI notification.
 
-### `spexy dashboard [--port <port>] [--host <host>]`
-Launches the embedded Fastify WebSocket daemon and opens the web dashboard in the default browser (`http://127.0.0.1:4200`).
+### `spexy dashboard [--port <port>] [--host <host>]` (or `spexy serve`)
+Launches the embedded Node.js HTTP & WebSocket daemon and opens the web dashboard in the default browser (`http://127.0.0.1:4200`).

@@ -26,18 +26,19 @@ Tasks are declared in a flat hierarchy with support for arbitrary cross-group de
 ### 4. Two-Tier Human-in-the-Loop (HITL) State Machine
 Autonomous coding agents can claim available tasks (`todo` $\to$ `in-progress`) and submit finished work (`in-progress` $\to$ `to-review`). However, an agent cannot transition any task to `done`. Only human verification can transition work to `done` or reject it back to `todo`.
 
-### 5. Git Worktree Awareness & Task Leases
-By detecting the Git common directory (`git rev-parse --git-common-dir`), Spexy enables concurrent agents to operate across multiple Git worktrees without split-brain state drift. Claimed tasks are locked with lease metadata (`worktree`, `branch`, `locked_at`), preventing concurrency conflicts.
+### 5. Central Git Worktree Coordination & Auto-Blocking Leases
+Using `findCentralProjectRoot` and Git common directory discovery (`git rev-parse --git-common-dir`), Spexy ensures the primary repository's `.spexy/` directory acts as the single source of truth across all worktree sessions. When an agent attempts to start a task already in progress by another worktree, the concurrency engine auto-blocks the operation (`TASK_LEASE_CONFLICT`) and recommends ready, independent DAG candidate tasks (`spexy task next`).
 
 ### 6. Bounded Checkpoint Ring-Buffer
 Any change to `.spexy/` automatically creates a rolling backup in `.cache/checkpoints/` bounded to a maximum limit (default 20 snapshots per file). Errant AI writes can be rolled back with a single CLI command: `spexy checkpoint restore <id>`.
 
-### 7. Ephemeral Context-Anchored Comment Engine
-Human reviewers highlight arbitrary lines across specification documents. Comments are queued in `.cache/pending-comments.yaml` with 3-line fuzzy context hashing, allowing highlights to stay accurate even when documents are modified. Once addressed and resolved, comments are automatically purged to keep the repository clean.
+### 7. Multi-File Context-Anchored Comment Engine & Soft-Delete
+Human reviewers and agents anchor line comments across specification documents and arbitrary source code files (`.ts`, `.py`, `.json`, etc.). Comments are queued in `.cache/pending-comments.yaml` with 3-line fuzzy context hashing to maintain accuracy as files shift. Soft-deleted comments transition to history with a 50-item retention cap and can be restored seamlessly via CLI or web dashboard.
 
 ## Monorepo Package Map
-- `packages/core`: Pure TypeScript domain logic, Zod schemas, DAG validation, and `.spexy/` filesystem I/O.
-- `packages/cli`: Single-binary CLI (`spexy`) and Fastify WebSocket server.
-- `packages/ui`: Modern React dashboard with `@dnd-kit` Kanban, Monaco/CodeMirror comment inspector, hierarchical task tree, and interactive SVG DAG viewer.
-- `skills/spexy`: Agent skill package (`SKILL.md`) installable via `npx skills add ./skills/spexy`.
-- `docs/`: Persistent project documentation and milestone progress tracking.
+- `packages/core`: Pure TypeScript domain logic, Zod schemas, DAG validation, worktree lease manager, and `.spexy/` filesystem I/O.
+- `packages/cli`: Single-binary CLI (`spexy`) and native Node.js HTTP & WebSocket server.
+- `packages/ui`: Modern React dashboard with ClickUp-style hierarchical task list, `@dnd-kit` Kanban, Markdown comment inspector, and interactive SVG DAG visualizer.
+- `packages/vscode-extension`: Official VS Code extension (`@workspace/spexy-vscode`) with native editor gutter comments (`vscode.comments`), tree view providers, and embedded dashboard webview.
+- `skills/spexy`: Agent skill package (`SKILL.md`) installable via `npx skills add asaurabhprasad/spexy`.
+- `docs/`: Authoritative technical specifications, API guides, and workflow documentation.

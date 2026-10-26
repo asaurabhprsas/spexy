@@ -185,6 +185,38 @@ export function deleteComment(
   return comment;
 }
 
+export function restoreComment(
+  projectRoot: string,
+  commentId: string,
+): CommentItem {
+  const historyDoc = readCommentHistoryDoc(projectRoot);
+  const histIdx = historyDoc.comments.findIndex((c) => c.id === commentId);
+
+  if (histIdx === -1) {
+    throw new Error(`Comment not found in history: "${commentId}"`);
+  }
+
+  const comment = historyDoc.comments[histIdx];
+  historyDoc.comments.splice(histIdx, 1);
+  writeCommentHistoryDoc(projectRoot, historyDoc);
+
+  comment.status = "pending";
+  comment.resolution_note = null;
+  delete comment.resolved_at;
+  delete comment.resolved_by;
+
+  const pendingDoc = readPendingCommentsDoc(projectRoot);
+  const existingIdx = pendingDoc.comments.findIndex((c) => c.id === commentId);
+  if (existingIdx !== -1) {
+    pendingDoc.comments[existingIdx] = comment;
+  } else {
+    pendingDoc.comments.push(comment);
+  }
+  writePendingCommentsDoc(projectRoot, pendingDoc);
+
+  return comment;
+}
+
 export function updateComment(
   projectRoot: string,
   commentId: string,

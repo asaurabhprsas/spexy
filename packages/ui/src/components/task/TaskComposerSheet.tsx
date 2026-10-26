@@ -736,6 +736,14 @@ export function TaskComposerSheet({
     }
   }, [open, defaultParentId, defaultGroupId, selectedSpecId]);
 
+  // Update suggested ID when task list arrives asynchronously if not manually edited
+  useEffect(() => {
+    if (open && !isIdManuallyEdited && currentTasks.length > 0) {
+      const suggested = computeSmartId(parentId, groupId, currentTasks, currentGroups);
+      setId(suggested);
+    }
+  }, [open, isIdManuallyEdited, currentTasks, currentGroups, parentId, groupId]);
+
   // Handle active specification change inside composer
   const handleSpecChange = (newSpecId: string) => {
     setActiveSpecId(newSpecId);

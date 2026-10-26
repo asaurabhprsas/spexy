@@ -3,6 +3,9 @@ import { z } from "zod";
 export const CommentStatusSchema = z.enum(["pending", "addressed", "resolved", "deleted"]);
 export type CommentStatus = z.infer<typeof CommentStatusSchema>;
 
+export const CommentTargetTypeSchema = z.enum(["document", "task", "general", "spec", "code", "file"]);
+export type CommentTargetType = z.infer<typeof CommentTargetTypeSchema>;
+
 export const CommentAnchorSchema = z.object({
   start_line: z.number().int().min(1),
   end_line: z.number().int().min(1),

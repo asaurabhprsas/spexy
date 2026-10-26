@@ -95,21 +95,29 @@ spexy spec create auth-system --force
 ---
 
 ### 6. Task Lifecycle Management: `task`
-Manages the two-tier HITL state machine (`todo` $\to$ `in-progress` $\to$ `to-review` $\to$ `done`).
+Manages the two-tier HITL state machine (`todo` $\to$ `in-progress` $\to$ `to-review` $\to$ `done`), worktree lease auto-blocking, and DAG candidate task recommendations.
 
 ```bash
+# Recommend next ready-to-claim unblocked task in DAG
+spexy task next [spec-id]
+
 # List tasks for a specification
 spexy task list demo-spec
 spexy task list demo-spec --compact
-spexy task list demo-spec --all
+spexy task list demo-spec --available
 
-# Claim task (Agent or Human)
+# Start/Claim task with worktree lease acquisition and concurrency conflict check
+spexy task start 2.1
+# (If leased by another worktree, outputs conflict banner and suggests independent alternative tasks)
+
+# Claim task explicitly specifying actor and branch
 spexy task claim demo-spec 2.1 --actor agent --branch feature/demo-spec/2.1
 
-# Submit completed task for human review (Agent only)
+# Submit completed task for human review (Agent only; transitions to to-review)
+spexy task complete 2.1 --note "Added JWT middleware with test coverage"
 spexy task submit demo-spec 2.1 --actor agent --note "Added JWT middleware with test coverage"
 
-# Approve task as done (Human only)
+# Approve task as done (Human only gate)
 spexy task approve demo-spec 2.1 --note "Verified middleware implementation and passing tests"
 
 # Reject task back to todo with feedback (Human only)
@@ -121,24 +129,38 @@ spexy task set-status demo-spec 2.1 --status in-progress
 
 ---
 
-### 7. Anchored Review Comments: `comment`
-Creates context-anchored line comments with 3-line fuzzy hash re-alignment.
+### 7. Git Worktrees & Leases: `worktree`
+Coordinates concurrency across parallel Git worktrees sharing the central `.spexy` directory.
 
 ```bash
-# Add anchored comment
-spexy comment add demo-spec requirements.md --line 24 --text "Include rate limit thresholds"
-
-# List active unresolved comments
-spexy comment list demo-spec
-spexy comment list demo-spec --compact
-
-# Resolve comment (Human only)
-spexy comment resolve <comment-id>
+# List all registered worktrees and their active task leases
+spexy worktree list
 ```
 
 ---
 
-### 8. Checkpoint Ring-Buffer: `checkpoint`
+### 8. Context-Anchored Review Comments: `comment`
+Creates context-anchored line comments on arbitrary repository files (`.ts`, `.py`, `.json`, `.md`) with 3-line fuzzy hash re-alignment.
+
+```bash
+# Add anchored comment on any file with optional line range and code snippet
+spexy comment add --file packages/core/src/auth.ts --instruction "Verify token expiry claims" --line 45-52 --snippet "verifyJwt(token)" --type code
+
+# Add general or task review comment
+spexy comment add --file README.md --instruction "Update installation prerequisites" --line 12
+
+# List review comments with token-saving compact modes
+spexy comment list
+spexy comment list --compact
+spexy comment list --pending --format yaml
+
+# Resolve comment (moves to history with purge option)
+spexy comment resolve <comment-id> --note "Addressed and verified" --purge
+```
+
+---
+
+### 9. Checkpoint Ring-Buffer: `checkpoint`
 Lists and restores automatic rolling file snapshots.
 
 ```bash
@@ -151,7 +173,7 @@ spexy checkpoint restore <snapshot-id>
 
 ---
 
-### 9. Document Archiving: `doc archive`
+### 10. Document Archiving: `doc archive`
 Safely archives obsolete or regenerated steering and specification documents into `.spexy/archived/`.
 
 ```bash
@@ -169,10 +191,23 @@ spexy doc archive .spexy/specs/feature-1/design.md
 
 ---
 
-### 10. Dashboard Server: `serve` / `--dashboard`
-Runs the Fastify and WebSocket server hosting the dashboard UI and live file watchers.
+### 11. Dashboard Server: `serve` / `--dashboard`
+Runs the native Node.js HTTP and WebSocket server hosting the dashboard UI and live file watchers.
 
 ```bash
 spexy --dashboard
 spexy serve --port 4200
+```
+
+---
+
+### 12. VS Code Extension Integration
+Spexy includes an official VS Code extension (`packages/vscode-extension`) integrating editor comment threads and sidebar activity views.
+
+```bash
+# Symlink local extension into VS Code extensions directory
+pnpm run link:vscode
+
+# Build extension distribution package
+pnpm run build:vscode
 ```

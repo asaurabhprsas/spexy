@@ -121,7 +121,8 @@ export function LiveLogsDrawer({ open, onClose, onLogsCountChange }: LiveLogsDra
           taskTitle: p.taskTitle as string | undefined,
         } : undefined),
       };
-      setLogs((prev) => [newLog, ...prev.filter((l) => l.id !== newLog.id)]);
+      const MAX_LOGS = 500;
+      setLogs((prev) => [newLog, ...prev.filter((l) => l.id !== newLog.id)].slice(0, MAX_LOGS));
     } else if (lastMessage.type === 'TASK_UPDATED') {
       const p = (lastMessage.payload || {}) as Record<string, string | undefined>;
       const taskId = lastMessage.taskId || p.taskId || p.specId;
@@ -134,7 +135,7 @@ export function LiveLogsDrawer({ open, onClose, onLogsCountChange }: LiveLogsDra
         message: `Task updated: ${taskId || 'workflow task'}`,
         details: taskTitle || taskId ? { taskId, taskTitle } : undefined,
       };
-      setLogs((prev) => [newLog, ...prev]);
+      setLogs((prev) => [newLog, ...prev].slice(0, 500));
     } else if (lastMessage.type === 'DOC_UPDATED') {
       const p = (lastMessage.payload || {}) as Record<string, string | undefined>;
       const newLog: LogEvent = {
@@ -144,7 +145,7 @@ export function LiveLogsDrawer({ open, onClose, onLogsCountChange }: LiveLogsDra
         actor: 'Workspace',
         message: `Specification updated: ${lastMessage.documentId || p.file || 'document'}`,
       };
-      setLogs((prev) => [newLog, ...prev]);
+      setLogs((prev) => [newLog, ...prev].slice(0, 500));
     } else if (lastMessage.type === 'COMMENTS_UPDATED') {
       const newLog: LogEvent = {
         id: `log-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
@@ -153,7 +154,7 @@ export function LiveLogsDrawer({ open, onClose, onLogsCountChange }: LiveLogsDra
         actor: 'Reviewer',
         message: `Review comments synchronized`,
       };
-      setLogs((prev) => [newLog, ...prev]);
+      setLogs((prev) => [newLog, ...prev].slice(0, 500));
     }
   }, [lastMessage]);
 

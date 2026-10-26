@@ -21,8 +21,8 @@ export function findTaskLineInYaml(tasksFilePath: string, taskId: string): numbe
   const lines = fs.readFileSync(tasksFilePath, "utf-8").split("\n");
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
-    if (line.match(new RegExp(`^\\s*-\\s*id:\\s*["']?${taskId.replace(".", "\\.")}["']?\\s*$`)) ||
-        line.match(new RegExp(`^\\s*id:\\s*["']?${taskId.replace(".", "\\.")}["']?\\s*$`))) {
+    if (line.match(new RegExp(`^\\s*-\\s*id:\\s*["']?${taskId.replace(/\./g, "\\.")}["']?\\s*$`)) ||
+        line.match(new RegExp(`^\\s*id:\\s*["']?${taskId.replace(/\./g, "\\.")}["']?\\s*$`))) {
       return i;
     }
   }
@@ -425,7 +425,7 @@ export class SpexyWorktreesProvider implements vscode.TreeDataProvider<WorktreeT
 
         return registrations.map((wt) => {
           const matchingLeases = allTasks.filter(
-            (t) => t.worktree === wt.id || t.branch === wt.branch,
+            (t) => t.status === "in-progress" && (t.worktree === wt.id || t.branch === wt.branch),
           ).map((t) => ({
             taskId: t.id,
             title: t.title,

@@ -40,7 +40,7 @@ import {
   listCommentHistory,
   readCommentHistoryDoc,
 } from "./comments/fuzzy-anchor";
-import { acquireTaskLease, getAlternativeAvailableTasks } from "./git/worktree";
+import { acquireTaskLease, getAlternativeAvailableTasks, listRegisteredWorktrees, getGitWorktrees } from "./git/worktree";
 import { TaskItem } from "./schemas/tasks";
 import { archiveDocument } from "./documents/archive";
 import { getPreferences, updatePreferences } from "./config";
@@ -612,6 +612,13 @@ Document body here.`;
 
       const alternatives = getAlternativeAvailableTasks(tasks, "task-1");
       expect(alternatives.map((t) => t.id)).toEqual(["task-3"]);
+    });
+
+    it("discovers active Git worktrees using git worktree list", () => {
+      const worktrees = listRegisteredWorktrees(process.cwd());
+      expect(Array.isArray(worktrees)).toBe(true);
+      expect(worktrees.length).toBeGreaterThan(0);
+      expect(worktrees.some((w) => w.path === process.cwd())).toBe(true);
     });
   });
 

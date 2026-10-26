@@ -45,6 +45,8 @@ import {
   type TaskItem,
   type TasksDocument,
   type HealthReport,
+  type WorkflowActor,
+  type CommentTargetType,
 } from "@spexy/core";
 import { startServer } from "./server";
 
@@ -260,14 +262,16 @@ specCmd
       if (options.compact) {
         console.log(`ID`.padEnd(20) + `STATUS`.padEnd(15) + `TASKS`);
         console.log(`-`.repeat(50));
-        for (const s of outputSpecs as any[]) {
-          console.log(s.id.padEnd(20) + s.status.padEnd(15) + s.tasks);
+        for (const s of specs) {
+          const tasks = `${s.completedTaskCount}/${s.taskCount}`;
+          console.log(s.id.padEnd(20) + s.status.padEnd(15) + tasks);
         }
       } else {
         console.log(`ID`.padEnd(20) + `STATUS`.padEnd(15) + `PROGRESS`.padEnd(15) + `NAME`);
         console.log(`-`.repeat(65));
-        for (const s of outputSpecs as any[]) {
-          const progress = `${s.completedTaskCount}/${s.taskCount} (${s.completionPercentage}%)`;
+        for (const s of specs) {
+          const completionPercentage = s.taskCount > 0 ? Math.round((s.completedTaskCount / s.taskCount) * 100) : 0;
+          const progress = `${s.completedTaskCount}/${s.taskCount} (${completionPercentage}%)`;
           console.log(s.id.padEnd(20) + s.status.padEnd(15) + progress.padEnd(15) + s.name);
         }
       }
@@ -426,6 +430,12 @@ taskCmd
     try {
       const projectRoot = getRoot();
       const { specId, tasksDoc, task, specDir } = findTaskAcrossSpecs(projectRoot, taskId);
+      const git = resolveGitContext(process.cwd());
+
+      // If task is already in-progress, check if it's leased to throw TASK_LEASE_CONFLICT with alternative task suggestions
+      if (task.status === "in-progress") {
+        acquireTaskLease(task, git.currentWorktree, git.branch);
+      }
 
       // Validate availability and transition
       if (task.status !== "todo") {
@@ -483,9 +493,8 @@ taskCmd
       }
 
       // Check state machine
-      transitionTask(task.status, "claim", actor as any);
+      transitionTask(task.status, "claim", actor as WorkflowActor);
 
-      const git = resolveGitContext(process.cwd());
       const leasedTask = acquireTaskLease(task, git.currentWorktree, git.branch);
 
       const updatedDoc = updateTaskInDoc(tasksDoc, leasedTask);
@@ -818,7 +827,7 @@ commentCmd
 
       const comment = addComment(projectRoot, {
         target_file: options.file || "",
-        target_type: options.type as any,
+        target_type: (options.type || "file") as CommentTargetType,
         author: options.author === "agent" ? "agent" : "human",
         instruction: options.instruction,
         anchor,
@@ -1048,16 +1057,16 @@ worktreeCmd
         return;
       }
 
-      console.log(`WORKTREE`.padEnd(20) + `BRANCH`.padEnd(25) + `ACTIVE LEASES`.padEnd(20) + `PATH`);
-      console.log("-".repeat(85));
+      console.log(`WORKTREE`.padEnd(22) + `BRANCH`.padEnd(36) + `ACTIVE LEASES`.padEnd(18) + `PATH`);
+      console.log("-".repeat(95));
       for (const w of enriched) {
         const leaseStr = w.active_leases.length > 0 
           ? w.active_leases.map(l => l.taskId).join(", ") 
           : "none";
         console.log(
-          w.id.padEnd(20) +
-          w.branch.padEnd(25) +
-          leaseStr.padEnd(20) +
+          w.id.padEnd(22) +
+          w.branch.padEnd(36) +
+          leaseStr.padEnd(18) +
           w.path
         );
       }
@@ -1115,14 +1124,15 @@ docCmd
       if (options.compact) {
         console.log(`ID`.padEnd(25) + `STATUS`.padEnd(14) + `PATH`);
         console.log(`-`.repeat(70));
-        for (const d of outputDocs as any[]) {
-          console.log(d.id.padEnd(25) + d.status.padEnd(14) + d.path);
+        for (const d of outputDocs) {
+          console.log(d.id.padEnd(25) + d.status.padEnd(14) + (d as { path?: string }).path);
         }
       } else {
         console.log(`ID`.padEnd(25) + `KIND`.padEnd(16) + `STATUS`.padEnd(14) + `TITLE`);
         console.log(`-`.repeat(80));
         for (const d of outputDocs) {
-          console.log(d.id.padEnd(25) + (d as { kind?: string }).kind?.padEnd(16) || "".padEnd(16) + d.status.padEnd(14) + ((d as { title?: string }).title || ""));
+          const kindStr = ((d as { kind?: string }).kind || "").padEnd(16);
+          console.log(d.id.padEnd(25) + kindStr + d.status.padEnd(14) + ((d as { title?: string }).title || ""));
         }
       }
     } catch (err: unknown) {
@@ -1355,8 +1365,8 @@ if (rawArgs.includes("--dashboard")) {
   const port = portIdx !== -1 && rawArgs[portIdx + 1] ? parseInt(rawArgs[portIdx + 1], 10) : undefined;
   const host = hostIdx !== -1 && rawArgs[hostIdx + 1] ? rawArgs[hostIdx + 1] : undefined;
   const logs = rawArgs.includes("--logs") || rawArgs.includes("-l");
-  startServer(projectRoot, { port, host, logs }).catch((err) => {
-    console.error(`Error starting dashboard: ${err.message}`);
+  startServer(projectRoot, { port, host, logs }).catch((err: unknown) => {
+    console.error(`Error starting dashboard: ${getErrorMessage(err)}`);
     process.exit(1);
   });
 } else if (rawArgs.includes("--doctor") || rawArgs.includes("--check")) {

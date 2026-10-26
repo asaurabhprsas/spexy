@@ -53,7 +53,18 @@ export function resolveGitContext(cwd: string = process.cwd()): GitContext {
       primaryRoot = path.dirname(absCommon);
     }
 
-    const currentWorktree = path.basename(cwd);
+    let topLevel = cwd;
+    try {
+      topLevel = execSync("git rev-parse --show-toplevel", {
+        cwd,
+        stdio: ["ignore", "pipe", "ignore"],
+        encoding: "utf-8",
+      }).trim();
+    } catch {
+      topLevel = cwd;
+    }
+
+    const currentWorktree = path.basename(topLevel);
 
     return {
       isGit: true,
@@ -80,8 +91,56 @@ export interface WorktreeRegistration {
   lastHeartbeat: string;
 }
 
+export function getGitWorktrees(cwd: string): Array<{ id: string; path: string; branch: string }> {
+  try {
+    const stdout = execSync("git worktree list --porcelain", {
+      cwd,
+      stdio: ["ignore", "pipe", "ignore"],
+      encoding: "utf-8",
+    });
+
+    const worktrees: Array<{ id: string; path: string; branch: string }> = [];
+    const blocks = stdout.split(/\r?\n\r?\n/);
+    for (const block of blocks) {
+      const lines = block.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+      let wtPath = "";
+      let branch = "main";
+      let isDetached = false;
+      let head = "";
+
+      for (const line of lines) {
+        if (line.startsWith("worktree ")) {
+          wtPath = line.slice("worktree ".length).trim();
+        } else if (line.startsWith("branch ")) {
+          const rawBranch = line.slice("branch ".length).trim();
+          branch = rawBranch.replace(/^refs\/heads\//, "");
+        } else if (line === "detached") {
+          isDetached = true;
+        } else if (line.startsWith("HEAD ")) {
+          head = line.slice("HEAD ".length).trim().slice(0, 7);
+        }
+      }
+
+      if (wtPath) {
+        if (isDetached && branch === "main") {
+          branch = head ? `detached@${head}` : "detached";
+        }
+        worktrees.push({
+          id: path.basename(wtPath),
+          path: wtPath,
+          branch,
+        });
+      }
+    }
+    return worktrees;
+  } catch {
+    return [];
+  }
+}
+
 export function registerWorktree(projectRoot: string, cwd: string): void {
-  const cacheDir = path.join(getSpecflowDir(projectRoot), ".cache");
+  const centralRoot = findCentralProjectRoot(projectRoot);
+  const cacheDir = path.join(getSpecflowDir(centralRoot), ".cache");
   fs.mkdirSync(cacheDir, { recursive: true });
   const registryPath = path.join(cacheDir, "worktrees.json");
 
@@ -113,14 +172,47 @@ export function registerWorktree(projectRoot: string, cwd: string): void {
 }
 
 export function listRegisteredWorktrees(projectRoot: string): WorktreeRegistration[] {
-  const cacheDir = path.join(getSpecflowDir(projectRoot), ".cache");
+  const centralRoot = findCentralProjectRoot(projectRoot);
+  const cacheDir = path.join(getSpecflowDir(centralRoot), ".cache");
   const registryPath = path.join(cacheDir, "worktrees.json");
-  if (!fs.existsSync(registryPath)) return [];
-  try {
-    return JSON.parse(fs.readFileSync(registryPath, "utf-8"));
-  } catch {
-    return [];
+
+  let jsonList: WorktreeRegistration[] = [];
+  if (fs.existsSync(registryPath)) {
+    try {
+      jsonList = JSON.parse(fs.readFileSync(registryPath, "utf-8"));
+    } catch {
+      jsonList = [];
+    }
   }
+
+  // Authoritative Git worktree discovery via `git worktree list --porcelain`
+  const gitWorktrees = getGitWorktrees(centralRoot);
+  if (gitWorktrees.length > 0) {
+    return gitWorktrees.map((gw) => {
+      const cached = jsonList.find((c) => path.resolve(c.path) === path.resolve(gw.path));
+      return {
+        id: gw.id,
+        path: gw.path,
+        branch: gw.branch,
+        lastHeartbeat: cached?.lastHeartbeat || new Date().toISOString(),
+      };
+    });
+  }
+
+  // Fallback to json registry if git command fails or outside a git repository
+  if (jsonList.length > 0) {
+    return jsonList;
+  }
+
+  const git = resolveGitContext(centralRoot);
+  return [
+    {
+      id: git.currentWorktree,
+      path: centralRoot,
+      branch: git.branch,
+      lastHeartbeat: new Date().toISOString(),
+    },
+  ];
 }
 
 export function findCentralProjectRoot(startDir: string = process.cwd()): string {

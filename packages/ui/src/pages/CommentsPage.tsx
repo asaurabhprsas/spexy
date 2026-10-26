@@ -393,6 +393,27 @@ export function CommentsPage() {
     }
   };
 
+  // Handle Restore Soft-Deleted Comment
+  const handleRestore = async (commentId: string) => {
+    try {
+      const res = await fetch(`/api/comments/${encodeURIComponent(commentId)}/restore`, {
+        method: 'POST',
+      });
+      if (!res.ok) throw new Error('Failed to restore comment');
+
+      toast({ title: 'Comment Restored to Active Queue' });
+      void queryClient.invalidateQueries({ queryKey: getListCommentsQueryKey() });
+      void queryClient.invalidateQueries({ queryKey: getGetDashboardQueryKey() });
+      void queryClient.invalidateQueries({ queryKey: ['/api/comments/history'] });
+    } catch (err: unknown) {
+      toast({
+        title: 'Restore Failed',
+        description: err instanceof Error ? err.message : String(err),
+        variant: 'destructive',
+      });
+    }
+  };
+
   // Target Click Handler
   const handleOpenTarget = (comment: CommentItem) => {
     const targetFile = comment.target_file || comment.documentId || '';
@@ -900,7 +921,17 @@ export function CommentsPage() {
                         </button>
                       )}
 
-                      {!isDeleted && (
+                      {isDeleted ? (
+                        <button
+                          type="button"
+                          onClick={() => handleRestore(comment.id)}
+                          className="inline-flex items-center gap-1 rounded px-2 py-0.5 text-[11px] font-medium text-primary hover:bg-primary/10 transition-colors"
+                          title="Restore comment to active queue"
+                        >
+                          <RotateCcw size={11} />
+                          <span>Restore</span>
+                        </button>
+                      ) : (
                         <button
                           type="button"
                           onClick={() => handleDelete(comment.id)}
@@ -972,7 +1003,7 @@ export function CommentsPage() {
                       {comment.attachments.map((att, idx) => (
                         <a
                           key={idx}
-                          href={`/${att.path}`}
+                          href={`/api/files/raw?path=${encodeURIComponent(att.path)}`}
                           target="_blank"
                           rel="noopener noreferrer"
                           className="inline-flex items-center gap-1 rounded-md border border-border/80 bg-muted/40 hover:bg-muted/70 px-2 py-0.5 font-mono text-[10px] text-muted-foreground hover:text-foreground transition-colors"

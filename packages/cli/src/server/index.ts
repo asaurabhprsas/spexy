@@ -27,6 +27,7 @@ import {
   writePendingCommentsDoc,
   readTasksYaml,
   resolveComment,
+  restoreComment,
   restoreSnapshot,
   serializeDocumentWithFrontmatter,
   SpecFileInfo,
@@ -122,6 +123,11 @@ function formatComment(c: CommentItem) {
     resolutionNote: c.resolution_note ?? null,
     createdAt: c.created_at || new Date().toISOString(),
   };
+}
+
+function isPathWithin(parentDir: string, childPath: string): boolean {
+  const rel = path.relative(path.resolve(parentDir), path.resolve(childPath));
+  return !rel.startsWith("..") && !path.isAbsolute(rel);
 }
 
 function json(data: unknown, status: number = 200, headers: Record<string, string> = {}): Response {
@@ -1081,7 +1087,7 @@ export function createServer(options: ServerOptions = {}): {
           const targetFile = path.resolve(specDir, filename);
 
           // Path security check: must resolve within .spexy/specs/{specId}
-          if (!targetFile.startsWith(specDir) || !fs.existsSync(targetFile) || !fs.statSync(targetFile).isFile()) {
+          if (!isPathWithin(specDir, targetFile) || !fs.existsSync(targetFile) || !fs.statSync(targetFile).isFile()) {
             return json({ error: `File not found or access denied: ${filename}` }, 404);
           }
 
@@ -1104,7 +1110,14 @@ export function createServer(options: ServerOptions = {}): {
             return json({ error: "Missing 'path' query parameter" }, 400);
           }
           const targetFile = path.resolve(projectRoot, rawRelPath);
-          if (!targetFile.startsWith(path.resolve(projectRoot)) || !fs.existsSync(targetFile) || !fs.statSync(targetFile).isFile()) {
+          const baseName = path.basename(targetFile);
+          if (
+            !isPathWithin(projectRoot, targetFile) ||
+            !fs.existsSync(targetFile) ||
+            !fs.statSync(targetFile).isFile() ||
+            baseName.startsWith(".env") ||
+            targetFile.includes(`${path.sep}.git${path.sep}`)
+          ) {
             return json({ error: `File not found or access denied: ${rawRelPath}` }, 404);
           }
 
@@ -1192,11 +1205,18 @@ export function createServer(options: ServerOptions = {}): {
         // POST /api/preserve-file (General preserve for temporary files)
         if (pathname === "/api/preserve-file" && method === "POST") {
           const body = await parseBody(req);
-          const filename = body.filename;
+          const rawFilename = String(body.filename || "");
+          const filename = path.basename(rawFilename).replace(/[^a-zA-Z0-9._-]/g, "_");
+          if (!filename) {
+            return json({ error: "Invalid filename" }, 400);
+          }
           const filepath = body.filepath || body.path;
           const targetDir = body.target_dir === "images" ? "images" : "references";
 
           let tempFile = filepath ? path.resolve(projectRoot, filepath) : "";
+          if (tempFile && !isPathWithin(projectRoot, tempFile)) {
+            return json({ error: "Access denied: filepath outside project root" }, 403);
+          }
           if (!tempFile || !fs.existsSync(tempFile)) {
             const sfDir = getSpecflowDir(projectRoot);
             const candidates = [
@@ -1212,12 +1232,15 @@ export function createServer(options: ServerOptions = {}): {
             tempFile = candidates.find((c) => fs.existsSync(c)) || "";
           }
 
-          if (!tempFile || !fs.existsSync(tempFile)) {
+          if (!tempFile || !fs.existsSync(tempFile) || !isPathWithin(projectRoot, tempFile)) {
             return json({ error: `Temporary file not found: ${filename}` }, 404);
           }
 
           const parentDir = path.dirname(path.dirname(tempFile));
           const targetFolder = path.join(parentDir, targetDir);
+          if (!isPathWithin(projectRoot, targetFolder)) {
+            return json({ error: "Access denied: target folder outside project root" }, 403);
+          }
           fs.mkdirSync(targetFolder, { recursive: true });
           const targetPath = path.join(targetFolder, filename);
           fs.renameSync(tempFile, targetPath);
@@ -1681,6 +1704,33 @@ export function createServer(options: ServerOptions = {}): {
           return json({ ok: true, id: commentId, status: "deleted" });
         }
 
+        // POST /api/comments/:id/restore
+        const commentRestoreMatch = pathname.match(/^\/api\/comments\/([^/]+)\/restore$/);
+        if (commentRestoreMatch && method === "POST") {
+          const commentId = decodeURIComponent(commentRestoreMatch[1]);
+          const commentsPath = path.join(getSpecflowDir(projectRoot), ".cache", "pending-comments.yaml");
+
+          let restored: CommentItem | null = null;
+          await withFileWriteLock(commentsPath, () => {
+            restored = restoreComment(projectRoot, commentId);
+          });
+
+          logActivity({
+            category: "comment",
+            action: "restore",
+            actor: "human",
+            message: `Restored soft-deleted comment "${commentId}"`,
+            details: { commentId },
+          });
+
+          broadcast({
+            type: "COMMENTS_UPDATED",
+            payload: { comments: readPendingCommentsDoc(projectRoot).comments.map(formatComment) },
+          });
+
+          return json({ ok: true, comment: restored ? formatComment(restored) : null });
+        }
+
         // GET /api/checkpoints
         if (pathname === "/api/checkpoints" && method === "GET") {
           const file = url.searchParams.get("file") || undefined;
@@ -1984,7 +2034,7 @@ export function createServer(options: ServerOptions = {}): {
       const filePath = path.resolve(staticDir, relativeFilePath);
 
       // Security check: ensure within staticDir
-      if (filePath.startsWith(staticDir) && fs.existsSync(filePath) && fs.statSync(filePath).isFile()) {
+      if (isPathWithin(staticDir, filePath) && fs.existsSync(filePath) && fs.statSync(filePath).isFile()) {
         const ext = path.extname(filePath).toLowerCase();
         const contentType = MIME_TYPES[ext] || "application/octet-stream";
 

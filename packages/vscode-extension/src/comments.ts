@@ -47,6 +47,15 @@ export class SpexyCommentController implements vscode.Disposable {
     return findCentralProjectRoot(folders[0].uri.fsPath);
   }
 
+  public getCommentIdForThread(thread: vscode.CommentThread): string | undefined {
+    for (const [id, t] of this.threadsByCommentId.entries()) {
+      if (t === thread) {
+        return id;
+      }
+    }
+    return undefined;
+  }
+
   private registerCommands() {
     this.disposables.push(
       vscode.commands.registerCommand(
@@ -184,21 +193,26 @@ export class SpexyCommentController implements vscode.Disposable {
     this.disposables.push(
       vscode.commands.registerCommand(
         "spexy.resolveComment",
-        async (threadOrComment: vscode.CommentThread | CommentItem) => {
+        async (arg0?: unknown, arg1?: unknown) => {
           const projectRoot = this.getProjectRoot();
           if (!projectRoot) return;
 
           let commentId: string | null = null;
-          if ("comments" in threadOrComment) {
-            // It's a CommentThread
-            for (const [id, t] of this.threadsByCommentId.entries()) {
-              if (t === threadOrComment) {
-                commentId = id;
-                break;
-              }
+          let thread: vscode.CommentThread | undefined;
+
+          if (arg0 && typeof arg0 === "object") {
+            if ("id" in arg0 && typeof (arg0 as { id: unknown }).id === "string") {
+              commentId = (arg0 as { id: string }).id;
+            } else if ("comments" in arg0) {
+              thread = arg0 as vscode.CommentThread;
             }
-          } else if ("id" in threadOrComment) {
-            commentId = threadOrComment.id;
+          }
+          if (!thread && arg1 && typeof arg1 === "object" && "comments" in arg1) {
+            thread = arg1 as vscode.CommentThread;
+          }
+
+          if (!commentId && thread) {
+            commentId = this.getCommentIdForThread(thread) || null;
           }
 
           if (!commentId) {
@@ -213,9 +227,9 @@ export class SpexyCommentController implements vscode.Disposable {
 
           try {
             resolveComment(projectRoot, commentId, note || "Resolved via VSCode extension.", { purge: true });
-            const thread = this.threadsByCommentId.get(commentId);
-            if (thread) {
-              thread.dispose();
+            const threadToDispose = this.threadsByCommentId.get(commentId);
+            if (threadToDispose) {
+              threadToDispose.dispose();
               this.threadsByCommentId.delete(commentId);
             }
             vscode.window.showInformationMessage(`Spexy comment "${commentId}" resolved.`);
@@ -354,17 +368,21 @@ export class SpexyCommentController implements vscode.Disposable {
       const range = new vscode.Range(startLine, 0, endLine, 0);
 
       let thread = this.threadsByCommentId.get(c.id);
+      const commentsData: vscode.Comment[] = [
+        {
+          author: { name: c.author === "agent" ? "🤖 AI Agent" : "👤 Reviewer" },
+          body: new vscode.MarkdownString(`**[${c.id}]** ${c.instruction}`),
+          mode: vscode.CommentMode.Preview,
+          contextValue: "spexyComment",
+        },
+      ];
       if (!thread) {
-        thread = this.commentController.createCommentThread(uri, range, [
-          {
-            author: { name: c.author === "agent" ? "🤖 AI Agent" : "👤 Reviewer" },
-            body: new vscode.MarkdownString(`**[${c.id}]** ${c.instruction}`),
-            mode: vscode.CommentMode.Preview,
-            contextValue: "spexyComment",
-          },
-        ]);
+        thread = this.commentController.createCommentThread(uri, range, commentsData);
         thread.label = `Spexy Review: ${c.id}`;
         this.threadsByCommentId.set(c.id, thread);
+      } else {
+        thread.range = range;
+        thread.comments = commentsData;
       }
     }
   }

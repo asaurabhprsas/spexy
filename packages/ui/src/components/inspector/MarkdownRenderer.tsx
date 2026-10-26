@@ -108,13 +108,17 @@ function renderInlineContent(text: string): React.ReactNode[] {
     // Link
     const linkMatch = part.match(/^\[([^\]]+)\]\(([^)]+)\)$/);
     if (linkMatch) {
-      const [, linkText, href] = linkMatch;
+      const [, linkText, rawHref] = linkMatch;
+      const cleanHref = (rawHref || '').trim();
+      const isSafe = /^(https?:\/\/|\/|#|mailto:)/i.test(cleanHref);
+      const safeHref = isSafe ? cleanHref : '#';
+      const isExternal = safeHref.startsWith('http');
       return (
         <a
           key={index}
-          href={href}
-          target="_blank"
-          rel="noopener noreferrer"
+          href={safeHref}
+          target={isExternal ? "_blank" : undefined}
+          rel={isExternal ? "noopener noreferrer" : undefined}
           className="text-primary underline hover:text-primary/80 transition-colors"
         >
           {linkText}

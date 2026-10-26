@@ -32,22 +32,28 @@ Before transitioning any task to `to-review` (`spexy task complete`), perform th
 
 ---
 
-## 💬 Addressing Human Review Comments
+## 💬 Adding & Addressing Review Comments
 
-Human reviewers inspect tasks in `to-review` and post feedback via the Spexy comment system.
+Human reviewers and autonomous agents exchange precise review directives via the Spexy comment engine across specification docs and source code files.
 
-### 1. Query Pending Comments (Token-Optimized)
+### 1. Add Inline Review Comment
+```bash
+# Add anchored directive on any repository file
+spexy comment add --file packages/core/src/auth.ts --instruction "Check token expiration timestamp boundary" --line 45-50 --snippet "verifyJwt(token)" --type code
+```
+
+### 2. Query Pending Comments (Token-Optimized)
 ```bash
 spexy comment list --pending --compact --yaml
 ```
 
-### 2. Address & Resolve Feedback
+### 3. Address & Resolve Feedback
 1. Read the comment details and review the targeted file lines.
 2. Implement the requested modification following the TDD cycle.
 3. Re-run tests (`pnpm test`) and pre-flight doctor (`spexy doctor --compact`).
 4. Resolve the comment:
    ```bash
-   spexy comment resolve <comment-id> --note "Addressed: sanitized path inputs and added integration test"
+   spexy comment resolve <comment-id> --note "Addressed: sanitized path inputs and added integration test" --purge
    ```
 5. If all comments are resolved, re-submit the task if needed:
    ```bash

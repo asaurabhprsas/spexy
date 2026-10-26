@@ -30,6 +30,9 @@ import {
   updateSteeringDocument,
   resolveComment,
   deleteComment,
+  acquireTaskLease,
+  releaseTaskLease,
+  resolveGitContext,
   type TaskItem,
   type CommentItem,
 } from "@spexy/core";
@@ -252,6 +255,11 @@ export function activate(context: vscode.ExtensionContext) {
 
         const newStatus = transitionTask(targetTask.status as "todo", "claim", "agent");
         targetTask.status = newStatus;
+
+        const git = resolveGitContext(root);
+        const leased = acquireTaskLease(targetTask as TaskItem, git.currentWorktree, git.branch);
+        Object.assign(targetTask, leased);
+
         writeTasksYaml(root, specId, doc);
 
         vscode.window.showInformationMessage(`Task #${taskId} claimed [in-progress].`);
@@ -311,6 +319,7 @@ export function activate(context: vscode.ExtensionContext) {
           for (const t of g.tasks) {
             if (t.id === item.id) {
               t.status = transitionTask(t.status as "to-review", "approve", "human");
+              releaseTaskLease(t as TaskItem);
               break;
             }
           }
@@ -524,10 +533,22 @@ export function activate(context: vscode.ExtensionContext) {
 
   // Delete / Dismiss Comment
   context.subscriptions.push(
-    vscode.commands.registerCommand("spexy.deleteComment", async (item?: { id: string } | CommentTreeItem) => {
+    vscode.commands.registerCommand("spexy.deleteComment", async (arg0?: unknown, arg1?: unknown) => {
       const root = getProjectRoot();
-      const commentId = item instanceof CommentTreeItem ? item.comment.id : item?.id;
-      if (!root || !commentId) return;
+      if (!root) return;
+
+      let commentId: string | undefined;
+      if (arg0 instanceof CommentTreeItem) {
+        commentId = arg0.comment.id;
+      } else if (arg0 && typeof arg0 === "object" && "id" in arg0 && typeof (arg0 as { id: unknown }).id === "string") {
+        commentId = (arg0 as { id: string }).id;
+      } else {
+        const thread = (arg1 && typeof arg1 === "object" && "comments" in arg1 ? arg1 : (arg0 && typeof arg0 === "object" && "comments" in arg0 ? arg0 : undefined)) as vscode.CommentThread | undefined;
+        if (thread) {
+          commentId = commentController.getCommentIdForThread(thread);
+        }
+      }
+      if (!commentId) return;
 
       try {
         deleteComment(root, commentId);
@@ -616,11 +637,18 @@ export function activate(context: vscode.ExtensionContext) {
     }),
   );
 
-  // 5. Watch for workspace changes to auto-refresh trees & status bar
+  // 5. Watch for workspace changes to auto-refresh trees & status bar with debounce
+  let debounceTimer: NodeJS.Timeout | undefined;
+  const debouncedRefresh = () => {
+    if (debounceTimer) clearTimeout(debounceTimer);
+    debounceTimer = setTimeout(() => {
+      refreshAll();
+    }, 250);
+  };
   const watcher = vscode.workspace.createFileSystemWatcher("**/.spexy/**/*");
-  watcher.onDidChange(() => refreshAll());
-  watcher.onDidCreate(() => refreshAll());
-  watcher.onDidDelete(() => refreshAll());
+  watcher.onDidChange(debouncedRefresh);
+  watcher.onDidCreate(debouncedRefresh);
+  watcher.onDidDelete(debouncedRefresh);
   context.subscriptions.push(watcher);
 }
 

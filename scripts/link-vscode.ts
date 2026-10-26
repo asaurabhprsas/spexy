@@ -7,7 +7,8 @@ const projectRoot = path.resolve(import.meta.dirname, "..");
 const extensionSrc = path.join(projectRoot, "packages", "vscode-extension");
 const homeDir = os.homedir();
 const extensionsDir = path.join(homeDir, ".vscode", "extensions");
-const targetLink = path.join(extensionsDir, "spexy.spexy-vscode-0.1.1");
+const extPkg = JSON.parse(fs.readFileSync(path.join(extensionSrc, "package.json"), "utf-8"));
+const targetLink = path.join(extensionsDir, `spexy.spexy-vscode-${extPkg.version}`);
 
 console.log("\n📦 [Spexy] Linking VS Code extension locally...\n");
 
@@ -17,7 +18,7 @@ if (!fs.existsSync(extensionsDir)) {
 
 try {
   if (fs.existsSync(targetLink) || fs.lstatSync(targetLink).isSymbolicLink()) {
-    fs.unlinkSync(targetLink);
+    fs.rmSync(targetLink, { recursive: true, force: true });
   }
 } catch {
   // ignore

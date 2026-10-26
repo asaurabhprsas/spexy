@@ -23,10 +23,11 @@ export type WatcherLogFn = (entry: {
 }) => void;
 
 const writeLocks = new Map<string, number>();
+const fileMutexQueues = new Map<string, Promise<unknown>>();
 
 /**
- * Helper to inhibit watcher echoing back internal server writes.
- * Sets a write lock for at least 200ms (>100ms requirement).
+ * Helper to inhibit watcher echoing back internal server writes and serialize writes.
+ * Sets a write lock for at least 200ms (>100ms requirement) and serializes concurrent async calls.
  */
 export async function withFileWriteLock<T>(
   filePath: string,
@@ -34,8 +35,17 @@ export async function withFileWriteLock<T>(
   lockDurationMs: number = 250,
 ): Promise<T> {
   const normalized = path.resolve(filePath);
-  writeLocks.set(normalized, Date.now() + lockDurationMs);
+  const prevPromise = fileMutexQueues.get(normalized) || Promise.resolve();
+
+  let executeResolve!: () => void;
+  const currentPromise = new Promise<void>((resolve) => {
+    executeResolve = resolve;
+  });
+  fileMutexQueues.set(normalized, currentPromise);
+
   try {
+    await prevPromise;
+    writeLocks.set(normalized, Date.now() + lockDurationMs);
     return await fn();
   } finally {
     setTimeout(() => {
@@ -44,6 +54,10 @@ export async function withFileWriteLock<T>(
         writeLocks.delete(normalized);
       }
     }, lockDurationMs);
+    executeResolve();
+    if (fileMutexQueues.get(normalized) === currentPromise) {
+      fileMutexQueues.delete(normalized);
+    }
   }
 }
 

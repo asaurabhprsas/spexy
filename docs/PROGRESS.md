@@ -20,13 +20,13 @@
   - [x] `skills/spexy/SKILL.md` agent skill contract and reference manual.
   - [x] Globally installed local binary at `~/.local/bin/spexy`.
 
-- [x] **Phase 3: Fastify/Bun Real-Time Server & Bi-Directional Watcher**
-  - [x] Bun HTTP & WebSocket `/ws` server engine (`packages/cli/src/server/index.ts`).
-  - [x] Chokidar file watcher with write-loop lock-token inhibitor.
-  - [x] Real-time event broadcasting (`DOC_UPDATED`, `TASK_UPDATED`, `SPEC_FILES_UPDATED`, `DOC_ARCHIVED`, `LOG_EVENT`).
+- [x] **Phase 3: Node.js Native HTTP & WebSocket Server & Bi-Directional Watcher**
+  - [x] Native Node.js HTTP & WebSocket `/ws` server engine (`packages/cli/src/server/index.ts`).
+  - [x] Chokidar file watcher with write-loop lock-token inhibitor and FIFO promise write mutex.
+  - [x] Real-time event broadcasting (`DOC_UPDATED`, `TASK_UPDATED`, `SPEC_FILES_UPDATED`, `DOC_ARCHIVED`, `LOG_EVENT`, `COMMENTS_UPDATED`).
   - [x] Multi-spec task aggregation endpoints (`/api/tasks`, `/api/specs/all/tasks`).
   - [x] Human manual status overrides and backwards transitions (`set_status`).
-  - [x] User preferences API with persistence in `.spexy/config.json`.
+  - [x] User preferences API with dual persistence (`localStorage` + `.spexy/config.json`).
 
 - [x] **Phase 4: Web UI Dashboard Views & Static Bundling (`packages/ui`)**
   - [x] ClickUp-style hierarchical task list with collapsible subtasks and progress indicators.
@@ -37,3 +37,13 @@
   - [x] Theme manager featuring popular themes (Tokyo Night, Catppuccin, Gruvbox, Nord, Dracula) and custom typography.
   - [x] Settings management page for appearance and workflow defaults.
   - [x] Comprehensive documentation in `docs/` (`ARCHITECTURE.md`, `CLI_REFERENCE.md`, `API_REFERENCE.md`, `WORKFLOW_GUIDE.md`, `DASHBOARD_GUIDE.md`).
+
+- [x] **Phase 5: Worktrees Concurrency, VS Code Extension, Multi-File Comments & Strict Type Safety**
+  - [x] Git worktree auto-blocking engine (`findCentralProjectRoot`, `acquireTaskLease`, `TASK_LEASE_CONFLICT`) with DAG candidate recommendations (`spexy task next`).
+  - [x] Worktree registry command (`spexy worktree list`) and status indicators.
+  - [x] Context-anchored review comments on arbitrary repo files (`spexy comment add --file ... --instruction ... --line ... --snippet ... --type ...`).
+  - [x] Comments soft-delete with 50-item retention cap and restore capability (`POST /api/comments/:id/restore`).
+  - [x] Task Composer smart next ID sequence engine (`computeSmartId`) with comprehensive unit tests.
+  - [x] Official VS Code Extension (`packages/vscode-extension`) with native comment controller (`vscode.comments`), tree view providers, and embedded dashboard webview.
+  - [x] Comprehensive TypeScript strictness audit (elimination of `any` types across CLI, Core, UI, and extension packages).
+  - [x] Complete test suite passing with 87 unit and integration tests across 4 packages.

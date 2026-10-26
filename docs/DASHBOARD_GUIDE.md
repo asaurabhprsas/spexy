@@ -28,6 +28,7 @@ Switch between three visual modes for managing tasks and subtasks:
 1. **Hierarchical List (ClickUp / Linear style)**:
    - Root tasks with expandable/collapsible chevrons for their subtasks.
    - Subtask counter pill (e.g. `2 subtasks • 1/2 completed`).
+   - Active Git Worktree lease badges with lease holder and branch info.
    - Priority badges (`critical`, `high`, `medium`, `low`).
    - Direct action triggers (Claim, Submit, Approve, Request Changes).
 2. **Kanban Board**:
@@ -39,6 +40,22 @@ Switch between three visual modes for managing tasks and subtasks:
    - Smooth cubic-bezier connecting curves and directional arrowheads.
    - Interactive dependency chain highlighting (click any node to highlight upstream prerequisites and downstream dependents).
    - Zoom controls and node inspector drawer.
+
+### Task Composer Sheet
+- Slide-over drawer for rapidly scaffolding new tasks and subtasks.
+- **Smart Auto-ID Engine**: Automatically computes next hierarchical sequence numbers (`1.1.1` $\to$ `1.1.2`, root `2.1` $\to$ `2.2`).
+- Searchable comboboxes for parent tasks and DAG dependencies.
+- Multi-file attachment uploader with direct preview.
+
+### Unified Directives & Review Comments Hub (`/comments`)
+- Centralized queue for all review directives across documents, tasks, and repository source files.
+- **Status Tabs**: Filter between `All`, `Pending`, `Resolved`, and soft-deleted `Deleted` entries.
+- **Multi-Attachment Support**: Attach screenshots, references, and research artifacts to any directive.
+- **Soft-Delete Restoration**: Easily restore discarded comments back to the active review queue with one click.
+
+### Live Activity Logs Drawer (`/logs`)
+- Real-time streaming log drawer displaying file watcher notifications, WebSocket events, and agent audit trail entries.
+- Ring buffer bounded to 500 events to maintain smooth UI rendering during high-frequency agent writes.
 
 ---
 

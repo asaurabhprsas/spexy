@@ -24,11 +24,18 @@ flowchart TD
 ## 🛠️ Step-by-Step Execution Guide
 
 ### 1. Claim Task & Acquire Worktree Lease
-Query available tasks whose prerequisite dependencies are satisfied:
+Query or auto-recommend available tasks whose prerequisite dependencies are satisfied:
 ```bash
+# Auto-recommend next unblocked task
+spexy task next [spec-id]
+
+# Or list all available tasks in compact mode
 spexy task list <spec-id> --available --compact --yaml
+
+# Inspect active worktrees and existing task leases
+spexy worktree list
 ```
-Claim the task. This acquires the worktree lease and transitions task status from `todo` to `in-progress`:
+Claim the task. This acquires the worktree lease, records lease metadata (`worktree`, `branch`, `locked_at`), and transitions task status from `todo` to `in-progress` (with auto-blocking and independent alternatives if leased by another worktree):
 ```bash
 spexy task start <task-id>
 ```

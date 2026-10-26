@@ -341,12 +341,12 @@ export class SpexyDashboardPanel {
           </div>
 
           <div class="nav-tabs">
-            <button class="nav-btn ${this._currentRoute.includes("view=kanban") ? "active" : ""}" onclick="navigate('/tasks?view=kanban')">📊 Kanban Board</button>
-            <button class="nav-btn ${this._currentRoute.includes("view=list") ? "active" : ""}" onclick="navigate('/tasks?view=list')">📋 Tasks & Sublists</button>
-            <button class="nav-btn ${this._currentRoute.includes("view=dag") ? "active" : ""}" onclick="navigate('/tasks?view=dag')">🌐 DAG Visualizer</button>
-            <button class="nav-btn ${this._currentRoute.startsWith("/specs") ? "active" : ""}" onclick="navigate('/specs')">📐 Specifications</button>
-            <button class="nav-btn ${this._currentRoute.startsWith("/steering") ? "active" : ""}" onclick="navigate('/steering')">📜 Steering</button>
-            <button class="nav-btn ${this._currentRoute === "/" ? "active" : ""}" onclick="navigate('/')">🏠 Overview</button>
+            <button class="nav-btn ${this._currentRoute.includes("view=kanban") ? "active" : ""}" onclick="navigate('/tasks?view=kanban', event)">📊 Kanban Board</button>
+            <button class="nav-btn ${this._currentRoute.includes("view=list") ? "active" : ""}" onclick="navigate('/tasks?view=list', event)">📋 Tasks & Sublists</button>
+            <button class="nav-btn ${this._currentRoute.includes("view=dag") ? "active" : ""}" onclick="navigate('/tasks?view=dag', event)">🌐 DAG Visualizer</button>
+            <button class="nav-btn ${this._currentRoute.startsWith("/specs") ? "active" : ""}" onclick="navigate('/specs', event)">📐 Specifications</button>
+            <button class="nav-btn ${this._currentRoute.startsWith("/steering") ? "active" : ""}" onclick="navigate('/steering', event)">📜 Steering</button>
+            <button class="nav-btn ${this._currentRoute === "/" ? "active" : ""}" onclick="navigate('/', event)">🏠 Overview</button>
             <button class="nav-btn" onclick="runDoctor()">🩺 Doctor</button>
           </div>
 
@@ -368,9 +368,10 @@ export class SpexyDashboardPanel {
           const vscode = acquireVsCodeApi();
           const frame = document.getElementById('spexy-frame');
 
-          function navigate(route) {
+          function navigate(route, evt) {
             document.querySelectorAll('.nav-btn').forEach(btn => btn.classList.remove('active'));
-            event.target.classList.add('active');
+            const target = (evt && evt.target) || (typeof event !== 'undefined' ? event.target : null);
+            if (target && target.classList) target.classList.add('active');
             frame.src = 'http://127.0.0.1:${this._port}' + route;
             vscode.postMessage({ command: 'navigate', route: route });
           }

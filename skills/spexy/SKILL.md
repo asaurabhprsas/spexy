@@ -60,7 +60,9 @@ To save up to 90% of prompt context tokens when querying workspace metadata:
 
 | Goal | Preferred Command | Token Savings |
 |---|---|---|
+| Auto-Recommend Next Ready Task | `spexy task next [spec-id]` | Direct topological candidate without manual list scan |
 | Query Available Tasks | `spexy task list <spec> --available --compact --yaml` | Omits large markdown bodies and file arrays |
+| Inspect Worktrees & Leases | `spexy worktree list` | Active worktree registrations and active leases |
 | Inspect Pending Comments | `spexy comment list --pending --compact --yaml` | Omits snippets and fuzzy context lines |
 | Check Steering/Spec Frontmatter | `spexy doc get <doc-id> --compact --yaml` | Extracts ONLY status, updated_at, approver |
 | List All Workspace Documents | `spexy doc list --compact --yaml` | Clean path and status mapping |
@@ -74,8 +76,8 @@ To save up to 90% of prompt context tokens when querying workspace metadata:
 flowchart TD
     S["Check Status<br/><code>spexy status --json</code>"] --> G{"Steering Approved?"}
     G -- No --> D["Refine Steering Docs with Human (Architect)"]
-    G -- Yes --> L["List Available Tasks (Compact)<br/><code>spexy task list [spec] --available -c --yaml</code>"]
-    L --> C["Claim Task<br/><code>spexy task start &lt;task-id&gt;</code> (Executor)"]
+    G -- Yes --> N["Recommend Next Task<br/><code>spexy task next [spec]</code>"]
+    N --> C["Claim Task & Lease<br/><code>spexy task start &lt;task-id&gt;</code> (Executor)"]
     C --> I["Implement Code & Run Tests (TDD)"]
     I --> Aud["Pre-Submission Audit (Reviewer)"]
     Aud --> Sub["Submit for Review<br/><code>spexy task complete &lt;task-id&gt; --note '...'</code>"]
@@ -91,14 +93,21 @@ spexy status --json
 spexy doc get product.md --compact --yaml
 ```
 
-### 2. Find Available Tasks (Token-Optimized)
+### 2. Find Available Tasks & Inspect Worktree Leases
 Only tasks whose prerequisite dependencies are human-verified as `done` will be available:
 ```bash
+# Auto-recommend next unblocked ready task
+spexy task next [spec-id]
+
+# Or list all available tasks in compact YAML
 spexy task list <spec-id> --available --compact --yaml
+
+# Inspect active worktrees and existing task leases
+spexy worktree list
 ```
 
-### 3. Claim Task
-Acquires the worktree lease and transitions status to `in-progress`:
+### 3. Claim Task & Acquire Worktree Lease
+Acquires the worktree lease and transitions status to `in-progress` (auto-blocks if already leased by another worktree):
 ```bash
 spexy task start <task-id>
 ```
@@ -115,13 +124,16 @@ spexy task start <task-id>
 spexy task complete <task-id> --note "Implemented feature and added passing test suite"
 ```
 
-### 6. Address Human Comments (Reviewer)
+### 6. Address Human Comments & Add Inline Directives (Reviewer)
 ```bash
 # List pending review comments in compact YAML
 spexy comment list --pending --compact --yaml
 
+# Add inline review comment on any arbitrary repository file
+spexy comment add --file <path> --instruction "<directive>" [--line <start[-end]>] [--snippet "<text>"]
+
 # Resolve comment once addressed
-spexy comment resolve <comment-id> --note "Addressed: updated validation logic"
+spexy comment resolve <comment-id> --note "Addressed: updated validation logic" --purge
 ```
 
 ### 7. Recovery & Rollbacks (Debugger)
