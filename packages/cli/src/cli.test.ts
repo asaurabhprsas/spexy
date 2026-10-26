@@ -542,6 +542,18 @@ describe("@spexy/cli Comprehensive Test Suite", () => {
     // 4. Query worktree list
     const worktreeOut = runCli(["worktree", "list", "--json"]);
     expect(worktreeOut).toBeDefined();
+
+    // 5. Test CLI execution from inside an isolated git worktree
+    execSync("git init && git config user.name test && git config user.email test@test.com && git add -A && git commit -m initial", { cwd: tmpDir, stdio: "ignore" });
+    const worktreeDir = path.join(os.tmpdir(), `spexy-cli-wt-${Date.now()}`);
+    try {
+      execSync(`git worktree add ${worktreeDir} -b wt-test-branch`, { cwd: tmpDir, stdio: "ignore" });
+      const statusFromWt = execSync(`${cliExec} status --json`, { cwd: worktreeDir, encoding: "utf-8" });
+      const parsedStatus = JSON.parse(statusFromWt);
+      expect(path.resolve(parsedStatus.projectRoot)).toBe(path.resolve(tmpDir));
+    } finally {
+      try { execSync(`git worktree remove --force ${worktreeDir}`, { cwd: tmpDir, stdio: "ignore" }); } catch {}
+    }
   });
 
   it("verifies package configuration and bundled distribution artifact", () => {
