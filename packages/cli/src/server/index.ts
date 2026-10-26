@@ -7,7 +7,7 @@ import {
   archiveDocument,
   createSpec,
   deleteComment,
-  findProjectRoot,
+  findCentralProjectRoot,
   flattenTasks,
   getBlockingDependencies,
   getPreferences,
@@ -196,7 +196,7 @@ export function createServer(options: ServerOptions = {}): {
   logActivity: (entry: Omit<ActivityLogEntry, "id" | "timestamp">) => ActivityLogEntry;
   activityLogs: ActivityLogEntry[];
 } {
-  const projectRoot = options.projectRoot || findProjectRoot();
+  const projectRoot = options.projectRoot || findCentralProjectRoot();
   initSpexyWorkspace(projectRoot);
 
   const bundledStatic = path.resolve(import.meta.dirname, "../static");
@@ -2047,7 +2047,7 @@ export function startServer(
     options = maybeOptions || {};
   } else {
     options = projectRootOrOptions || {};
-    projectRoot = options.projectRoot || findProjectRoot();
+    projectRoot = options.projectRoot || findCentralProjectRoot();
   }
 
   const config = readConfig(projectRoot);
