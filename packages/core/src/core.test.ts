@@ -38,6 +38,7 @@ import {
   deleteComment,
   updateComment,
   listCommentHistory,
+  readCommentHistoryDoc,
 } from "./comments/fuzzy-anchor";
 import { acquireTaskLease, getAlternativeAvailableTasks } from "./git/worktree";
 import { TaskItem } from "./schemas/tasks";
@@ -361,6 +362,59 @@ Document body here.`;
       // Expect throws when not found
       expect(() => deleteComment(tmpDir, "non-existent")).toThrow(/not found/i);
       expect(() => updateComment(tmpDir, "non-existent", { instruction: "test" })).toThrow(/not found/i);
+    });
+
+    it("soft-deletes comments into history and caps deleted retention at 50", () => {
+      initSpexyWorkspace(tmpDir);
+
+      // Add a resolved comment first to ensure non-deleted comments are not pruned
+      const resolved = addComment(tmpDir, {
+        target_file: "important-spec.md",
+        instruction: "Will be resolved normally",
+      });
+      resolveComment(tmpDir, resolved.id, "Resolved properly");
+
+      // Soft-delete 55 comments sequentially
+      const deletedIds: string[] = [];
+      for (let i = 1; i <= 55; i++) {
+        const c = addComment(tmpDir, {
+          target_file: "test-doc.md",
+          instruction: `Delete me comment #${i}`,
+        });
+        deletedIds.push(c.id);
+        deleteComment(tmpDir, c.id, `Deleted note #${i}`);
+      }
+
+      // Pending comments should be empty
+      const pending = listComments(tmpDir);
+      expect(pending.length).toBe(0);
+
+      // Check history doc
+      const history = readCommentHistoryDoc(tmpDir);
+      const deletedInHistory = history.comments.filter((c) => c.status === "deleted");
+      const addressedInHistory = history.comments.filter((c) => c.status === "addressed");
+
+      // Exactly 50 deleted comments retained
+      expect(deletedInHistory.length).toBe(50);
+
+      // The resolved comment is still present (not pruned)
+      expect(addressedInHistory.length).toBe(1);
+      expect(addressedInHistory[0].id).toBe(resolved.id);
+
+      // Oldest 5 deleted comments (indices 0..4, i.e. #1 to #5) must be pruned
+      for (let i = 0; i < 5; i++) {
+        expect(deletedInHistory.some((c) => c.id === deletedIds[i])).toBe(false);
+      }
+
+      // The 50 most recent deleted comments (indices 5..54, i.e. #6 to #55) must be present
+      for (let i = 5; i < 55; i++) {
+        const found = deletedInHistory.find((c) => c.id === deletedIds[i]);
+        expect(found).toBeDefined();
+        expect(found?.status).toBe("deleted");
+        expect(found?.resolution_note).toBe(`Deleted note #${i + 1}`);
+        expect(found?.resolved_by).toBe("human");
+        expect(found?.resolved_at).toBeDefined();
+      }
     });
 
     it("fuzzy realigns line numbers when content shifts", () => {

@@ -10,6 +10,8 @@ import {
   SpexyQuickActionsProvider,
   TaskTreeItem,
   SteeringTreeItem,
+  CommentTreeItem,
+  resolveCommentLocation,
 } from "./tree";
 import { SpexyDashboardPanel } from "./dashboard";
 import { SpexyServerManager } from "./serverManager";
@@ -27,7 +29,9 @@ import {
   transitionTask,
   updateSteeringDocument,
   resolveComment,
+  deleteComment,
   type TaskItem,
+  type CommentItem,
 } from "@spexy/core";
 
 export function activate(context: vscode.ExtensionContext) {
@@ -520,16 +524,94 @@ export function activate(context: vscode.ExtensionContext) {
 
   // Delete / Dismiss Comment
   context.subscriptions.push(
-    vscode.commands.registerCommand("spexy.deleteComment", async (item?: { id: string }) => {
+    vscode.commands.registerCommand("spexy.deleteComment", async (item?: { id: string } | CommentTreeItem) => {
       const root = getProjectRoot();
-      if (!root || !item?.id) return;
+      const commentId = item instanceof CommentTreeItem ? item.comment.id : item?.id;
+      if (!root || !commentId) return;
 
       try {
-        resolveComment(root, item.id, "Dismissed via VS Code extension.", { purge: true });
-        vscode.window.showInformationMessage(`Comment "${item.id}" removed.`);
+        deleteComment(root, commentId);
+        vscode.window.showInformationMessage(`Comment "${commentId}" deleted.`);
         refreshAll();
       } catch (err: unknown) {
-        vscode.window.showErrorMessage(`Failed to remove comment: ${err instanceof Error ? err.message : String(err)}`);
+        vscode.window.showErrorMessage(`Failed to delete comment: ${err instanceof Error ? err.message : String(err)}`);
+      }
+    }),
+  );
+
+  // Open Comment Location in Editor
+  context.subscriptions.push(
+    vscode.commands.registerCommand(
+      "spexy.openCommentLocation",
+      async (commentOrItem?: CommentItem | CommentTreeItem) => {
+        const root = getProjectRoot();
+        if (!root) return;
+
+        const comment: CommentItem | undefined =
+          commentOrItem instanceof CommentTreeItem
+            ? commentOrItem.comment
+            : commentOrItem;
+
+        if (!comment) return;
+
+        const { filePath, line } = resolveCommentLocation(root, comment);
+        if (filePath && fs.existsSync(filePath)) {
+          try {
+            const doc = await vscode.workspace.openTextDocument(filePath);
+            const editor = await vscode.window.showTextDocument(doc, {
+              selection: new vscode.Range(line, 0, line, 0),
+              preview: false,
+            });
+            editor.revealRange(
+              new vscode.Range(line, 0, line, 0),
+              vscode.TextEditorRevealType.InCenter,
+            );
+          } catch (err: unknown) {
+            vscode.window.showErrorMessage(
+              `Could not open file: ${err instanceof Error ? err.message : String(err)}`,
+            );
+          }
+        } else {
+          const action = await vscode.window.showInformationMessage(
+            `Comment [${comment.id}]: "${comment.instruction}"`,
+            "Open in Dashboard",
+          );
+          if (action === "Open in Dashboard") {
+            void SpexyDashboardPanel.createOrShow(context.extensionUri, "/comments");
+          }
+        }
+      },
+    ),
+  );
+
+  // Toggle / Filter Comments View
+  context.subscriptions.push(
+    vscode.commands.registerCommand("spexy.toggleCommentsFilter", async () => {
+      const current = commentsProvider.getFilter();
+      const pick = await vscode.window.showQuickPick(
+        [
+          {
+            label: "$(clock) Pending Comments",
+            description: current === "pending" ? "(Active)" : undefined,
+            value: "pending" as const,
+          },
+          {
+            label: "$(check) Reviewed / Resolved Comments",
+            description: current === "reviewed" ? "(Active)" : undefined,
+            value: "reviewed" as const,
+          },
+          {
+            label: "$(list-unordered) All Comments",
+            description: current === "all" ? "(Active)" : undefined,
+            value: "all" as const,
+          },
+        ],
+        { placeHolder: `Filter Comments View (Currently: ${current})` },
+      );
+
+      if (pick) {
+        commentsProvider.setFilter(pick.value);
+        vscode.window.showInformationMessage(`Comments view filtered to: ${pick.value}`);
       }
     }),
   );

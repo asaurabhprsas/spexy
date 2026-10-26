@@ -226,11 +226,42 @@ export class SpexyCommentController implements vscode.Disposable {
         },
       ),
     );
+
+    this.disposables.push(
+      vscode.commands.registerCommand(
+        "spexy.saveComment",
+        async (reply?: vscode.CommentReply) => {
+          if (reply && "thread" in reply) {
+            await this.createCommentFromReply(reply);
+            return;
+          }
+          await vscode.commands.executeCommand("spexy.addComment");
+        },
+      ),
+    );
+
+    this.disposables.push(
+      vscode.commands.registerCommand(
+        "spexy.cancelComment",
+        async (replyOrThread?: vscode.CommentReply | vscode.CommentThread) => {
+          if (!replyOrThread) return;
+          const thread = "thread" in replyOrThread ? replyOrThread.thread : replyOrThread;
+          if (thread && thread.comments.length === 0) {
+            thread.dispose();
+          }
+        },
+      ),
+    );
   }
 
   private async createCommentFromReply(reply: vscode.CommentReply) {
     const projectRoot = this.getProjectRoot();
     if (!projectRoot) return;
+
+    if (!reply.text || !reply.text.trim()) {
+      vscode.window.showWarningMessage("Please enter a comment instruction before saving.");
+      return;
+    }
 
     const thread = reply.thread;
     const relPath = path.relative(projectRoot, thread.uri.fsPath);
@@ -246,11 +277,17 @@ export class SpexyCommentController implements vscode.Disposable {
       // fallback
     }
 
+    const targetType = relPath.includes("steering")
+      ? "document"
+      : relPath.includes("specs")
+      ? (relPath.endsWith("tasks.yaml") ? "task" : "spec")
+      : "code";
+
     const comment = addComment(projectRoot, {
       target_file: relPath,
-      target_type: "code",
+      target_type: targetType as any,
       author: "human",
-      instruction: reply.text,
+      instruction: reply.text.trim(),
       anchor: {
         start_line: startLine,
         end_line: endLine,
@@ -259,17 +296,19 @@ export class SpexyCommentController implements vscode.Disposable {
       },
     });
 
+    reply.thread.label = `Spexy Review: ${comment.id}`;
     reply.thread.comments = [
       ...reply.thread.comments,
       {
-        author: { name: "Human Reviewer" },
-        body: new vscode.MarkdownString(reply.text),
+        author: { name: "👤 Human Reviewer" },
+        body: new vscode.MarkdownString(`**[${comment.id}]** ${reply.text.trim()}`),
         mode: vscode.CommentMode.Preview,
+        contextValue: "spexyComment",
       },
     ];
 
     this.threadsByCommentId.set(comment.id, reply.thread);
-    vscode.window.showInformationMessage(`Spexy comment "${comment.id}" added.`);
+    vscode.window.showInformationMessage(`Spexy comment "${comment.id}" saved.`);
   }
 
   private setupFileWatcher() {

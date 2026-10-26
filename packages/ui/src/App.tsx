@@ -1570,11 +1570,16 @@ function App() {
   const updatePreferences = useWorkflowUiStore((state) => state.updatePreferences);
 
   useEffect(() => {
+    const currentTarget = useWorkflowUiStore.getState().storageTarget;
+    // By default, stay purely in browser localStorage; only fetch from repo if storageTarget is explicitly 'repo'
+    if (currentTarget !== 'repo') return;
+
     fetch('/api/preferences')
       .then((r) => r.json())
-      .then((prefs) => {
-        if (prefs && typeof prefs === 'object') {
-          updatePreferences(prefs);
+      .then((data) => {
+        const prefs = data?.preferences ?? data;
+        if (prefs && typeof prefs === 'object' && Object.keys(prefs).length > 0) {
+          updatePreferences(prefs, { skipBackendSync: true });
         }
       })
       .catch(() => {});

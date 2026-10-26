@@ -42,7 +42,7 @@
         },
         {
           "id": "spexy.commentsView",
-          "name": "Pending Comments"
+          "name": "Comments"
         },
         {
           "id": "spexy.quickActionsView",
@@ -101,6 +101,25 @@
         "command": "spexy.addComment",
         "title": "Spexy: Add Review Comment at Current Selection",
         "icon": "$(comment-discussion)"
+      },
+      {
+        "command": "spexy.saveComment",
+        "title": "Save Comment",
+        "icon": "$(check)"
+      },
+      {
+        "command": "spexy.cancelComment",
+        "title": "Cancel",
+        "icon": "$(close)"
+      },
+      {
+        "command": "spexy.openCommentLocation",
+        "title": "Spexy: Open Comment Location in Editor"
+      },
+      {
+        "command": "spexy.toggleCommentsFilter",
+        "title": "Spexy: Filter Comments (Pending / Reviewed / All)",
+        "icon": "$(filter)"
       },
       {
         "command": "spexy.resolveComment",
@@ -165,6 +184,11 @@
     ],
     "menus": {
       "view/title": [
+        {
+          "command": "spexy.toggleCommentsFilter",
+          "when": "view == spexy.commentsView",
+          "group": "navigation@1"
+        },
         {
           "command": "spexy.openKanban",
           "when": "view == spexy.tasksView",
@@ -249,7 +273,33 @@
         },
         {
           "command": "spexy.deleteComment",
-          "when": "view == spexy.commentsView && viewItem == spexyPendingComment",
+          "when": "view == spexy.commentsView && (viewItem == spexyPendingComment || viewItem == spexyResolvedComment)",
+          "group": "inline@2"
+        }
+      ],
+      "comments/commentThread/context": [
+        {
+          "command": "spexy.saveComment",
+          "group": "inline@1"
+        },
+        {
+          "command": "spexy.cancelComment",
+          "group": "inline@2"
+        }
+      ],
+      "comments/commentThread/title": [
+        {
+          "command": "spexy.resolveComment",
+          "group": "inline@1"
+        }
+      ],
+      "comments/comment/title": [
+        {
+          "command": "spexy.resolveComment",
+          "group": "inline@1"
+        },
+        {
+          "command": "spexy.deleteComment",
           "group": "inline@2"
         }
       ],

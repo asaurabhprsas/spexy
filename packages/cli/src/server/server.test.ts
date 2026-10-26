@@ -585,12 +585,20 @@ describe("Spexy Node.js HTTP & WebSocket Server & File Watcher", () => {
     });
     expect(deleteRes.status).toBe(200);
     const deleteData: any = await deleteRes.json();
-    expect(deleteData).toEqual({ success: true, id: commentId });
+    expect(deleteData).toEqual({ ok: true, id: commentId, status: "deleted" });
 
     // Verify it is removed from GET /api/comments
     const afterDeleteRes = await fetch(`${baseUrl}/api/comments`);
     const afterDeleteData: any = await afterDeleteRes.json();
     expect(afterDeleteData.some((c: any) => c.id === commentId)).toBe(false);
+
+    // Verify it is present in history as deleted
+    const historyRes = await fetch(`${baseUrl}/api/comments/history`);
+    const historyData: any = await historyRes.json();
+    const deletedInHistory = historyData.find((c: any) => c.id === commentId);
+    expect(deletedInHistory).toBeDefined();
+    expect(deletedInHistory.status).toBe("deleted");
+    expect(deletedInHistory.resolution_note).toBe("Deleted by user");
   });
 
   it("GET /api/comments/history returns resolved comments", async () => {
@@ -1074,6 +1082,27 @@ describe("Spexy Node.js HTTP & WebSocket Server & File Watcher", () => {
     const body4: any = await res4.json();
     expect(body4.success).toBe(true);
     expect(body4.preferences).toEqual({ theme: "light", compactView: true, fontSize: 16 });
+
+    // Test GET /api/config
+    const resConfig = await fetch(`${baseUrl}/api/config`);
+    expect(resConfig.status).toBe(200);
+    const bodyConfig: any = await resConfig.json();
+    expect(bodyConfig).toHaveProperty("config");
+    expect(bodyConfig).toHaveProperty("preferences");
+    expect(bodyConfig.preferences).toEqual({ theme: "light", compactView: true, fontSize: 16 });
+
+    // Test PUT /api/config
+    const resPutConfig = await fetch(`${baseUrl}/api/config`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        preferences: { sidebarOpen: true },
+      }),
+    });
+    expect(resPutConfig.status).toBe(200);
+    const bodyPutConfig: any = await resPutConfig.json();
+    expect(bodyPutConfig.success).toBe(true);
+    expect(bodyPutConfig.preferences).toHaveProperty("sidebarOpen", true);
   });
 
   it("POST /api/specs/:id/upload and POST /api/specs/:id/preserve-file manages temporary and preserved files", async () => {

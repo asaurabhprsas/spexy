@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-export const CommentStatusSchema = z.enum(["pending", "addressed"]);
+export const CommentStatusSchema = z.enum(["pending", "addressed", "resolved", "deleted"]);
 export type CommentStatus = z.infer<typeof CommentStatusSchema>;
 
 export const CommentAnchorSchema = z.object({

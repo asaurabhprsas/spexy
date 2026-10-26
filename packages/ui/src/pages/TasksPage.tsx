@@ -115,6 +115,23 @@ export function TasksPage() {
     },
   });
 
+  const effectiveSpecId = isAllSpecs ? (featuresList[0]?.id || '') : selectedSpecId;
+  const specDocQuery = useQuery({
+    queryKey: ['spec-doc', effectiveSpecId],
+    queryFn: async () => {
+      if (!effectiveSpecId || effectiveSpecId === 'all') return null;
+      try {
+        const res = await fetch(`/api/specs/${encodeURIComponent(effectiveSpecId)}/tasks`);
+        if (res.ok) {
+          return await res.json();
+        }
+      } catch {}
+      return null;
+    },
+    enabled: Boolean(effectiveSpecId) && effectiveSpecId !== 'all',
+  });
+  const specDoc = specDocQuery.data;
+
   const [activeTab, setActiveTab] = useState<'kanban' | 'list' | 'dag'>(() => {
     const params = new URLSearchParams(typeof window !== 'undefined' ? window.location.search : '');
     const t = params.get('tab') || params.get('view');
@@ -190,9 +207,46 @@ export function TasksPage() {
     void qc.invalidateQueries({ queryKey: getGetDashboardQueryKey() });
   };
 
-  const handleCreateTask = (formData: CreateTaskFormData) => {
-    const targetSpecId = isAllSpecs ? (formData.groupId || featuresList[0]?.id) : selectedSpecId;
-    if (!targetSpecId) return;
+  const handleCreateTask = async (formData: CreateTaskFormData) => {
+    const targetSpecId = formData.specId || (isAllSpecs ? (formData.groupId || featuresList[0]?.id) : selectedSpecId);
+    if (!targetSpecId || targetSpecId === 'all') {
+      toast({
+        title: 'Specification required',
+        description: 'Please select a valid specification.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    try {
+      const res = await fetch(`/api/specs/${encodeURIComponent(targetSpecId)}/tasks`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: formData.id,
+          groupId: formData.groupId || targetSpecId,
+          parentId: formData.parentId || null,
+          title: formData.title,
+          description: formData.description,
+          priority: formData.priority,
+          dependsOn: formData.dependsOn,
+          files: formData.files,
+          requirementsRef: formData.requirementsRef,
+        }),
+      });
+
+      if (res.ok) {
+        toast({
+          title: 'Task created',
+          description: `Task "${formData.title}" (${formData.id}) created in spec "${targetSpecId}".`,
+        });
+        refresh();
+        void qc.invalidateQueries({ queryKey: ['spec-tasks', targetSpecId] });
+        void qc.invalidateQueries({ queryKey: ['spec-doc', targetSpecId] });
+        setIsComposerOpen(false);
+        return;
+      }
+    } catch {}
 
     createTask.mutate(
       {
@@ -212,7 +266,16 @@ export function TasksPage() {
       {
         onSuccess: () => {
           refresh();
+          void qc.invalidateQueries({ queryKey: ['spec-tasks', targetSpecId] });
+          void qc.invalidateQueries({ queryKey: ['spec-doc', targetSpecId] });
           setIsComposerOpen(false);
+        },
+        onError: (err: unknown) => {
+          toast({
+            title: 'Failed to create task',
+            description: err instanceof Error ? err.message : String(err),
+            variant: 'destructive',
+          });
         },
       }
     );
@@ -361,6 +424,8 @@ export function TasksPage() {
     });
   }, [rawTasks, isAllSpecs]);
 
+  const flattenedTasks = taskList;
+
   const isLoading = isAllSpecs ? allTasksQuery.isLoading : singleSpecTasksQuery.isLoading;
   const isError = isAllSpecs ? allTasksQuery.isError : singleSpecTasksQuery.isError;
 
@@ -464,7 +529,11 @@ export function TasksPage() {
         }}
         onSubmit={handleCreateTask}
         isPending={createTask.isPending}
-        defaultGroupId={selectedFeature?.id || ''}
+        specs={featuresQuery.data || []}
+        selectedSpecId={selectedSpecId}
+        existingTasks={flattenedTasks}
+        groups={specDoc?.groups || []}
+        defaultGroupId={selectedFeature?.id || specDoc?.groups?.[0]?.id || ''}
         defaultParentId={composerParentId}
       />
 

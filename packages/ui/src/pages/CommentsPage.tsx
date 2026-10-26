@@ -42,7 +42,7 @@ export interface CommentItem {
   target_file?: string;
   target_type?: 'document' | 'task' | 'general' | 'spec' | 'code' | 'file';
   target_id?: string | null;
-  status: 'pending' | 'addressed' | 'resolved';
+  status: 'pending' | 'addressed' | 'resolved' | 'deleted';
   author: 'human' | 'agent';
   created_at?: string;
   createdAt?: string | Date;
@@ -88,7 +88,7 @@ export function CommentsPage() {
 
   // State
   const [search, setSearch] = useState('');
-  const [statusFilter, setStatusFilter] = useState<'pending' | 'all' | 'resolved'>('pending');
+  const [statusFilter, setStatusFilter] = useState<'pending' | 'all' | 'resolved' | 'deleted'>('pending');
   const [typeFilter, setTypeFilter] = useState<'all' | 'general' | 'steering' | 'spec' | 'task'>('all');
   const [specFilter, setSpecFilter] = useState<string>('all');
   const [authorFilter, setAuthorFilter] = useState<'all' | 'human' | 'agent'>('all');
@@ -122,13 +122,18 @@ export function CommentsPage() {
     for (const c of history) {
       map.set(c.id, {
         ...c,
-        status: 'resolved',
+        status: (c.status as string) === 'deleted' ? 'deleted' : 'resolved',
       });
     }
     for (const c of active) {
       map.set(c.id, {
         ...c,
-        status: (c.status as string) === 'addressed' ? 'resolved' : c.status || 'pending',
+        status:
+          (c.status as string) === 'addressed'
+            ? 'resolved'
+            : (c.status as string) === 'deleted'
+            ? 'deleted'
+            : c.status || 'pending',
       });
     }
 
@@ -143,8 +148,9 @@ export function CommentsPage() {
   const filteredComments = useMemo(() => {
     return allComments.filter((c) => {
       // 1. Status Filter
-      if (statusFilter === 'pending' && c.status === 'resolved') return false;
+      if (statusFilter === 'pending' && c.status !== 'pending') return false;
       if (statusFilter === 'resolved' && c.status !== 'resolved') return false;
+      if (statusFilter === 'deleted' && c.status !== 'deleted') return false;
 
       // 2. Author Filter
       if (authorFilter !== 'all' && c.author !== authorFilter) return false;
@@ -195,9 +201,10 @@ export function CommentsPage() {
   // Counts
   const counts = useMemo(() => {
     const total = allComments.length;
-    const pending = allComments.filter((c) => c.status !== 'resolved').length;
-    const resolved = allComments.filter((c) => c.status === 'resolved').length;
-    return { total, pending, resolved };
+    const pending = allComments.filter((c) => c.status === 'pending').length;
+    const resolved = allComments.filter((c) => c.status === 'resolved' || (c.status as string) === 'addressed').length;
+    const deleted = allComments.filter((c) => c.status === 'deleted').length;
+    return { total, pending, resolved, deleted };
   }, [allComments]);
 
   // Handle File Upload for attachments
@@ -492,6 +499,21 @@ export function CommentsPage() {
               {counts.resolved}
             </span>
           </button>
+          <button
+            type="button"
+            onClick={() => setStatusFilter('deleted')}
+            className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 font-medium transition-all ${
+              statusFilter === 'deleted'
+                ? 'bg-background text-foreground shadow-xs'
+                : 'text-muted-foreground hover:text-foreground'
+            }`}
+          >
+            <Trash2 size={12} className={statusFilter === 'deleted' ? 'text-rose-500' : ''} />
+            <span>Deleted</span>
+            <span className="ml-0.5 rounded-full bg-muted px-1.5 py-0.2 font-mono text-[10px]">
+              {counts.deleted}
+            </span>
+          </button>
         </div>
       </div>
 
@@ -747,6 +769,7 @@ export function CommentsPage() {
       ) : (
         <div className="space-y-3">
           {filteredComments.map((comment) => {
+            const isDeleted = comment.status === 'deleted';
             const isResolved = comment.status === 'resolved';
             const isEditing = editingCommentId === comment.id;
             const isResolvingThis = resolvingCommentId === comment.id;
@@ -759,7 +782,9 @@ export function CommentsPage() {
               <div
                 key={comment.id}
                 className={`group relative rounded-xl border bg-card transition-all ${
-                  isResolved
+                  isDeleted
+                    ? 'border-border/40 bg-card/30 opacity-70 hover:opacity-95'
+                    : isResolved
                     ? 'border-border/50 bg-card/40 opacity-75 hover:opacity-100'
                     : 'border-border/80 shadow-xs hover:border-border hover:shadow-sm'
                 }`}
@@ -767,7 +792,7 @@ export function CommentsPage() {
                 {/* Visual Status Indicator Strip */}
                 <div
                   className={`absolute left-0 top-3 bottom-3 w-1 rounded-r ${
-                    isResolved ? 'bg-emerald-500/50' : 'bg-amber-500/80'
+                    isDeleted ? 'bg-rose-500/50' : isResolved ? 'bg-emerald-500/50' : 'bg-amber-500/80'
                   }`}
                 />
 
@@ -786,6 +811,20 @@ export function CommentsPage() {
                         {comment.author === 'agent' ? <Bot size={10} /> : <User size={10} />}
                         <span className="capitalize">{comment.author}</span>
                       </span>
+
+                      {/* Status Badge */}
+                      {isDeleted && (
+                        <span className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] font-medium bg-rose-500/10 text-rose-400 border border-rose-500/20">
+                          <Trash2 size={10} />
+                          <span>Deleted</span>
+                        </span>
+                      )}
+                      {isResolved && (
+                        <span className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                          <CheckCircle2 size={10} />
+                          <span>Resolved</span>
+                        </span>
+                      )}
 
                       {/* Context Target Link */}
                       {isGeneral ? (
@@ -832,7 +871,7 @@ export function CommentsPage() {
 
                     {/* Quick Card Actions (Visible on hover or mobile) */}
                     <div className="flex items-center gap-1 opacity-80 group-hover:opacity-100 transition-opacity">
-                      {!isResolved && !isResolvingThis && (
+                      {!isResolved && !isDeleted && !isResolvingThis && (
                         <button
                           type="button"
                           onClick={() => {
@@ -847,7 +886,7 @@ export function CommentsPage() {
                         </button>
                       )}
 
-                      {!isResolved && !isEditing && (
+                      {!isResolved && !isDeleted && !isEditing && (
                         <button
                           type="button"
                           onClick={() => {
@@ -861,14 +900,16 @@ export function CommentsPage() {
                         </button>
                       )}
 
-                      <button
-                        type="button"
-                        onClick={() => handleDelete(comment.id)}
-                        className="rounded p-1 text-muted-foreground hover:text-rose-500 transition-colors"
-                        title="Delete permanently"
-                      >
-                        <Trash2 size={11} />
-                      </button>
+                      {!isDeleted && (
+                        <button
+                          type="button"
+                          onClick={() => handleDelete(comment.id)}
+                          className="rounded p-1 text-muted-foreground hover:text-rose-500 transition-colors"
+                          title="Delete comment"
+                        >
+                          <Trash2 size={11} />
+                        </button>
+                      )}
                     </div>
                   </div>
 
@@ -919,7 +960,7 @@ export function CommentsPage() {
                         </div>
                       </div>
                     ) : (
-                      <p className="text-xs text-foreground/95 leading-relaxed whitespace-pre-wrap font-sans">
+                      <p className={`text-xs leading-relaxed whitespace-pre-wrap font-sans ${isDeleted ? 'line-through text-muted-foreground' : 'text-foreground/95'}`}>
                         {comment.instruction}
                       </p>
                     )}
@@ -947,12 +988,16 @@ export function CommentsPage() {
                     </div>
                   )}
 
-                  {/* Resolution Note if resolved */}
-                  {isResolved && (comment.resolutionNote || comment.resolution_note) && (
-                    <div className="mt-2.5 rounded-md border border-emerald-500/20 bg-emerald-500/[.03] px-2.5 py-1.5 text-xs text-muted-foreground">
-                      <div className="flex items-center gap-1 text-[10px] font-medium text-emerald-500">
-                        <CheckCircle2 size={10} />
-                        <span>Resolution</span>
+                  {/* Resolution Note if resolved or deleted */}
+                  {(isResolved || isDeleted) && (comment.resolutionNote || comment.resolution_note) && (
+                    <div className={`mt-2.5 rounded-md border px-2.5 py-1.5 text-xs text-muted-foreground ${
+                      isDeleted ? 'border-rose-500/20 bg-rose-500/[.03]' : 'border-emerald-500/20 bg-emerald-500/[.03]'
+                    }`}>
+                      <div className={`flex items-center gap-1 text-[10px] font-medium ${
+                        isDeleted ? 'text-rose-400' : 'text-emerald-500'
+                      }`}>
+                        {isDeleted ? <Trash2 size={10} /> : <CheckCircle2 size={10} />}
+                        <span>{isDeleted ? 'Deleted by user' : 'Resolution'}</span>
                       </div>
                       <p className="mt-0.5 text-foreground/80 pl-3.5 mb-0 text-xs">
                         {comment.resolutionNote || comment.resolution_note}

@@ -7,6 +7,7 @@ import {
   readTasksYaml,
   flattenTasks,
   listComments,
+  readCommentHistoryDoc,
   getSteeringStatus,
   listRegisteredWorktrees,
   getSpecflowDir,
@@ -15,7 +16,7 @@ import {
 } from "@spexy/core";
 
 // Helper to find line number of a task in tasks.yaml
-function findTaskLineInYaml(tasksFilePath: string, taskId: string): number {
+export function findTaskLineInYaml(tasksFilePath: string, taskId: string): number {
   if (!fs.existsSync(tasksFilePath)) return 0;
   const lines = fs.readFileSync(tasksFilePath, "utf-8").split("\n");
   for (let i = 0; i < lines.length; i++) {
@@ -26,6 +27,65 @@ function findTaskLineInYaml(tasksFilePath: string, taskId: string): number {
     }
   }
   return 0;
+}
+
+export function resolveCommentLocation(
+  projectRoot: string,
+  comment: CommentItem,
+): { filePath: string | null; line: number } {
+  // 1. Task targets
+  if (comment.target_type === "task" || comment.target_id) {
+    let tasksFile: string | null = null;
+    if (comment.target_file && comment.target_file.includes("tasks.yaml")) {
+      const candidate = path.resolve(projectRoot, comment.target_file);
+      if (fs.existsSync(candidate)) tasksFile = candidate;
+    }
+    if (!tasksFile && comment.target_id) {
+      try {
+        const specs = listSpecs(projectRoot);
+        for (const s of specs) {
+          const specTasksPath = path.join(getSpecflowDir(projectRoot), "specs", s.id, "tasks.yaml");
+          if (fs.existsSync(specTasksPath)) {
+            const doc = readTasksYaml(projectRoot, s.id);
+            const allTasks = flattenTasks(doc);
+            if (allTasks.some((t) => t.id === comment.target_id)) {
+              tasksFile = specTasksPath;
+              break;
+            }
+          }
+        }
+      } catch {}
+    }
+    if (tasksFile && comment.target_id) {
+      const line = findTaskLineInYaml(tasksFile, comment.target_id);
+      return { filePath: tasksFile, line };
+    }
+    if (tasksFile) {
+      return { filePath: tasksFile, line: 0 };
+    }
+  }
+
+  // 2. Document and code target
+  const targetFile = comment.target_file;
+  if (!targetFile || targetFile === "general") {
+    return { filePath: null, line: 0 };
+  }
+
+  const candidates = [
+    path.resolve(projectRoot, targetFile),
+    path.resolve(projectRoot, ".spexy", targetFile),
+    path.resolve(projectRoot, ".spexy", "specs", targetFile),
+    path.resolve(projectRoot, ".spexy", "steering", targetFile),
+  ];
+
+  for (const c of candidates) {
+    if (fs.existsSync(c)) {
+      const line = comment.anchor ? Math.max(0, comment.anchor.start_line - 1) : 0;
+      return { filePath: c, line };
+    }
+  }
+
+  return { filePath: null, line: 0 };
 }
 
 // ---------------------------------------------------------------------------
@@ -448,14 +508,34 @@ export class WorktreeLeaseItem extends vscode.TreeItem {
 }
 
 // ---------------------------------------------------------------------------
-// 4. Pending Comments Provider
+// 4. Comments Provider (Pending & Reviewed)
 // ---------------------------------------------------------------------------
+export type CommentFilterMode = "pending" | "reviewed" | "all";
+
 export class SpexyCommentsProvider implements vscode.TreeDataProvider<CommentTreeItem> {
   private _onDidChangeTreeData = new vscode.EventEmitter<CommentTreeItem | undefined | void>();
   readonly onDidChangeTreeData = this._onDidChangeTreeData.event;
+  private filterMode: CommentFilterMode = "pending";
 
   refresh(): void {
     this._onDidChangeTreeData.fire();
+  }
+
+  getFilter(): CommentFilterMode {
+    return this.filterMode;
+  }
+
+  setFilter(mode: CommentFilterMode): void {
+    this.filterMode = mode;
+    this.refresh();
+  }
+
+  toggleFilter(): CommentFilterMode {
+    if (this.filterMode === "pending") this.filterMode = "reviewed";
+    else if (this.filterMode === "reviewed") this.filterMode = "all";
+    else this.filterMode = "pending";
+    this.refresh();
+    return this.filterMode;
   }
 
   getTreeItem(element: CommentTreeItem): vscode.TreeItem {
@@ -468,34 +548,79 @@ export class SpexyCommentsProvider implements vscode.TreeDataProvider<CommentTre
     const projectRoot = findCentralProjectRoot(folders[0].uri.fsPath);
 
     try {
-      const comments = listComments(projectRoot, { pendingOnly: true });
-      return comments.map((c) => {
+      const pending = listComments(projectRoot, { pendingOnly: true });
+      let reviewed: CommentItem[] = [];
+      try {
+        const historyDoc = readCommentHistoryDoc(projectRoot);
+        reviewed = (historyDoc.comments || []).map((c) => ({
+          ...c,
+          status: c.status === "deleted" ? ("deleted" as const) : ("addressed" as const),
+        }));
+      } catch {}
+
+      let displayComments: CommentItem[] = [];
+      if (this.filterMode === "pending") {
+        displayComments = pending;
+      } else if (this.filterMode === "reviewed") {
+        displayComments = reviewed;
+      } else {
+        const map = new Map<string, CommentItem>();
+        for (const c of reviewed) map.set(c.id, c);
+        for (const c of pending) map.set(c.id, c);
+        displayComments = Array.from(map.values());
+      }
+
+      displayComments.sort((a, b) => {
+        const tA = new Date(a.created_at || 0).getTime();
+        const tB = new Date(b.created_at || 0).getTime();
+        return tB - tA;
+      });
+
+      return displayComments.map((c) => {
+        const isDeleted = c.status === "deleted";
+        const isResolved =
+          !isDeleted &&
+          (c.status === "addressed" ||
+            c.status === "resolved" ||
+            Boolean(c.resolution_note) ||
+            Boolean(c.resolved_at));
         const lines = c.anchor ? `L${c.anchor.start_line}-${c.anchor.end_line}` : "General";
-        const label = `[${c.id}] ${c.instruction}`;
+        const label = isDeleted
+          ? `[Deleted] [${c.id}] ${c.instruction}`
+          : `[${c.id}] ${c.instruction}`;
         const item = new CommentTreeItem(
           c.id,
           label,
           vscode.TreeItemCollapsibleState.None,
           c,
+          isResolved,
+          isDeleted,
         );
-        item.description = `${c.target_file || "doc"} (${lines})`;
-        item.tooltip = `Comment: ${c.id}\nAuthor: ${c.author}\nTarget: ${c.target_file || "doc"}\nInstruction: ${c.instruction}`;
-        item.iconPath = new vscode.ThemeIcon("comment-discussion", new vscode.ThemeColor("charts.yellow"));
 
-        if (c.target_file) {
-          const targetPath = path.resolve(projectRoot, c.target_file);
-          if (fs.existsSync(targetPath)) {
-            const startLine = c.anchor ? Math.max(0, c.anchor.start_line - 1) : 0;
-            item.command = {
-              command: "vscode.open",
-              title: "Open File at Comment",
-              arguments: [
-                vscode.Uri.file(targetPath),
-                { selection: new vscode.Range(startLine, 0, startLine, 0) },
-              ],
-            };
-          }
+        item.description = isDeleted
+          ? `${c.target_file || "doc"} (Deleted)`
+          : isResolved
+          ? `${c.target_file || "doc"} (Resolved)`
+          : `${c.target_file || "doc"} (${lines})`;
+
+        item.tooltip = isDeleted
+          ? `Comment: ${c.id}\nStatus: Deleted\nAuthor: ${c.author}\nTarget: ${c.target_file || "doc"}\nInstruction: ${c.instruction}\nResolution: ${c.resolution_note || "Deleted by user"}`
+          : `Comment: ${c.id}\nStatus: ${isResolved ? "Resolved" : "Pending"}\nAuthor: ${c.author}\nTarget: ${c.target_file || "doc"}\nInstruction: ${c.instruction}${c.resolution_note ? `\nResolution: ${c.resolution_note}` : ""}`;
+
+        if (isDeleted) {
+          item.iconPath = new vscode.ThemeIcon("trash", new vscode.ThemeColor("charts.red"));
+        } else if (isResolved) {
+          item.iconPath = new vscode.ThemeIcon("check", new vscode.ThemeColor("testing.iconPassed"));
+        } else {
+          item.iconPath = new vscode.ThemeIcon("comment-discussion", new vscode.ThemeColor("charts.yellow"));
         }
+
+        // On clicking any comment, open file location in editor
+        item.command = {
+          command: "spexy.openCommentLocation",
+          title: "Open File Location in Editor",
+          arguments: [c],
+        };
 
         return item;
       });
@@ -511,9 +636,15 @@ export class CommentTreeItem extends vscode.TreeItem {
     public readonly label: string,
     public readonly collapsibleState: vscode.TreeItemCollapsibleState,
     public readonly comment: CommentItem,
+    public readonly isResolved: boolean = false,
+    public readonly isDeleted: boolean = false,
   ) {
     super(label, collapsibleState);
-    this.contextValue = "spexyPendingComment";
+    this.contextValue = isDeleted
+      ? "spexyDeletedComment"
+      : isResolved
+      ? "spexyResolvedComment"
+      : "spexyPendingComment";
   }
 }
 

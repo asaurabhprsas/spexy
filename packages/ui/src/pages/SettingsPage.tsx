@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useWorkflowUiStore, type ColorMode, type EditorViewMode } from '@/store/ui';
+import { useWorkflowUiStore, type ColorMode, type EditorViewMode, type StorageTarget } from '@/store/ui';
 import { POPULAR_THEMES, POPULAR_FONTS, type ThemeConfig, type FontConfig } from '@/lib/themes';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -7,6 +7,7 @@ import { Switch } from '@/components/ui/switch';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
 import { toast } from '@/hooks/use-toast';
+import { cn } from '@/lib/utils';
 import {
   Palette,
   Type,
@@ -17,13 +18,13 @@ import {
   Moon,
   Laptop,
   Maximize2,
-  Minimize2,
   FileCode,
   Columns,
   Eye,
-  Sparkles,
-  Save,
   RotateCcw,
+  Database,
+  RefreshCw,
+  Cloud,
 } from 'lucide-react';
 
 export function SettingsPage() {
@@ -34,54 +35,96 @@ export function SettingsPage() {
     compactMode,
     isInspectorFullWidth,
     editorViewMode,
+    storageTarget,
+    lastSyncedAt,
     setThemeId,
     setFontId,
     setColorMode,
     setCompactMode,
     setInspectorFullWidth,
     setEditorViewMode,
+    setStorageTarget,
     updatePreferences,
+    syncToProjectRepo,
+    syncFromProjectRepo,
   } = useWorkflowUiStore();
 
   const [activeTab, setActiveTab] = useState<'appearance' | 'workflow' | 'workspace'>('appearance');
-  const [isSaving, setIsSaving] = useState(false);
+  const [isPulling, setIsPulling] = useState(false);
+  const [isPushing, setIsPushing] = useState(false);
 
   const activeTheme = POPULAR_THEMES.find((t) => t.id === themeId) || POPULAR_THEMES[0];
   const activeFont = POPULAR_FONTS.find((f) => f.id === fontId) || POPULAR_FONTS[0];
 
-  const handleSyncToConfig = async () => {
-    setIsSaving(true);
-    try {
-      const res = await fetch('/api/preferences', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          themeId,
-          fontId,
-          colorMode,
-          compactMode,
-          isInspectorFullWidth,
-          editorViewMode,
-        }),
+  const handleSelectStorageTarget = (target: StorageTarget) => {
+    if (target === storageTarget) return;
+    setStorageTarget(target);
+    if (target === 'repo') {
+      toast({
+        title: 'Storage Target: Project Repo',
+        description: 'Switched to Project Repository (.spexy/config.json). Changes will sync to repo.',
       });
-      if (res.ok) {
+    } else {
+      toast({
+        title: 'Storage Target: Browser Local',
+        description: 'Switched to Browser Local (localStorage). Changes are kept local.',
+      });
+    }
+  };
+
+  const handleSyncToLocal = async () => {
+    setIsPulling(true);
+    try {
+      const res = await syncFromProjectRepo();
+      if (res.success) {
         toast({
-          title: 'Preferences Saved',
-          description: 'Your user preferences were persisted to .spexy/config.json',
+          title: 'Synced to Browser',
+          description: 'Successfully pulled latest preferences from project repository (.spexy/config.json).',
         });
       } else {
         toast({
-          title: 'Saved to Browser',
-          description: 'Preferences saved in browser localStorage (server sync optional)',
+          title: 'Sync Failed',
+          description: res.error || 'Failed to pull preferences from repository.',
+          variant: 'destructive',
         });
       }
-    } catch {
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
       toast({
-        title: 'Saved Locally',
-        description: 'Preferences are active in browser memory and localStorage.',
+        title: 'Sync Error',
+        description: msg || 'Unexpected network error during pull.',
+        variant: 'destructive',
       });
     } finally {
-      setIsSaving(false);
+      setIsPulling(false);
+    }
+  };
+
+  const handleSyncToRepo = async () => {
+    setIsPushing(true);
+    try {
+      const res = await syncToProjectRepo();
+      if (res.success) {
+        toast({
+          title: 'Synced to Project Repo',
+          description: 'Current browser preferences saved to .spexy/config.json.',
+        });
+      } else {
+        toast({
+          title: 'Sync Failed',
+          description: res.error || 'Failed to push preferences to repository.',
+          variant: 'destructive',
+        });
+      }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      toast({
+        title: 'Sync Error',
+        description: msg || 'Unexpected network error during push.',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsPushing(false);
     }
   };
 
@@ -93,6 +136,7 @@ export function SettingsPage() {
       compactMode: false,
       isInspectorFullWidth: false,
       editorViewMode: 'split',
+      storageTarget: 'repo',
     });
     toast({
       title: 'Defaults Restored',
@@ -105,19 +149,36 @@ export function SettingsPage() {
       {/* Top Header */}
       <header className="flex flex-wrap items-end justify-between gap-4 border-b border-border/80 pb-6">
         <div>
-          <div className="mb-2 font-mono text-[10px] uppercase tracking-[.19em] text-primary flex items-center gap-2">
-            <Sliders size={13} />
-            <span>Workspace Preferences</span>
+          <div className="mb-2 font-mono text-[10px] uppercase tracking-[.19em] text-primary flex items-center flex-wrap gap-2">
+            <div className="flex items-center gap-1.5">
+              <Sliders size={13} />
+              <span>Workspace Preferences</span>
+            </div>
+            <span className="text-muted-foreground/60">•</span>
+            {/* Visual Indicator of Active Configuration Source */}
+            <Badge
+              variant="outline"
+              className={cn(
+                "font-mono text-[10px] gap-1.5 py-0 px-2 h-5 tracking-normal uppercase transition-colors",
+                storageTarget === 'repo'
+                  ? "bg-primary/10 text-primary border-primary/30"
+                  : "bg-amber-500/10 text-amber-500 border-amber-500/30"
+              )}
+              data-testid="header-config-source-badge"
+            >
+              {storageTarget === 'repo' ? <Database size={11} className="shrink-0" /> : <Laptop size={11} className="shrink-0" />}
+              <span>Config Source: {storageTarget === 'repo' ? 'Repo (.spexy/config.json)' : 'Browser (localStorage)'}</span>
+            </Badge>
           </div>
           <h1 className="font-serif text-[28px] sm:text-[34px] font-semibold leading-tight tracking-[-.04em] text-foreground">
             Settings & Appearance
           </h1>
           <p className="mb-0 mt-2 max-w-2xl text-xs sm:text-sm text-muted-foreground leading-relaxed">
-            Customize developer themes, coding typography, token-saving compact modes, and workspace defaults.
+            Customize developer themes, coding typography, token-saving compact modes, and workspace configuration storage.
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <Button
             variant="outline"
             size="sm"
@@ -129,14 +190,27 @@ export function SettingsPage() {
             Reset Defaults
           </Button>
           <Button
+            variant="outline"
             size="sm"
-            onClick={handleSyncToConfig}
-            disabled={isSaving}
-            className="text-xs gap-1.5 shadow-sm"
-            data-testid="button-sync-config"
+            onClick={handleSyncToLocal}
+            disabled={isPulling}
+            className="text-xs gap-1.5"
+            data-testid="button-sync-to-local"
+            title="Pull configuration from .spexy/config.json to browser"
           >
-            <Save size={13} />
-            {isSaving ? 'Saving…' : 'Save & Sync Config'}
+            <RefreshCw size={13} className={isPulling ? "animate-spin" : ""} />
+            {isPulling ? 'Pulling…' : 'Sync to Browser'}
+          </Button>
+          <Button
+            size="sm"
+            onClick={handleSyncToRepo}
+            disabled={isPushing}
+            className="text-xs gap-1.5 shadow-sm"
+            data-testid="button-sync-to-repo"
+            title="Push browser preferences to .spexy/config.json"
+          >
+            <Cloud size={13} className={isPushing ? "animate-pulse" : ""} />
+            {isPushing ? 'Pushing…' : 'Sync to Project Repo'}
           </Button>
         </div>
       </header>
@@ -455,43 +529,225 @@ export function SettingsPage() {
 
         {/* Tab 3: Workspace & Storage */}
         <TabsContent value="workspace" className="space-y-6">
+          {/* Storage Mode Selector */}
           <Card>
             <CardHeader className="pb-3">
-              <CardTitle className="text-base font-serif">Workspace Storage & Config</CardTitle>
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <CardTitle className="text-base font-serif flex items-center gap-2">
+                  <Database size={16} className="text-primary" />
+                  <span>Configuration Storage Target</span>
+                </CardTitle>
+                <Badge
+                  variant="outline"
+                  className={cn(
+                    "font-mono text-[10px] gap-1.5 py-1 px-2.5 transition-colors",
+                    storageTarget === 'repo'
+                      ? "bg-primary/10 text-primary border-primary/30"
+                      : "bg-amber-500/10 text-amber-500 border-amber-500/30"
+                  )}
+                  data-testid="badge-active-storage-source"
+                >
+                  {storageTarget === 'repo' ? <Database size={12} className="shrink-0" /> : <Laptop size={12} className="shrink-0" />}
+                  <span>
+                    Config Source: {storageTarget === 'repo' ? 'Repo (.spexy/config.json)' : 'Browser (localStorage)'}
+                  </span>
+                </Badge>
+              </div>
               <CardDescription className="text-xs">
-                Spexy operates with zero database dependencies. All configuration lives locally.
+                Select where your workspace configuration and preferences are stored. Switch between sharing configuration across your repository or keeping it isolated to this local browser.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div className="rounded-xl border border-border/70 bg-muted/20 p-4 space-y-2 font-mono text-xs">
-                <div className="flex items-center justify-between text-muted-foreground pb-2 border-b border-border/50">
-                  <span>Configuration File</span>
-                  <span className="text-foreground">.spexy/config.json</span>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
+                {/* Option 1: Project Repository */}
+                <button
+                  type="button"
+                  onClick={() => handleSelectStorageTarget('repo')}
+                  data-testid="storage-target-repo"
+                  className={cn(
+                    "p-4 rounded-xl border text-left transition-all cursor-pointer flex flex-col justify-between min-h-[140px]",
+                    storageTarget === 'repo'
+                      ? "border-primary ring-2 ring-primary/30 bg-primary/5 shadow-sm"
+                      : "border-border/70 bg-card/60 hover:border-border hover:bg-card/90"
+                  )}
+                >
+                  <div>
+                    <div className="flex items-center justify-between mb-1.5">
+                      <span className="font-semibold text-xs text-foreground flex items-center gap-1.5">
+                        <Database size={14} className="text-primary" />
+                        Project Repository (`.spexy/config.json`)
+                      </span>
+                      {storageTarget === 'repo' && (
+                        <span className="grid size-5 place-items-center rounded-full bg-primary text-primary-foreground text-[10px]">
+                          <Check size={12} />
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-[11px] text-muted-foreground leading-relaxed">
+                      Persists configuration and preferences directly to <code className="text-foreground font-mono bg-muted/60 px-1 py-0.5 rounded">.spexy/config.json</code> in the project repository. Shared across sessions, CLI invocations, and team members via Git.
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2 pt-2 border-t border-border/50 text-[10px] text-muted-foreground font-mono">
+                    <span className="inline-block size-2 rounded-full bg-emerald-500" />
+                    <span>Auto-syncs changes to /api/preferences</span>
+                  </div>
+                </button>
+
+                {/* Option 2: Browser Local */}
+                <button
+                  type="button"
+                  onClick={() => handleSelectStorageTarget('browser')}
+                  data-testid="storage-target-browser"
+                  className={cn(
+                    "p-4 rounded-xl border text-left transition-all cursor-pointer flex flex-col justify-between min-h-[140px]",
+                    storageTarget === 'browser'
+                      ? "border-primary ring-2 ring-primary/30 bg-primary/5 shadow-sm"
+                      : "border-border/70 bg-card/60 hover:border-border hover:bg-card/90"
+                  )}
+                >
+                  <div>
+                    <div className="flex items-center justify-between mb-1.5">
+                      <span className="font-semibold text-xs text-foreground flex items-center gap-1.5">
+                        <Laptop size={14} className="text-amber-500" />
+                        Browser Local (`localStorage`)
+                      </span>
+                      {storageTarget === 'browser' && (
+                        <span className="grid size-5 place-items-center rounded-full bg-primary text-primary-foreground text-[10px]">
+                          <Check size={12} />
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-[11px] text-muted-foreground leading-relaxed">
+                      Keeps all settings in this browser's <code className="text-foreground font-mono bg-muted/60 px-1 py-0.5 rounded">localStorage</code> only. Ideal for private developer customizations without modifying repository git files.
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2 pt-2 border-t border-border/50 text-[10px] text-muted-foreground font-mono">
+                    <span className="inline-block size-2 rounded-full bg-amber-500" />
+                    <span>Isolated to this browser instance</span>
+                  </div>
+                </button>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Bi-Directional Synchronization Card */}
+          <Card>
+            <CardHeader className="pb-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <CardTitle className="text-base font-serif flex items-center gap-2">
+                  <RefreshCw size={16} className="text-primary" />
+                  <span>Bi-Directional Sync Actions</span>
+                </CardTitle>
+                {lastSyncedAt && (
+                  <Badge variant="secondary" className="font-mono text-[10px] text-muted-foreground">
+                    Last Synced: {new Date(lastSyncedAt).toLocaleTimeString()}
+                  </Badge>
+                )}
+              </div>
+              <CardDescription className="text-xs">
+                Explicitly synchronize configuration between your active browser store and the project repository.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* Pull from Repo */}
+                <div className="p-4 rounded-xl border border-border/70 bg-card/50 flex flex-col justify-between space-y-3">
+                  <div className="space-y-1">
+                    <div className="text-xs font-semibold flex items-center gap-2">
+                      <RefreshCw size={14} className="text-primary" />
+                      <span>Sync to Local / Browser</span>
+                    </div>
+                    <p className="text-[11px] text-muted-foreground leading-relaxed">
+                      Pulls the latest saved configuration from the project repository (<code className="font-mono text-[10px]">GET /api/preferences</code> or <code className="font-mono text-[10px]">/api/config</code>) and applies it to this browser.
+                    </p>
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleSyncToLocal}
+                    disabled={isPulling}
+                    className="w-full text-xs gap-1.5"
+                    data-testid="button-tab-sync-to-local"
+                  >
+                    <RefreshCw size={13} className={isPulling ? "animate-spin" : ""} />
+                    {isPulling ? 'Pulling from Repo…' : 'Sync to Local / Browser'}
+                  </Button>
                 </div>
-                <div className="flex items-center justify-between text-muted-foreground pb-2 border-b border-border/50">
-                  <span>Specifications Directory</span>
-                  <span className="text-foreground">.spexy/specs/</span>
-                </div>
-                <div className="flex items-center justify-between text-muted-foreground pb-2 border-b border-border/50">
-                  <span>Steering Governance</span>
-                  <span className="text-foreground">.spexy/steering/</span>
-                </div>
-                <div className="flex items-center justify-between text-muted-foreground">
-                  <span>Archived Documents</span>
-                  <span className="text-foreground">.spexy/archived/</span>
+
+                {/* Push to Repo */}
+                <div className="p-4 rounded-xl border border-border/70 bg-card/50 flex flex-col justify-between space-y-3">
+                  <div className="space-y-1">
+                    <div className="text-xs font-semibold flex items-center gap-2">
+                      <Cloud size={14} className="text-primary" />
+                      <span>Sync to Project Repo</span>
+                    </div>
+                    <p className="text-[11px] text-muted-foreground leading-relaxed">
+                      Pushes your current browser preferences to the project repository (<code className="font-mono text-[10px]">PUT /api/preferences</code>) and writes to <code className="font-mono text-[10px]">.spexy/config.json</code>.
+                    </p>
+                  </div>
+                  <Button
+                    size="sm"
+                    onClick={handleSyncToRepo}
+                    disabled={isPushing}
+                    className="w-full text-xs gap-1.5 shadow-sm"
+                    data-testid="button-tab-sync-to-repo"
+                  >
+                    <Cloud size={13} className={isPushing ? "animate-pulse" : ""} />
+                    {isPushing ? 'Pushing to Repo…' : 'Sync to Project Repo'}
+                  </Button>
                 </div>
               </div>
+            </CardContent>
+          </Card>
 
-              <div className="flex items-center justify-end gap-2 pt-2">
-                <Button
-                  onClick={handleSyncToConfig}
-                  disabled={isSaving}
-                  size="sm"
-                  className="gap-1.5 text-xs"
-                >
-                  <Save size={13} />
-                  {isSaving ? 'Saving…' : 'Sync Preferences to Config'}
-                </Button>
+          {/* Workspace Files Overview */}
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base font-serif flex items-center gap-2">
+                <FolderGit2 size={16} className="text-primary" />
+                <span>Workspace File Architecture</span>
+              </CardTitle>
+              <CardDescription className="text-xs">
+                Spexy operates with zero database dependencies. All configuration lives locally in standard text formats.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="rounded-xl border border-border/70 bg-muted/20 p-4 space-y-2.5 font-mono text-xs">
+                <div className="flex items-center justify-between text-muted-foreground pb-2 border-b border-border/50">
+                  <span className="flex items-center gap-1.5">
+                    <Database size={13} className="text-primary" />
+                    <span>User Preferences & Layout</span>
+                  </span>
+                  <span className="text-foreground font-semibold">.spexy/config.json</span>
+                </div>
+                <div className="flex items-center justify-between text-muted-foreground pb-2 border-b border-border/50">
+                  <span className="flex items-center gap-1.5">
+                    <Sliders size={13} className="text-primary" />
+                    <span>Project Governance & Server Config</span>
+                  </span>
+                  <span className="text-foreground font-semibold">.spexy/config.yaml</span>
+                </div>
+                <div className="flex items-center justify-between text-muted-foreground pb-2 border-b border-border/50">
+                  <span className="flex items-center gap-1.5">
+                    <FolderGit2 size={13} className="text-primary" />
+                    <span>Specifications Directory</span>
+                  </span>
+                  <span className="text-foreground font-semibold">.spexy/specs/</span>
+                </div>
+                <div className="flex items-center justify-between text-muted-foreground pb-2 border-b border-border/50">
+                  <span className="flex items-center gap-1.5">
+                    <Check size={13} className="text-primary" />
+                    <span>Steering Governance</span>
+                  </span>
+                  <span className="text-foreground font-semibold">.spexy/steering/</span>
+                </div>
+                <div className="flex items-center justify-between text-muted-foreground">
+                  <span className="flex items-center gap-1.5">
+                    <FolderGit2 size={13} className="text-primary" />
+                    <span>Archived Documents</span>
+                  </span>
+                  <span className="text-foreground font-semibold">.spexy/archived/</span>
+                </div>
               </div>
             </CardContent>
           </Card>

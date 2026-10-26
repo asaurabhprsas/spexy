@@ -12,5 +12,10 @@ export default defineConfig({
     fsModuleCache: false,
     fsModuleCachePath: path.join(os.tmpdir(), ".vitest-cache"),
   },
+  resolve: {
+    alias: {
+      "@": path.resolve(import.meta.dirname, "packages/ui/src"),
+    },
+  },
   cacheDir: path.join(os.tmpdir(), ".vitest-spexy-cache"),
 });

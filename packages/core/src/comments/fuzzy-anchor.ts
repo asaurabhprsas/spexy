@@ -129,7 +129,11 @@ export function addComment(
   return newComment;
 }
 
-export function deleteComment(projectRoot: string, commentId: string): void {
+export function deleteComment(
+  projectRoot: string,
+  commentId: string,
+  note?: string,
+): CommentItem {
   const doc = readPendingCommentsDoc(projectRoot);
   const idx = doc.comments.findIndex((c) => c.id === commentId);
 
@@ -137,8 +141,48 @@ export function deleteComment(projectRoot: string, commentId: string): void {
     throw new Error(`Comment not found: "${commentId}"`);
   }
 
+  const comment = doc.comments[idx];
+  comment.status = "deleted";
+  comment.resolution_note = note || "Deleted by user";
+  comment.resolved_at = new Date().toISOString();
+  comment.resolved_by = "human";
+
+  // Append soft-deleted comment into history
+  const historyDoc = readCommentHistoryDoc(projectRoot);
+  historyDoc.comments.push({ ...comment });
+
+  // PRUNE DELETED COMMENTS TO MAX 50:
+  // Count how many comments in historyDoc.comments have status === "deleted".
+  // If count > 50, prune the oldest deleted comments so that at most 50 deleted comments exist in history.
+  const MAX_DELETED_RETENTION = 50;
+  const deletedIndices: number[] = [];
+  historyDoc.comments.forEach((c, i) => {
+    if (c.status === "deleted") {
+      deletedIndices.push(i);
+    }
+  });
+
+  if (deletedIndices.length > MAX_DELETED_RETENTION) {
+    deletedIndices.sort((i, j) => {
+      const cA = historyDoc.comments[i];
+      const cB = historyDoc.comments[j];
+      const tA = new Date(cA.resolved_at || cA.created_at || 0).getTime();
+      const tB = new Date(cB.resolved_at || cB.created_at || 0).getTime();
+      return tA - tB || i - j;
+    });
+
+    const excessCount = deletedIndices.length - MAX_DELETED_RETENTION;
+    const indicesToRemove = new Set(deletedIndices.slice(0, excessCount));
+    historyDoc.comments = historyDoc.comments.filter((_, i) => !indicesToRemove.has(i));
+  }
+
+  writeCommentHistoryDoc(projectRoot, historyDoc);
+
+  // Remove from pending
   doc.comments.splice(idx, 1);
   writePendingCommentsDoc(projectRoot, doc);
+
+  return comment;
 }
 
 export function updateComment(

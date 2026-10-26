@@ -22,6 +22,7 @@ import {
   listSpecs,
   parseDocumentFrontmatter,
   readConfig,
+  writeConfig,
   readPendingCommentsDoc,
   writePendingCommentsDoc,
   readTasksYaml,
@@ -886,6 +887,7 @@ export function createServer(options: ServerOptions = {}): {
             tasks: enrichedTasks,
             availability,
             blockers,
+            groups: doc.groups?.map((g) => ({ id: g.id, name: g.name })) || [],
             dependency_graph: doc.dependency_graph,
             notes: doc.notes,
           });
@@ -915,7 +917,25 @@ export function createServer(options: ServerOptions = {}): {
             notes: { security: null, testing: null },
           };
 
-          const updatedDoc = updateTaskInDoc(doc, newTask);
+          let updatedDoc = updateTaskInDoc(doc, newTask);
+          const reqGroupId = reqBody.groupId || reqBody.group_id;
+          if (reqGroupId) {
+            const groupExists = updatedDoc.groups.some((g) => g.id === reqGroupId);
+            if (groupExists) {
+              updatedDoc = {
+                ...updatedDoc,
+                groups: updatedDoc.groups.map((g) => {
+                  if (g.id === reqGroupId) {
+                    if (!g.tasks.some((t) => t.id === newTask.id)) {
+                      return { ...g, tasks: [...g.tasks, newTask] };
+                    }
+                    return g;
+                  }
+                  return { ...g, tasks: g.tasks.filter((t) => t.id !== newTask.id) };
+                }),
+              };
+            }
+          }
           const tasksPath = path.join(getSpecflowDir(projectRoot), "specs", specId, "tasks.yaml");
 
           await withFileWriteLock(tasksPath, () => {
@@ -1658,7 +1678,7 @@ export function createServer(options: ServerOptions = {}): {
             payload: { comments: readPendingCommentsDoc(projectRoot).comments.map(formatComment) },
           });
 
-          return json({ success: true, id: commentId });
+          return json({ ok: true, id: commentId, status: "deleted" });
         }
 
         // GET /api/checkpoints
@@ -1911,6 +1931,40 @@ export function createServer(options: ServerOptions = {}): {
             payload: { preferences: updated },
           });
           return json({ success: true, preferences: updated });
+        }
+
+        // GET /api/config
+        if (pathname === "/api/config" && method === "GET") {
+          const config = readConfig(projectRoot);
+          const preferences = getPreferences(projectRoot);
+          return json({ config, preferences });
+        }
+
+        // PUT /api/config
+        if (pathname === "/api/config" && method === "PUT") {
+          const reqBody = await parseBody(req);
+          let updatedConfig = undefined;
+          if (reqBody.config && typeof reqBody.config === "object") {
+            const existing = readConfig(projectRoot);
+            const merged = { ...existing, ...reqBody.config };
+            writeConfig(projectRoot, merged);
+            updatedConfig = merged;
+          }
+          let updatedPrefs = undefined;
+          const prefsToUpdate =
+            reqBody.preferences !== undefined
+              ? reqBody.preferences
+              : reqBody.config === undefined
+              ? reqBody
+              : undefined;
+          if (prefsToUpdate && typeof prefsToUpdate === "object" && Object.keys(prefsToUpdate).length > 0) {
+            updatedPrefs = updatePreferences(projectRoot, prefsToUpdate);
+            broadcast({
+              type: "PREFERENCES_UPDATED",
+              payload: { preferences: updatedPrefs },
+            });
+          }
+          return json({ success: true, config: updatedConfig, preferences: updatedPrefs });
         }
 
         // Unknown API route
